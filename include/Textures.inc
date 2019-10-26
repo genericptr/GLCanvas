@@ -11,9 +11,6 @@ type
 																);
 
 type
-	TRect = TVec4;
-	TSize = TVec2;
-	TPoint = TVec2;
 	TColor = TVec4;
 	// TODO: what are we doing for image data now? we have png and tga loaders
 	TImage = pointer;
@@ -53,7 +50,7 @@ type
 			procedure SetCropping (newValue: TRect);
 			procedure SetTextureSpace (newValue: TRect);
 
-			function GetSize: TSize; inline;
+			function GetSize: TVec2; inline;
 			function GetBounds: TRect; inline;
 			function GetHeight: integer; inline;
 			function GetWidth: integer; inline;
@@ -61,7 +58,7 @@ type
 			function GetCropping: TRect; inline;
 			function GetTexture: TGLTextureID; inline;
 			function GetTextureFrame: TRect; inline;
-			function GetPivot: TPoint; inline;
+			function GetPivot: TVec2; inline;
 			function GetTextureSpace: TRect; inline;
 			function GetOwner: TTextureSource; inline;
 			function GetTextureUnit: TGLTextureUnit; inline;
@@ -70,7 +67,7 @@ type
 			procedure Load;
 
 		private
-			faceSize: TSize;
+			faceSize: TVec2;
 			sourceImage: TImage;
 			tint: TColor;
 			cropping: TRect; 
@@ -78,17 +75,17 @@ type
 			textureSpace: TRect;
 			textureID: TGLTextureID;
 			textureUnit: TGLTextureUnit;
-			pivot: TPoint;
+			pivot: TVec2;
 			owner: TTextureSource;
 			faceName: string;
-			originalSize: TSize;
+			originalSize: TVec2;
 			generatedTexture: boolean;
 			texParams: TTextureParameters;
 
 			destructor Destroy; override;
 			procedure Initialize;
 			procedure SetOwner (newValue: TTextureSource);
-			procedure SetSize (newValue: TSize);
+			procedure SetSize (newValue: TVec2);
 			procedure LoadImage (image: TImage);
 	end;
 	TTextureList = specialize TFPGObjectList<TTexture>;
@@ -97,14 +94,15 @@ type
 type
 	TTextureSheet = class (TTextureSource, ITexture)
 		public
+			cellSize: TVec2;
+			tableSize: TVec2;
+		public
 					
 			{ Constructors }
-			constructor Create (path: ansistring; _cellSize: TSize); overload;
-			constructor Create (path: ansistring; _cellSize: TSize; _tableSize: TSize); overload;
+			constructor Create (path: ansistring; _cellSize: TVec2); overload;
+			constructor Create (path: ansistring; _cellSize: TVec2; _tableSize: TVec2); overload;
 			
 			{ Accessors }
-			function GetCellSize: TSize;
-			function GetTableSize: TSize;
 			function GetCount: integer;
 			function GetTextures: TTextureList;
 			function GetTexture: TGLTextureID;
@@ -113,7 +111,7 @@ type
 
 			{ Faces }
 			function GetTexture (index: integer): TTexture; overload;
-			function GetTexture (cell: TPoint): TTexture; overload;
+			function GetTexture (cell: TVec2): TTexture; overload;
 			function GetTexture (x, y: integer): TTexture; overload;
 			property Indexer[x, y: integer]: TTexture read GetTexture; default;
 
@@ -123,17 +121,15 @@ type
 			function GetName: string; override;		
 		private
 			textures: TTextureList;
-			cellSize: TSize;
 			textureID: TGLTextureID;
-			textureSize: TSize;
-			tableSize: TSize;
+			textureSize: TVec2;
 			texParams: TTextureParameters;
 			sourceImage: TImage;
 			imageWidth, imageHeight: integer;
 
 			destructor Destroy; override;
 			procedure LoadImage (image: TImage);
-			procedure LoadFromTexture (size: TSize);
+			procedure LoadFromTexture (size: TVec2);
 			function GetIndex (x, y: integer): integer;
 	end;
 
@@ -163,77 +159,28 @@ type
 		private
 			textureID: TGLTextureID;
 			textures: TTextureMap;
-			textureSize: TSize;
+			textureSize: TVec2;
 			path: string;
 			faceName: string;
 			texParams: TTextureParameters;
 			scale: TScalar;
 
 			procedure LoadImage (imagePath: ansistring);
-			procedure AddTexture (name: string; constref spriteSize, originalSize: TSize; constref offset, position, pivot: TPoint); 
+			procedure AddTexture (name: string; constref spriteSize, originalSize: TVec2; constref offset, position, pivot: TVec2); 
 
 			destructor Destroy; override;
 	end;
 
-// TODO: when advancedobjects get merged then change these to subclasses
-type
-	TSizeHelper = record helper for TVec2
-		constructor Create(width, height: TScalar);
-		function GetWidth: TScalar; inline;
-		function GetHeight: TScalar; inline;
-		procedure SetWidth(newValue: TScalar); inline;
-		procedure SetHeight(newValue: TScalar); inline;
-		property Width: TScalar read GetWidth write SetWidth;
-		property Height: TScalar read GetHeight write SetHeight;
-		function Min: TScalar; inline;
-		function Max: TScalar; inline;
-	end;
-
-type
-	TRectHelper = record helper for TVec4
-		private
-			function GetOrigin: TPoint; inline;
-			procedure SetOrigin(newValue: TPoint); inline;
-			function GetSize: TSize; inline;
-			procedure SetSize(newValue: TSize); inline;
-		public
-			constructor Create(x, y: TScalar; width, height: TScalar);
-			function Width: TScalar; inline;
-			function Height: TScalar; inline;
-			function MinX: TScalar; inline;
-			function MaxX: TScalar; inline;
-			function MidX: TScalar; inline;
-			function MinY: TScalar; inline;
-			function MaxY: TScalar; inline;
-			function MidY: TScalar; inline;
-			property Origin: TPoint read GetOrigin write SetOrigin;
-			property Size: TSize read GetSize write SetSize;
-	end;
-
-function RectMake(x, y: TScalar; width, height: TScalar): TRect; inline;
-function RectMake(origin: TPoint; size: TSize): TRect; inline;
-function SizeMake(width, height: TScalar): TSize; inline;
-function PointMake(x, y: TScalar): TPoint; inline;
 function RGBA(r, g, b, a: TScalar): TColor; inline;
 
 {$endif}
 
 {$ifdef IMPLEMENTATION}
 
-type
-	TPointerHelper = type helper for pointer
-		procedure Free;
-	end;
-
 var
 	DefaultTextureParameters: TTextureParameters = [kTextureNearestFilter, kTextureClampToEdge];
 	textureSlots: array[0..64-1] of TGLTextureID;
 	nextAvailableTextureUnit: TGLTextureUnit;
-
-procedure TPointerHelper.Free;
-begin
-	FreeMem(self);
-end;
 
 type
 	TFileParts = record
@@ -368,21 +315,20 @@ type
 	int16_t = cint16;
 	uint16_t = cuint16;
 	TGAHeader = packed record
-		private
-			IDSize: uint8_t;         // Size of ID info following header
-			colorMapType: uint8_t;   // Whether this is a paletted image
-			imageType: uint8_t;      // type of image 0=none, 1=indexed, 2=rgb, 3=grey, +8=rle packed
+		IDSize: uint8_t;         // Size of ID info following header
+		colorMapType: uint8_t;   // Whether this is a paletted image
+		imageType: uint8_t;      // type of image 0=none, 1=indexed, 2=rgb, 3=grey, +8=rle packed
 
-			colorMapStart: int16_t;  // Offset to color map in palette
-			colorMapLength: int16_t; // Number of colors in palette
-			colorMapBpp: uint8_t;    // number of bits per palette entry
+		colorMapStart: int16_t;  // Offset to color map in palette
+		colorMapLength: int16_t; // Number of colors in palette
+		colorMapBpp: uint8_t;    // number of bits per palette entry
 
-			xOffset: uint16_t;        // Number of pixels to the right to start of image
-			yOffset: uint16_t;        // Number of pixels down to start of image
-			width: uint16_t;          // Width in pixels
-			height: uint16_t;         // Height in pixels
-			bitsPerPixel: uint8_t;    // Bits per pixel 8,16,24,32
-			descriptor: uint8_t;      // Descriptor bits (flipping, etc)
+		xOffset: uint16_t;        // Number of pixels to the right to start of image
+		yOffset: uint16_t;        // Number of pixels down to start of image
+		width: uint16_t;          // Width in pixels
+		height: uint16_t;         // Height in pixels
+		bitsPerPixel: uint8_t;    // Bits per pixel 8,16,24,32
+		descriptor: uint8_t;      // Descriptor bits (flipping, etc)
 	end;
 	TGAHeaderPtr = ^TGAHeader;
 	BytePtr = ^byte;
@@ -503,144 +449,10 @@ end;
 //$bookmark TYPE HELPERS
 //$bookmark -
 
-function PointMake(x, y: TScalar): TPoint;
-begin
-	result.x := x;
-	result.y := y;
-end;
-
-function RectMake(origin: TPoint; size: TSize): TRect;
-begin
-	result := TRect.Create(origin.x, origin.y, size.width, size.height);
-end;
-
-function RectMake(x, y: TScalar; width, height: TScalar): TRect;
-begin
-	result := TRect.Create(x, y, width, height);
-end;
-
-function SizeMake(width, height: TScalar): TSize;
-begin
-	result := TSize.Create(width, height);
-end;
-
 function RGBA(r, g, b, a: TScalar): TColor;
 begin
 	result := V4(r, g, b, a);
 end;
-
-constructor TSizeHelper.Create(width, height: TScalar);
-begin
-	self.x := width;
-	self.y := height;
-end;
-
-procedure TSizeHelper.SetWidth(newValue: TScalar);
-begin
-	x := newValue;
-end;
-
-procedure TSizeHelper.SetHeight(newValue: TScalar);
-begin
-	y := newValue;	
-end;
-
-function TSizeHelper.GetWidth: TScalar;
-begin
-	result := x;
-end;
-
-function TSizeHelper.GetHeight: TScalar;
-begin
-	result := y;
-end;
-
-function TSizeHelper.Min: TScalar;
-begin
-	if width < height then
-		result := width
-	else
-		result := height;
-end;
-
-function TSizeHelper.Max: TScalar;
-begin
-	if width > height then
-		result := width
-	else
-		result := height;
-end;
-
-constructor TRectHelper.Create(x, y: TScalar; width, height: TScalar);
-begin
-	self.x := x;
-	self.y := y;
-	self.z := x + width;
-	self.w := y + height;
-end;
-
-function TRectHelper.Width: TScalar;
-begin
-	result := MaxX - MinX;
-end;
-
-function TRectHelper.Height: TScalar;
-begin
-	result := MaxY - MinY;
-end;
-
-function TRectHelper.MinX: TScalar;
-begin
-	result := v[0];
-end;
-
-function TRectHelper.MaxX: TScalar;
-begin
-	result := v[2]
-end;
-
-function TRectHelper.MidX: TScalar;
-begin
-	result := MinX + (Width / 2);
-end;
-
-function TRectHelper.MinY: TScalar;
-begin
-	result := v[1];
-end;
-
-function TRectHelper.MaxY: TScalar;
-begin
-	result := v[3];
-end;
-
-function TRectHelper.MidY: TScalar;
-begin
-	result := MinY + (Height / 2);
-end;
-
-function TRectHelper.GetOrigin: TPoint;
-begin
-	result := PointMake(MinX, MinY);
-end;
-
-procedure TRectHelper.SetOrigin(newValue: TPoint);
-begin
-	x := newValue.x;
-	y := newValue.y;
-end;
-
-function TRectHelper.GetSize: TSize;
-begin
-	result := SizeMake(Width, Height);
-end;
-
-procedure TRectHelper.SetSize(newValue: TSize);
-begin
-	v[2] := newValue.width;
-	v[3] := newValue.height;
-end;
-
 
 //$bookmark -
 //$bookmark TEXTURE SOURCE
@@ -781,13 +593,13 @@ begin
 			BindTexture2D(textureID, textureUnit);
 			LoadTexture2D(width, height, image, texParams);
 			// assume texture size is the same as image size
-			textureSize := SizeMake(width, height);
-			image.Free;
+			textureSize := V2(width, height);
+			FreeMem(image);
 		end;
 	Assert(textureID >= 0, 'No texture loaded for sprite sheet');
 end;
 
-procedure TTexturePack.AddTexture (name: string; 	constref spriteSize, originalSize: TSize; constref offset, position, pivot: TPoint); 
+procedure TTexturePack.AddTexture (name: string; 	constref spriteSize, originalSize: TVec2; constref offset, position, pivot: TVec2); 
 var
 	texture: TTexture; 
 begin
@@ -824,8 +636,8 @@ var
 	node, child: TDOMNode;
 	attributes: TVariantMap;
 	imagePath: ansistring;
-	spriteSize, originalSize: TSize;
-	offset, position, pivot: TPoint;
+	spriteSize, originalSize: TVec2;
+	offset, position, pivot: TVec2;
 begin	
 	memoryPool := TObjectList.Create(true);
 	textures := TTextureMap.Create;
@@ -840,7 +652,7 @@ begin
 			imagePath := imagePath+'/'+attributes['imagePath'];
 			LoadImage(imagePath);
 
-			textureSize := SizeMake(attributes['width'], attributes['height']);
+			textureSize := V2(attributes['width'], attributes['height']);
 
 			// loop through all <sprite> tags
 			node := node.FirstChild;	
@@ -848,11 +660,11 @@ begin
 				begin
 					attributes := NodeAttributes(node);
 					
-					spriteSize := SizeMake(attributes['w'], attributes['h']);
-					originalSize := SizeMake(attributes['oW'], attributes['oH']);
-					offset := PointMake(attributes['oX'], attributes['oY']);
-					position := PointMake(attributes['x'], attributes['y']);
-					pivot := PointMake(attributes['pX'], attributes['pY']);
+					spriteSize := V2(attributes['w'], attributes['h']);
+					originalSize := V2(attributes['oW'], attributes['oH']);
+					offset := V2(attributes['oX'], attributes['oY']);
+					position := V2(attributes['x'], attributes['y']);
+					pivot := V2(attributes['pX'], attributes['pY']);
 										
 					AddTexture(ExtractFileParts(attributes['n']).name, spriteSize, originalSize, offset, position, pivot);
 
@@ -877,7 +689,7 @@ end;
 
 function TTextureSheet.GetTexture (x, y: integer): TTexture;
 begin
-	result := GetTexture(PointMake(x, y));
+	result := GetTexture(V2(x, y));
 end;
 
 function TTextureSheet.GetIndex (x, y: integer): integer;
@@ -885,22 +697,13 @@ begin
 	result := Trunc((tableSize.width * y) + x);
 end;
 
-function TTextureSheet.GetTexture (cell: TPoint): TTexture;
+function TTextureSheet.GetTexture (cell: TVec2): TTexture;
 begin
 	if not IsLoaded then
 		Load;
 	result := TTexture(textures[GetIndex(trunc(cell.x), trunc(cell.y))]);
 end;
 
-function TTextureSheet.GetCellSize: TSize;
-begin
-	result := cellSize;
-end;
-
-function TTextureSheet.GetTableSize: TSize;
-begin
-	result := tableSize;
-end;
 
 function TTextureSheet.GetCount: integer;
 begin
@@ -921,13 +724,13 @@ end;
 
 function TTextureSheet.TextureFrameForTextureSpace (textureSpace: TRect): TRect;
 begin
-	result := RectMake(textureSpace.x / textureSize.width, textureSpace.y / textureSize.height, textureSpace.width / textureSize.width, textureSpace.height / textureSize.height);
+	result := RectMake(textureSpace.minX / textureSize.width, textureSpace.minY / textureSize.height, textureSpace.width / textureSize.width, textureSpace.height / textureSize.height);
 end;
 
 destructor TTextureSheet.Destroy;
 begin
 	textures.Free;
-	sourceImage.Free;
+	FreeMem(sourceImage);
 end;
 
 procedure TTextureSheet.LoadImage (image: TImage);
@@ -947,11 +750,11 @@ begin
 	Assert(textureID > 0, 'No texture loaded for sprite sheet');
 end;
 
-procedure TTextureSheet.LoadFromTexture (size: TSize);
+procedure TTextureSheet.LoadFromTexture (size: TVec2);
 var
 	x, y: integer;
 	cellFrame: TRect;
-	scale: TSize;
+	scale: TVec2;
 	texture: TTexture;
 begin
 	Assert(textures = nil, 'Already loaded textures.');
@@ -960,12 +763,12 @@ begin
 	for y := Round(tableSize.height) downto 1 do
 		for x := 1 to Round(tableSize.width) do
 			begin
-				scale := SizeMake((tableSize.width * cellSize.width) / size.width, (tableSize.height * cellSize.height) / size.height);
+				scale := V2((tableSize.width * cellSize.width) / size.width, (tableSize.height * cellSize.height) / size.height);
 				cellFrame := RectMake(((x - 1) * (1 / tableSize.width)) * scale.width, ((1 - ((1 / tableSize.height) * y))) * scale.height, (1 / tableSize.width) * scale.width, (1 / tableSize.height) * scale.height);
 				
 				texture := TTexture.Create(GetTexture);
 				texture.SetTextureFrame(cellFrame);
-				texture.SetTextureSpace(RectMake(PointMake((x-1) * cellSize.width, (tableSize.height-y) * cellSize.height), cellSize));
+				texture.SetTextureSpace(RectMake(V2((x-1) * cellSize.width, (tableSize.height-y) * cellSize.height), cellSize));
 				texture.SetSize(cellSize);
 				texture.SetOwner(self);
 				textures.Add(texture);
@@ -990,11 +793,11 @@ end;
 procedure TTextureSheet.Load;
 begin
 	LoadImage(sourceImage);
-	LoadFromTexture(SizeMake(imageWidth, imageHeight));
-	sourceImage.Free;
+	LoadFromTexture(V2(imageWidth, imageHeight));
+	FreeMem(sourceImage);
 end;
 
-constructor TTextureSheet.Create (path: ansistring; _cellSize: TSize; _tableSize: TSize);
+constructor TTextureSheet.Create (path: ansistring; _cellSize: TVec2; _tableSize: TVec2);
 begin
 	textureID := 0;
 	sourceImage := LoadImageFromFile(path, imageWidth, imageHeight);
@@ -1009,14 +812,14 @@ begin
 	else
 		tableSize := _tableSize;
 	
-	//writeln('imageSize:',SizeMake(imageWidth, imageHeight).Tostr);
-	//writeln('tableSize:',tableSize.tostr);
-	//writeln('cellSize:',cellSize.tostr);
+	writeln('imageSize:',V2(imageWidth, imageHeight).Tostr);
+	writeln('tableSize:',tableSize.tostr);
+	writeln('cellSize:',cellSize.tostr);
 end;
 
-constructor TTextureSheet.Create (path: ansistring; _cellSize: TSize);
+constructor TTextureSheet.Create (path: ansistring; _cellSize: TVec2);
 begin
-	Create(path, _cellSize, SizeMake(0, 0));
+	Create(path, _cellSize, V2(0, 0));
 end;
 
 //$bookmark -
@@ -1058,7 +861,7 @@ begin
 	BindTexture2D(textureID, textureUnit);
 	LoadTexture2D(trunc(faceSize.width), trunc(faceSize.height), image, texParams);
 
-	sourceImage.Free;
+	FreeMem(sourceImage);
 	sourceImage := nil;
 end;
 
@@ -1068,14 +871,14 @@ begin
 		LoadImage(sourceImage);
 end;
 
-procedure TTexture.SetSize (newValue: TSize);
+procedure TTexture.SetSize (newValue: TVec2);
 begin
 	faceSize := newValue;
 	if faceSize.Max > GetMaximumTextureSize then
 		raise Exception.Create('Sprite face texture exceeds maximum texture size ('+IntToStr(GetMaximumTextureSize)+')');
 end;
 
-function TTexture.GetSize: TSize;
+function TTexture.GetSize: TVec2;
 begin
 	result := faceSize;
 end;
@@ -1105,7 +908,7 @@ begin
 	result := textureFrame;
 end;
 
-function TTexture.GetPivot: TPoint;
+function TTexture.GetPivot: TVec2;
 begin
 	result := pivot;
 end;
@@ -1140,7 +943,7 @@ end;
 
 procedure TTexture.Initialize;
 begin
-	tint := TColor.Create(1, 1, 1, 0);
+	tint := V4(1, 1, 1, 0);
 	SetTextureFrame(RectMake(0, 0, 1, 1));
 	texParams := DefaultTextureParameters;
 end;
@@ -1152,7 +955,7 @@ begin
 		DeleteTexture(textureID);					
 	
 	if assigned(sourceImage) then
-		sourceImage.Free;
+		FreeMem(sourceImage);
 end;
 
 constructor TTexture.Create (texture: TGLTextureID);
@@ -1166,7 +969,7 @@ var
 	width, height: integer;
 begin
 	sourceImage := LoadImageFromFile(path, width, height);
-	SetSize(SizeMake(width, height));
+	SetSize(V2(width, height));
 	Initialize;
 end;
 

@@ -12,11 +12,10 @@ const
 type
 	TBitmapFont = class (TTextureSource)
 		private
-			type
-				TStringInternal = ansistring;
 			const
 				kFontChars = 256;
 			type
+				TStringInternal = ansistring;
 				TFontCharDescriptor = record
 					id: integer;
 					x, y: single;
@@ -48,52 +47,54 @@ type
 					_packed: byte;
 					// <chars>
 					chars: array[0..kFontChars - 1] of TFontCharDescriptor;
-				end;
-		public		
-
-			{ Constructors }
-			constructor Create (path: ansistring);
-			
-			{ Accessors }
-			procedure SetSpaceWidth (newValue: integer);
-			procedure SetCharAdvance (newValue: integer);
-			
-			function GetTexture (c: char): TTexture; overload; inline;
-			function GetSpaceWidth: integer;
-			function GetTabWidth: integer;
-			function GetLineHeight: integer;
-			function GetName: string;
-			
-			{ Methods }
-			function MeasureText (_string: TStringInternal; maximumWidth: integer = MaxInt): TSize;
-			function WrapText (_string: TStringInternal; maximumWidth: integer): TStringList;
-
+				end;	
 		private
-			infoPath: ansistring;
-			texture: TTexturePack;
-			fontInfo: TFontInfo;
-			spaceWidth: integer;
-			tabWidth: integer;
-			charAdvance: integer;
-			name: string;
-
-			destructor Destroy; override;
-			procedure LoadProperties;
-			procedure Load;
-			function SplitString (text: TStringInternal; chars: integer; var count: integer): TStringList;
-			function RestoreText (text: TStringInternal): TStringInternal;
-			function WrapTextInternal (text: TStringInternal; max: single; var actualSize: TSize): TStringList;
+			m_spaceWidth: integer;
+			m_tabWidth: integer;
+			m_charAdvance: integer;
+			m_name: string;	
 
 			function GetCharacterSpacing (c: char): integer;
 			function GetYOffset (c: char): integer;			
 			function GetTextWidth (text: string): integer;
 			function GetTexture (index: integer): TTexture; overload;
 			function GetXHeight: integer;
-			function GetCharDesc(c: char): TFontCharDescriptor;
+			function GetLineHeight: integer;
+		public		
+
+			{ Constructors }
+			constructor Create (path: ansistring);
+			
+			{ Accessors }
+			procedure SetCharAdvance (newValue: integer);
+			function TextureForCharacter (c: char): TTexture; overload; inline;
+			
+			property SpaceWidth: integer read m_spaceWidth write m_spaceWidth;
+			property TabWidth: integer read m_tabWidth;
+			property LineHeight: integer read GetLineHeight;
+			property XHeight: integer read GetXHeight;
+			property Name: string read m_name;
+
+			{ Methods }
+			function MeasureText (_string: TStringInternal; maximumWidth: integer = MaxInt): TVec2;
+			function WrapText (_string: TStringInternal; maximumWidth: integer): TStringList;
+
+		private
+			infoPath: ansistring;
+			texture: TTexturePack;
+			fontInfo: TFontInfo;
+
+			destructor Destroy; override;
+			procedure LoadProperties;
+			procedure Load;
+			function SplitString (text: TStringInternal; chars: integer; var count: integer): TStringList;
+			function RestoreText (text: TStringInternal): TStringInternal;
+			function WrapTextInternal (text: TStringInternal; max: single; var actualSize: TVec2): TStringList;
+			function CharDescriptor(c: char): TFontCharDescriptor; inline;
 	end;
 
-function DrawText (font: TBitmapFont; text: ansistring; textAlignment: integer; bounds: TRect): TSize; overload;
-procedure DrawText (font: TBitmapFont; text: ansistring; where: TPoint; scale: single = 1.0); overload;
+function DrawText (font: TBitmapFont; text: ansistring; textAlignment: integer; bounds: TRect): TVec2; overload;
+procedure DrawText (font: TBitmapFont; text: ansistring; where: TVec2; scale: single = 1.0); overload;
 
 {$endif}
 
@@ -127,7 +128,7 @@ begin
 	result := text;
 end;
 
-function TBitmapFont.WrapTextInternal (text: TStringInternal; max: single; var actualSize: TSize): TStringList;
+function TBitmapFont.WrapTextInternal (text: TStringInternal; max: single; var actualSize: TVec2): TStringList;
 var
 	i, s: integer;
 	fragment: string = '';
@@ -144,18 +145,15 @@ var
 	longestLine: integer = 0;
 	previousLongestLine: integer = 0;
 	startTime: single;
-	lineHeight, xHeight: integer;
 	debug: boolean = false;
 begin
 	if text = '' then
 		begin
-			actualSize := SizeMake(0, 0);
+			actualSize := V2(0, 0);
 			exit;
 		end;
 						
   try		
-		lineHeight := self.GetLineHeight;
-		xHeight := self.GetXHeight;
 		result := TStringList.Create; 
 		if max > 0 then
 			begin
@@ -236,14 +234,10 @@ begin
   end;
 end;
 
-procedure TBitmapFont.SetSpaceWidth (newValue: integer);
-begin
-	spaceWidth := newValue;
-end;
 
 procedure TBitmapFont.SetCharAdvance (newValue: integer);
 begin
-	charAdvance := newValue;
+	m_charAdvance := newValue;
 end;
 
 function TBitmapFont.GetTextWidth (text: string): integer;
@@ -255,7 +249,7 @@ begin
 	result := 0;
 	for c in text do
 		begin
-			tex := GetTexture(c);
+			tex := TextureForCharacter(c);
 			if tex <> nil then
 				begin
 					spacing := GetCharacterSpacing(c);
@@ -263,12 +257,12 @@ begin
 				end
 			else if c = #32 then
 				begin
-					spacing := GetSpaceWidth;
+					spacing := spaceWidth;
 					result += spacing;
 				end
 			else if c = #9 then
 				begin
-					spacing := GetSpaceWidth * tabWidth;
+					spacing := spaceWidth * tabWidth;
 					result += spacing;
 				end;
 		end;
@@ -284,7 +278,7 @@ end;
 
 function TBitmapFont.GetCharacterSpacing (c: char): integer;
 begin
-	result := charAdvance;//fontInfo.chars[ord(c)].xadvance + charAdvance;
+	result := m_charAdvance;//fontInfo.chars[ord(c)].xadvance + charAdvance;
 end;
 
 function TBitmapFont.GetYOffset (c: char): integer;
@@ -302,27 +296,12 @@ begin
 	result := fontInfo.base;
 end;
 
-function TBitmapFont.GetCharDesc(c: char): TFontCharDescriptor;
+function TBitmapFont.CharDescriptor(c: char): TFontCharDescriptor;
 begin
 	result := fontInfo.chars[ord(c)];
 end;
 
-function TBitmapFont.GetSpaceWidth: integer;
-begin
-	result := spaceWidth;
-end;
-
-function TBitmapFont.GetTabWidth: integer;
-begin
-	result := tabWidth;
-end;
-
-function TBitmapFont.GetName: string;
-begin
-	result := name;
-end;
-
-function TBitmapFont.GetTexture (c: char): TTexture;
+function TBitmapFont.TextureForCharacter (c: char): TTexture;
 begin
 	if (c = ' ') or (c = '	') then
 		exit(nil);
@@ -414,11 +393,11 @@ begin
 					//charDesc.texture := charTexture;
 
 					texture.AddTexture(chr(charDesc.id), 
-							SizeMake(charDesc.width, charDesc.height), 
-							SizeMake(charDesc.width, charDesc.height),
-							PointMake(charDesc.xoffset, charDesc.yoffset),
-							PointMake(charDesc.x, charDesc.y),
-							PointMake(0, 0)
+							V2(charDesc.width, charDesc.height), 
+							V2(charDesc.width, charDesc.height),
+							V2(charDesc.xoffset, charDesc.yoffset),
+							V2(charDesc.x, charDesc.y),
+							V2(0, 0)
 						);
 					charDesc.texture := texture[chr(charDesc.id)];
 
@@ -449,12 +428,12 @@ end;
 
 function TBitmapFont.WrapText (_string: TStringInternal; maximumWidth: integer): TStringList;
 var
-	actualSize: TSize;
+	actualSize: TVec2;
 begin
 	result := WrapTextInternal(_string, maximumWidth, actualSize);
 end;
 
-function TBitmapFont.MeasureText (_string: TStringInternal; maximumWidth: integer = MaxInt): TSize;
+function TBitmapFont.MeasureText (_string: TStringInternal; maximumWidth: integer = MaxInt): TVec2;
 begin		
 	WrapTextInternal(_string, maximumWidth, result);
 end;
@@ -466,22 +445,22 @@ begin
 	texture.SetTextureParameters([kTextureNearestFilter, kTextureClampToEdge]);
 	infoPath := path+'/font.fnt';
 	Assert(FileExists(infoPath), 'font.fnt file doesn''t exist.');
-	name := ExtractFileName(path);
-	spaceWidth := 3;
-	tabWidth := 4;
+	m_name := ExtractFileName(path);
+	m_spaceWidth := 3;
+	m_tabWidth := 4;
 	Load;
 end;
 
-function DrawText (font: TBitmapFont; text: ansistring; textAlignment: integer; bounds: TRect): TSize;
+function DrawText (font: TBitmapFont; text: ansistring; textAlignment: integer; bounds: TRect): TVec2;
 var
 	line: ansistring;
 	lines: TStringList;
-	where: TPoint;
+	where: TVec2;
 begin
 	Assert(font <> nil, 'font must not be nil');
 
 	if text = '' then
-		exit(SizeMake(0, 0));
+		exit(V2(0, 0));
 		
 	where := bounds.origin;
 	lines := font.WrapTextInternal(text, Trunc(bounds.width), result);
@@ -498,13 +477,13 @@ begin
 		end;
 end;
 
-procedure DrawText (font: TBitmapFont; text: ansistring; where: TPoint; scale: single = 1.0);
+procedure DrawText (font: TBitmapFont; text: ansistring; where: TVec2; scale: single = 1.0);
 var
 	i: integer;
 	c: char;
 	texture: TTexture;
-	newOrigin: TPoint;
-	origin: TPoint;
+	newOrigin: TVec2;
+	origin: TVec2;
 begin
 	Assert(font <> nil, 'font must not be nil');
 
@@ -515,27 +494,27 @@ begin
 
 	for c in text do
 		begin
-			texture := font.GetTexture(c);
+			texture := font.TextureForCharacter(c);
 			
 			if texture = nil then
 				if c = #32 then
 					begin
-						origin.x += font.GetSpaceWidth;
+						origin.x += font.SpaceWidth;
 						continue;
 					end
 				else if c = #9 then
 					begin
-						origin.x += font.GetSpaceWidth * font.GetTabWidth;
+						origin.x += font.SpaceWidth * font.TabWidth;
 						continue;
 					end
 				else
 					begin
-						origin.x += font.GetSpaceWidth;
+						origin.x += font.SpaceWidth;
 						continue;
 					end;
 				
 			newOrigin.x := origin.x;
-			newOrigin.y := origin.y + font.GetCharDesc(c).yoffset;
+			newOrigin.y := origin.y + font.CharDescriptor(c).yoffset;
 			DrawTexture(texture, RectMake(newOrigin, texture.GetSize) * scale);
 
 			origin.x += texture.GetWidth + font.GetCharacterSpacing(c);

@@ -1,18 +1,25 @@
 {$mode objfpc}
 {$modeswitch advancedrecords}
 {$modeswitch typehelpers}
+{$modeswitch autoderef}
 {$interfaces CORBA}
 {$assertions on}
 
 unit GLCanvas;
 interface
 uses
-  FGL, VectorMath, Classes, GLPT, GL, GLExt;
+  GL, GLExt, FGL, Classes, 
+  GLPT, VectorMath;
 
 {$define INTERFACE}
 {$include include/Textures.inc}
 {$include include/BitmapFont.inc}
+{$include include/FileUtils.inc}
 {$undef INTERFACE}
+
+type
+  TVec2Array = array[0..0] of TVec2;
+  PVec2Array = ^TVec2Array;
 
 { Window }
 procedure SetupCanvas(inWidth, inHeight: integer; eventCallback: GLPT_EventCallback); 
@@ -24,6 +31,11 @@ procedure FillRect (constref rect: TRect; constref color: TColor);
 procedure StrokeRect (constref rect: TRect; constref color: TColor; lineWidth: single = 1.0);
 procedure FillOval (constref rect: TRect; constref color: TColor; segments: single = 32); 
 procedure StrokeOval (constref rect: TRect; constref color: TColor; segments: TScalar = 32; lineWidth: TScalar = 1.0); 
+procedure FillPolygon(points: array of TVec2; constref color: TColor);
+procedure StrokePolygon(points: array of TVec2; constref color: TColor; lineWidth: TScalar = 1.0);
+procedure DrawLine(p1, p2: TVec2; thickness: TScalar = 1); inline;
+procedure DrawLine(points: PVec2Array; count: integer; thickness: TScalar = 1);
+procedure DrawPoint(constref point: TVec2; constref color: TColor);
 
 { Textures }
 procedure DrawTexture (texture: TTexture; x, y: TScalar); overload;
@@ -44,12 +56,13 @@ function TimeSinceNow: longint;
 implementation
 uses
   BeRoPNG,
-  Contnrs, Variants, CTypes,
+  Contnrs, Variants, CTypes, Math,
   SysUtils, DOM, XMLRead, Strings;
 
 {$define IMPLEMENTATION}
 {$include include/Textures.inc}
 {$include include/BitmapFont.inc}
+{$include include/FileUtils.inc}
 {$undef IMPLEMENTATION}
 
 const
@@ -114,27 +127,43 @@ end;
 type
   generic TTexturedQuad<T> = record
     v: array[0..5] of T;
-    // TODO: this should be absolute coords
-    procedure SetPosition (x, y, w, h: TScalar); inline;
+    procedure SetPosition (minX, minY, maxX, maxY: TScalar); inline;
+    procedure SetPosition (constref rect: TRect);
     procedure SetColor (r, g, b, a: TScalar); inline;
     procedure SetTexture (rect: TRect); inline;
     procedure SetUV (id: byte); inline;
   end;
 
-procedure TTexturedQuad.SetPosition (x, y, w, h: TScalar);
+procedure TTexturedQuad.SetPosition (constref rect: TRect);
 begin
-  v[0].pos.x := x;
-  v[0].pos.y := y; 
-  v[1].pos.x := x + w;
-  v[1].pos.y := y; 
-  v[2].pos.x := x;
-  v[2].pos.y := y + h; 
-  v[3].pos.x := x;
-  v[3].pos.y := y + h; 
-  v[4].pos.x := x + w;
-  v[4].pos.y := y + h; 
-  v[5].pos.x := x + w;
-  v[5].pos.y := y; 
+  v[0].pos.x := rect.MinX;
+  v[0].pos.y := rect.MinY;
+  v[1].pos.x := rect.MaxX;
+  v[1].pos.y := rect.MinY; 
+  v[2].pos.x := rect.MinX;
+  v[2].pos.y := rect.MaxY; 
+  v[3].pos.x := rect.MinX;
+  v[3].pos.y := rect.MaxY; 
+  v[4].pos.x := rect.MaxX;
+  v[4].pos.y := rect.MaxY; 
+  v[5].pos.x := rect.MaxX;
+  v[5].pos.y := rect.MinY; 
+end;
+
+procedure TTexturedQuad.SetPosition (minX, minY, maxX, maxY: TScalar);
+begin
+  v[0].pos.x := minX;
+  v[0].pos.y := minY;
+  v[1].pos.x := maxX;
+  v[1].pos.y := minY;
+  v[2].pos.x := minX;
+  v[2].pos.y := maxY;
+  v[3].pos.x := minX;
+  v[3].pos.y := maxY;
+  v[4].pos.x := maxX;
+  v[4].pos.y := maxY;
+  v[5].pos.x := maxX;
+  v[5].pos.y := minY;
 end;
 
 procedure TTexturedQuad.SetColor (r, g, b, a: TScalar);
@@ -306,6 +335,9 @@ begin
   glEnable(GL_BLEND); 
   glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
+  // TODO: we probably need to enable this in NSOpenGLContext
+  glEnable(GL_MULTISAMPLE);
+
   shader := CreateShader(VertexShader, FragmentShader);
   glUseProgram(shader);
 
@@ -453,7 +485,7 @@ procedure StrokeOval (constref rect: TRect; constref color: TColor; segments: TS
 var
   t: TScalar = 0;
   x, y, w, h, s: TScalar;
-  texCoord: TPoint;
+  texCoord: TVec2;
 begin 
   ChangePrimitiveType(GL_LINE_LOOP);
 
@@ -472,11 +504,11 @@ begin
   y += rect.height;
   s := TWOPI/segments;
 
-  texCoord := PointMake(0, 0);
+  texCoord := V2(0, 0);
 
   while t <= TWOPI do
     begin
-      vertexBuffer.Add(TVertex3.Create(PointMake(w * Cos(t) + x, h * Sin(t) + y), texCoord, color, 255));
+      vertexBuffer.Add(TVertex3.Create(V2(w * Cos(t) + x, h * Sin(t) + y), texCoord, color, 255));
       t += s;
     end;
 
@@ -485,36 +517,123 @@ begin
   FlushDrawing;
 end;
 
-(*
-procedure FillPolygon_Buffer (constref poly: TPolygon; r, g, b, a: TFloat);
+procedure FillPolygon(points: array of TVec2; constref color: TColor);
 var
   i: integer;
-  vertex: TGLTexVertex;
 begin
-  for i := 0 to poly.High do
+  ChangePrimitiveType(GL_TRIANGLE_FAN);
+  for i := 0 to high(points) do
+    vertexBuffer.Add(TVertex3.Create(points[i], V2(0, 0), color, 255));
+  // TODO: we don't need to flush each time
+  FlushDrawing;
+end;
+
+procedure StrokePolygon(points: array of TVec2; constref color: TColor; lineWidth: TScalar = 1.0);
+var
+  i: integer;
+begin
+  ChangePrimitiveType(GL_LINE_LOOP);
+  for i := 0 to high(points) do
+    vertexBuffer.Add(TVertex3.Create(points[i], V2(0, 0), color, 255));
+  // TODO: we don't need to flush each time
+  FlushDrawing;
+end;
+
+procedure DrawPoint(constref point: TVec2; constref color: TColor);
+begin
+  ChangePrimitiveType(GL_POINTS);
+  vertexBuffer.Add(TVertex3.Create(point, V2(0, 0), color, 255));
+  // TODO: we don't need to flush each time
+  FlushDrawing;
+end;
+
+procedure DrawLine(p1, p2: TVec2; thickness: TScalar = 1);
+var
+  points: array[0..1] of TVec2;
+begin
+  points[0] := p1;
+  points[1] := p2;
+  DrawLine(@points[0], 2, thickness);
+end;
+
+procedure DrawLine(points: PVec2Array; count: integer; thickness: TScalar = 1);
+var
+  v: array[0..3] of TVertex3;
+  n: TVec2;
+  r, a: single;
+  i: integer;
+begin
+  Assert(thickness >= 1, 'line thickness must be >= 1.');
+
+  // https://artgrammer.blogspot.com/2011/05/drawing-nearly-perfect-2d-line-segments.html
+  // https://people.eecs.ku.edu/~jrmiller/Courses/OpenGL/DrawModes.html
+
+  if thickness = 1 then
     begin
-      vertex.vert := TGLVec2f.Make(poly[i].x, poly[i].y);
-      vertex.texCoord := TGLVec2f.Make(0, 0);
-      vertex.color := TGLRGBAb.Make(r, g, b, a);
-      vertex.uv := 0;
-      TexturedVertexBuffer.AppendData(vertex);
+      ChangePrimitiveType(GL_LINE_STRIP);
+
+      for i := 0 to count - 1 do
+        begin
+          // connect points between segments
+          //if (i mod 2 = 0) and (i > 0) then
+          //  begin
+          //    vertexBuffer.Add(TVertex3.Create(points[i - 1], V2(0, 0), V4(0, 0, 0, 1), 255));
+          //    vertexBuffer.Add(TVertex3.Create(points[i], V2(0, 0), V4(0, 0, 0, 1), 255));
+          //  end;
+          vertexBuffer.Add(TVertex3.Create(points[i], V2(0, 0), V4(0, 0, 0, 1), 255));
+        end;
+    end
+  else if thickness > 1 then
+    begin
+      ChangePrimitiveType(GL_TRIANGLES);
+
+      r := thickness / 2;
+      a := (points[0] - points[1]).Angle;
+      n := points[0].Normalize;
+
+      i := 0;
+      while i < count do
+        begin
+          // connect points between segments
+          if (i mod 2 = 0) and (i > 0) then
+            begin
+            end;
+
+          if i = 0 then
+            begin
+              v[0] := TVertex3.Create(points[i] + n.Rotate(a + PI * 0.25) * r, V2(0, 0), V4(0, 0, 0, 1), 255);
+              v[1] := TVertex3.Create(points[i] + n.Rotate(a + PI * 1.25) * r, V2(0, 0), V4(0, 0, 0, 1), 255);
+            end;
+          
+          v[2] := TVertex3.Create(points[i + 1] + n.Rotate(a + PI * 0.25) * r, V2(0, 0), V4(0, 0, 0, 1), 255);
+          v[3] := TVertex3.Create(points[i + 1] + n.Rotate(a + PI * 1.25) * r, V2(0, 0), V4(0, 0, 0, 1), 255);
+
+          vertexBuffer.Add(v[0]);
+          vertexBuffer.Add(v[1]);
+          vertexBuffer.Add(v[3]);
+
+          vertexBuffer.Add(v[3]);
+          vertexBuffer.Add(v[2]);
+          vertexBuffer.Add(v[0]);
+
+          i += 2;
+        end;
+
+      //v[0] := TVertex3.Create(points[0] + n.Rotate(a + PI * 0.25) * r, V2(0, 0), V4(0, 0, 0, 1), 255);
+      //v[1] := TVertex3.Create(points[0] + n.Rotate(a + PI * 1.25) * r, V2(0, 0), V4(0, 0, 0, 1), 255);
+      
+      //v[2] := TVertex3.Create(points[1] + n.Rotate(a + PI * 0.25) * r, V2(0, 0), V4(0, 0, 0, 1), 255);
+      //v[3] := TVertex3.Create(points[1] + n.Rotate(a + PI * 1.25) * r, V2(0, 0), V4(0, 0, 0, 1), 255);
+
+      //vertexBuffer.Add(v[0]);
+      //vertexBuffer.Add(v[1]);
+      //vertexBuffer.Add(v[3]);
+
+      //vertexBuffer.Add(v[3]);
+      //vertexBuffer.Add(v[2]);
+      //vertexBuffer.Add(v[0]);
     end;
-
-  TexturedVertexBuffer.Draw(GL_TRIANGLE_FAN);
-  TexturedVertexBuffer.Reset;
 end;
-
-procedure StrokePolygon_Buffer (constref poly: TPolygon; r, g, b, a: TFloat; lineWidth: TFloat = 1.0);
-var
-  i: integer;
-begin
-  for i := 0 to poly.High do
-    TexturedVertexBuffer.AppendData(TGLTexVertex.Make(poly[i].x, poly[i].y, r, g, b, a));
-
-  TexturedVertexBuffer.Draw(GL_LINE_LOOP, lineWidth);
-  TexturedVertexBuffer.Reset;
-end;
-*)
 
 procedure FillRect (constref rect: TRect; constref color: TColor);
 var
@@ -536,7 +655,7 @@ end;
 
 procedure StrokeRect (constref rect: TRect; constref color: TColor; lineWidth: single = 1.0);
 var
-  texCoord: TPoint;
+  texCoord: TVec2;
 begin
   ChangePrimitiveType(GL_LINE_LOOP);
 
@@ -547,11 +666,11 @@ begin
       drawState.lineWidth := lineWidth;
     end;
 
-  texCoord := PointMake(0, 0);
-  vertexBuffer.Add(TVertex3.Create(PointMake(rect.MinX, rect.MinY), texCoord, color, 255));
-  vertexBuffer.Add(TVertex3.Create(PointMake(rect.MaxX, rect.MinY), texCoord, color, 255));
-  vertexBuffer.Add(TVertex3.Create(PointMake(rect.MaxX, rect.MaxY), texCoord, color, 255));
-  vertexBuffer.Add(TVertex3.Create(PointMake(rect.MinX, rect.MaxY), texCoord, color, 255));
+  texCoord := V2(0, 0);
+  vertexBuffer.Add(TVertex3.Create(V2(rect.MinX, rect.MinY), texCoord, color, 255));
+  vertexBuffer.Add(TVertex3.Create(V2(rect.MaxX, rect.MinY), texCoord, color, 255));
+  vertexBuffer.Add(TVertex3.Create(V2(rect.MaxX, rect.MaxY), texCoord, color, 255));
+  vertexBuffer.Add(TVertex3.Create(V2(rect.MinX, rect.MaxY), texCoord, color, 255));
 
   // TODO: we don't need to flush each time
   // https://stackoverflow.com/questions/31723405/line-graph-with-gldrawarrays-and-gl-line-strip-from-vector
@@ -566,7 +685,7 @@ begin
   ChangePrimitiveType(GL_TRIANGLES);
 
   quad.SetColor(1, 1, 1, 1);
-  quad.SetPosition(rect.x, rect.y, rect.width, rect.height);
+  quad.SetPosition(rect);
   quad.SetTexture(texture.GetTextureFrame);
   quad.SetUV(texture.GetTextureUnit);
 

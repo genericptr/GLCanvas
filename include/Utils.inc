@@ -96,7 +96,4 @@ begin
 	inherited Destroy;
 end;
 
-
-
-
 {$endif}

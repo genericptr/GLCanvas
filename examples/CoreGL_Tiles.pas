@@ -138,7 +138,8 @@ begin
             end;
         end;
       
-      for pointer(sprite) in sprites do
+      // TODO: we can't cast iterators anymore! find a better solution
+      for sprite in sprites do
         sprite.Draw;
 
       SwapBuffers;

@@ -1,5 +1,6 @@
 {$mode objfpc}
 {$modeswitch advancedrecords}
+{$modeswitch multihelpers}
 
 unit VectorMath;
 interface
@@ -20,10 +21,19 @@ type
 		public
 			function Length: TScalar; inline;
 			function SquaredLength: TScalar; inline;
+			function Magnitude: TScalar; inline;
 			function Normalize: TVec2; inline;
 			function Dot (constref vec: TVec2): TScalar; inline;
 			function Cross (constref vec:TVec2): TVec2; inline;
 			function Negate: TVec2; inline;
+			function PerpendicularRight: TVec2; inline;
+			function PerpendicularLeft: TVec2; inline;
+			function Angle: TScalar; inline;
+			function Distance (point: TVec2): TScalar; inline; 
+			function Lerp (t: TScalar; p: TVec2): TVec2; inline;
+			function Reflect (n: TVec2): TVec2; inline;
+			function Rotate (radians: TScalar): TVec2; overload;
+			function Rotate (origin: TVec2; radians: TScalar): TVec2; overload;
 			procedure Show;
 			function ToStr: string;
 		private
@@ -181,6 +191,66 @@ type
 				3:(Tangent,Bitangent,Normal,Translation:TVec4);
 	end;
 
+type
+	TVec2Array = array of TVec2;
+	TVec3Array = array of TVec3;
+	TVec4Array = array of TVec4;
+
+type
+  TRect = record
+  	public
+	    origin: TVec2;
+	    size: TVec2;
+	  public
+	  	constructor Create(inX, inY: TScalar; inWidth, inHeight: TScalar);
+
+	    property Width: TScalar read size.x;
+	    property Height: TScalar read size.y;
+	    property MinX: TScalar read origin.x;
+	    property MinY: TScalar read origin.y;
+
+	    function MaxX: TScalar; inline;
+	    function MidX: TScalar; inline;
+	    function MaxY: TScalar; inline;
+	    function MidY: TScalar; inline;
+
+	    property X: TScalar read origin.x write origin.x;
+	    property Y: TScalar read origin.y write origin.y;
+	    property W: TScalar read size.x write size.x;
+	    property H: TScalar read size.y write size.y;
+
+	    procedure Show;
+	    function ToStr: string;
+	  public
+	  	class operator + (r1, r2: TRect): TRect; overload;
+	  	class operator - (r1, r2: TRect): TRect; overload; 
+	  	class operator * (r1, r2: TRect): TRect; overload; 
+	  	class operator / (r1, r2: TRect): TRect;  overload;
+	  	class operator + (r1: TRect; r2: TScalar): TRect; overload; 
+	  	class operator - (r1: TRect; r2: TScalar): TRect; overload; 
+	  	class operator * (r1: TRect; r2: TScalar): TRect; overload; 
+	  	class operator / (r1: TRect; r2: TScalar): TRect; overload;
+	  	class operator = (r1, r2: TRect): boolean; 
+  end;
+
+type
+	TSizeHelper = record helper for TVec2
+		function Min: TScalar; inline;
+		function Max: TScalar; inline;
+		procedure SetWidth(newValue: TScalar); inline;
+		procedure SetHeight(newValue: TScalar); inline;
+		function GetWidth: TScalar; inline;
+		function GetHeight: TScalar; inline;
+		property Width: TScalar read GetWidth write SetWidth;
+		property Height: TScalar read GetHeight write SetHeight;
+	end;
+
+function RectMake(x, y: TScalar; width, height: TScalar): TRect; overload; inline;
+function RectMake(origin, size: TVec2): TRect; overload; inline;
+function RectMake(origin: TVec2; width, height: TScalar): TRect; overload; inline;
+
+{ Functions }
+
 function M4: TMat4;
 
 function Vec2 (x, y: TScalar): TVec2;
@@ -197,6 +267,12 @@ function V4 (x, y, z, w: TScalar): TVec4;
 function V4 (constref vec: TVec3; w: TScalar): TVec4; overload;
 function V4 (constref vec: TVec2; z, w: TScalar): TVec4; overload;
 
+function Trunc(vec: TVec2): TVec2; overload;
+function Trunc(vec: TVec3): TVec3; overload;
+function Trunc(vec: TVec4): TVec4; overload;
+
+function PolyContainsPoint (points: TVec2Array; point: TVec2): boolean;
+
 implementation
 
 var
@@ -208,8 +284,184 @@ const
   HalfPI=pi*0.5;	
 
 {=============================================}
+{@! ___RECT___ } 
+{=============================================}
+function TSizeHelper.Min: TScalar;
+begin
+	if width < height then
+		result := width
+	else
+		result := height;
+end;
+
+function TSizeHelper.Max: TScalar;
+begin
+	if width > height then
+		result := width
+	else
+		result := height;
+end;
+
+procedure TSizeHelper.SetWidth(newValue: TScalar);
+begin
+	x := newValue;
+end;
+
+procedure TSizeHelper.SetHeight(newValue: TScalar);
+begin
+	y := newValue;	
+end;
+
+function TSizeHelper.GetWidth: TScalar;
+begin
+	result := x;
+end;
+
+function TSizeHelper.GetHeight: TScalar;
+begin
+	result := y;
+end;
+
+function RectMake(origin, size: TVec2): TRect;
+begin
+	result := TRect.Create(origin.x, origin.y, size.width, size.height);
+end;
+
+function RectMake(x, y: TScalar; width, height: TScalar): TRect;
+begin
+	result := TRect.Create(x, y, width, height);
+end;
+
+function RectMake(origin: TVec2; width, height: TScalar): TRect;
+begin
+	result := TRect.Create(origin.x, origin.y, width, height);
+end;
+
+procedure TRect.Show;
+begin
+	writeln(ToStr);
+end;
+
+function TRect.ToStr: string;
+begin
+	result := '{'+origin.ToStr+','+size.ToStr+'}';
+end;
+
+constructor TRect.Create(inX, inY: TScalar; inWidth, inHeight: TScalar);
+begin
+	self.origin.x := inX;
+	self.origin.y := inY;
+	self.size.width := inWidth;
+	self.size.height := inHeight;
+end;
+
+function TRect.MaxX: TScalar;
+begin
+	result := MinX + Width;
+end;
+
+function TRect.MidX: TScalar;
+begin
+	result := MinX + Width / 2;
+end;
+
+function TRect.MaxY: TScalar;
+begin
+	result := MinY + Height;
+end;
+
+function TRect.MidY: TScalar;
+begin
+	result := MinY + Height / 2;
+end;
+
+class operator TRect.+ (r1, r2: TRect): TRect;
+begin
+	result := RectMake(r1.origin.x + r2.origin.x, r1.origin.y + r2.origin.y, r1.size.width + r2.size.width, r1.size.height + r2.size.height);
+end;
+
+class operator TRect.- (r1, r2: TRect): TRect;
+begin
+	result := RectMake(r1.origin.x - r2.origin.x, r1.origin.y - r2.origin.y, r1.size.width - r2.size.width, r1.size.height - r2.size.height);
+end;
+
+class operator TRect.* (r1, r2: TRect): TRect; 
+begin
+	result := RectMake(r1.origin.x * r2.origin.x, r1.origin.y * r2.origin.y, r1.size.width * r2.size.width, r1.size.height * r2.size.height);
+end;
+
+class operator TRect./ (r1, r2: TRect): TRect; 
+begin
+	result := RectMake(r1.origin.x / r2.origin.x, r1.origin.y / r2.origin.y, r1.size.width / r2.size.width, r1.size.height / r2.size.height);
+end;
+
+class operator TRect.= (r1, r2: TRect): boolean; 
+begin
+	result := (r1.origin = r2.origin) and (r1.size = r2.size);
+end;
+
+class operator TRect.+ (r1: TRect; r2: TScalar): TRect;
+begin
+	result := RectMake(r1.origin.x + r2, r1.origin.y + r2, r1.size.width + r2, r1.size.height + r2);
+end;
+
+class operator TRect.- (r1: TRect; r2: TScalar): TRect;
+begin
+	result := RectMake(r1.origin.x - r2, r1.origin.y +- r2, r1.size.width - r2, r1.size.height - r2);
+end;
+
+class operator TRect.* (r1: TRect; r2: TScalar): TRect;
+begin
+	result := RectMake(r1.origin.x * r2, r1.origin.y * r2, r1.size.width * r2, r1.size.height * r2);
+end;
+
+class operator TRect./ (r1: TRect; r2: TScalar): TRect;
+begin
+	result := RectMake(r1.origin.x / r2, r1.origin.y / r2, r1.size.width / r2, r1.size.height / r2);
+end;
+
+{=============================================}
 {@! ___PROCEDURAL___ } 
 {=============================================}
+function PolyContainsPoint (points: TVec2Array; point: TVec2): boolean;
+var
+	i, j, c: integer;
+begin
+	i := 0;
+	j := high(points);
+	c := 0;
+	while i < length(points) do
+		begin
+			if ((points[i].y > point.y) <> (points[j].y > point.y)) 
+					and (point.x < (points[j].x - points[i].x) * (point.y - points[i].y) / (points[j].y - points[i].y) + points[i].x) then
+				c := not c;
+			j := i;
+			i += 1;
+		end;
+	result := c <> 0;
+end;
+
+function Trunc(vec: TVec2): TVec2;
+begin
+	result.x := trunc(vec.x);
+	result.y := trunc(vec.y);
+end;
+
+function Trunc(vec: TVec3): TVec3;
+begin
+	result.x := trunc(vec.x);
+	result.y := trunc(vec.y);
+	result.z := trunc(vec.z);
+end;
+
+function Trunc(vec: TVec4): TVec4;
+begin
+	result.x := trunc(vec.x);
+	result.y := trunc(vec.y);
+	result.z := trunc(vec.z);
+	result.w := trunc(vec.w);
+end;
+
 function Vec2 (x, y: TScalar): TVec2; inline;
 begin
 	result.x := x;
@@ -287,6 +539,7 @@ end;
 {=============================================}
 {@! ___VEC2___ } 
 {=============================================}
+
 function TVec2.GetComponent(pIndex:integer):TScalar;
 begin
  result:=v[pIndex];
@@ -297,6 +550,36 @@ begin
  v[pIndex]:=pValue;
 end;
 
+function TVec2.PerpendicularRight: TVec2;
+begin
+	result := V2(-y, x);
+end;
+
+function TVec2.PerpendicularLeft: TVec2;
+begin
+	result := V2(y, -x);
+end;
+
+function TVec2.Angle: TScalar;
+begin
+	result := Arctan2(y, x);
+end;
+
+function TVec2.Distance (point: TVec2): TScalar;
+begin
+	result := (self - point).Magnitude;
+end;
+
+function TVec2.Lerp (t: TScalar; p: TVec2): TVec2;
+begin
+	result := (self * (1 - t)) + (p * t);
+end;
+
+function TVec2.Reflect (n: TVec2): TVec2;
+begin
+	result := self - ((n * self.Dot(n)) * 2);
+end;
+
 function TVec2.Length: TScalar;
 begin
 	result := Sqrt(SquaredLength);
@@ -305,6 +588,11 @@ end;
 function TVec2.SquaredLength: TScalar;
 begin
 	result := Power(x, 2) + Power(y, 2);
+end;
+
+function TVec2.Magnitude: TScalar;
+begin
+	result := SquaredLength;
 end;
 
 function TVec2.Normalize: TVec2;
@@ -333,10 +621,26 @@ begin
 	result := (x * vec.x) + (y * vec.y);
 end;
 
-function TVec2.Cross(constref vec:TVec2):TVec2;
+function TVec2.Cross(constref vec: TVec2): TVec2;
 begin
- result.x:=(y*vec.x)-(x*vec.y);
- result.y:=(x*vec.y)-(y*vec.x);
+ result.x := (y * vec.x) - (x * vec.y);
+ result.y := (x * vec.y) - (y * vec.x);
+end; 
+
+function TVec2.Rotate (radians: TScalar): TVec2;
+begin
+  result.x := (self.x * cos(radians)) - (self.y * sin(radians));
+  result.y := (self.x * sin(radians)) + (self.y * cos(radians));
+end;
+
+function TVec2.Rotate (origin: TVec2; radians: TScalar): TVec2;
+var
+	dx,dy: TScalar;
+begin
+  dx := (origin.y * sin(radians)) - (origin.x * cos(radians)) + origin.x;
+  dy := -(origin.x * sin(radians)) - (origin.y * cos(radians)) + origin.y;
+  result.x := (self.x * cos(radians)) - (self.y * sin(radians)) + dx;
+  result.y := (self.x * sin(radians)) + (self.y * cos(radians)) + dy;
 end;
 
 procedure TVec2.Show;
