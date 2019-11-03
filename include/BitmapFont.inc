@@ -68,7 +68,8 @@ type
 			{ Accessors }
 			procedure SetCharAdvance (newValue: integer);
 			function TextureForCharacter (c: char): TTexture; overload; inline;
-			
+			function GetTexture: TGLTextureID;
+
 			property SpaceWidth: integer read m_spaceWidth write m_spaceWidth;
 			property TabWidth: integer read m_tabWidth;
 			property LineHeight: integer read GetLineHeight;
@@ -78,6 +79,8 @@ type
 			{ Methods }
 			function MeasureText (_string: TStringInternal; maximumWidth: integer = MaxInt): TVec2;
 			function WrapText (_string: TStringInternal; maximumWidth: integer): TStringList;
+			
+			procedure Lock(inUnit: TGLTextureUnit); override;
 
 		private
 			infoPath: ansistring;
@@ -86,7 +89,6 @@ type
 
 			destructor Destroy; override;
 			procedure LoadProperties;
-			procedure Load;
 			function SplitString (text: TStringInternal; chars: integer; var count: integer): TStringList;
 			function RestoreText (text: TStringInternal): TStringInternal;
 			function WrapTextInternal (text: TStringInternal; max: single; var actualSize: TVec2): TStringList;
@@ -234,6 +236,10 @@ begin
   end;
 end;
 
+function TBitmapFont.GetTexture: TGLTextureID;
+begin
+	result := texture.GetTexture;
+end;
 
 procedure TBitmapFont.SetCharAdvance (newValue: integer);
 begin
@@ -335,9 +341,6 @@ begin
 	memoryPool := TObjectList.Create(true);
 	ReadXMLFile(xml, infoPath);
 	
-	// TODO: make a method to preload texture map
-	texture.textures := TTextureMap.Create;
-
 	//http://www.angelcode.com/products/bmfont/doc/file_format.html
 	//https://www.gamedev.net/topic/330742-quick-tutorial-variable-width-bitmap-fonts/
 	
@@ -415,10 +418,9 @@ begin
 	fontInfo := font;
 end;
 
-procedure TBitmapFont.Load;
-begin	
-	LoadProperties;	
-	//texture.Load;
+procedure TBitmapFont.Lock(inUnit: TGLTextureUnit);
+begin
+	texture.Lock(inUnit);
 end;
 
 destructor TBitmapFont.Destroy;
@@ -441,14 +443,17 @@ end;
 constructor TBitmapFont.Create (path: ansistring);
 begin
 	texture := TTexturePack.Create;
-	texture.LoadImage(path+'/font.png');
 	texture.SetTextureParameters([kTextureNearestFilter, kTextureClampToEdge]);
+	texture.LoadImage(path+'/font.png');
+
+	textureID := texture.textureID;
+
 	infoPath := path+'/font.fnt';
 	Assert(FileExists(infoPath), 'font.fnt file doesn''t exist.');
 	m_name := ExtractFileName(path);
 	m_spaceWidth := 3;
 	m_tabWidth := 4;
-	Load;
+	LoadProperties;
 end;
 
 function DrawText (font: TBitmapFont; text: ansistring; textAlignment: integer; bounds: TRect): TVec2;

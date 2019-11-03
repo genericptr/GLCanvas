@@ -68,6 +68,91 @@ begin
 end;
 
 type
+  TWorld = record
+    tileWidth: integer;       // pixel width of tile image
+    tileHeight: integer;      // pixel height of tile image
+    tileDepth: integer;       // world depth (z dimension) of tile
+    tileSize: integer;        // world tile size (square)
+    halfTileWidth: integer;
+    halfTileHeight: integer;
+    screenWidth: integer;
+    screenHeight: integer;
+    mapWidth: integer;
+    mapHeight: integer;
+    mapDepth: integer;
+    drawSize: integer;
+    drawScale: TScalar;
+  end;
+
+var
+  World: TWorld;
+
+function WorldToView (x, y, z: TScalar): TVec2; 
+var
+  tileCoord: TVec3;
+begin
+  with World do
+    begin
+      // convert pixel coords to tile coords
+      tileCoord := V3(x / tileHeight, y / tileHeight, z / tileDepth);
+      
+      // convert tile coord to screen coords
+      result.x := (tileCoord.x - tileCoord.y) * halfTileWidth;
+      result.y := (tileCoord.x + tileCoord.y) * halfTileHeight;
+      result.y -= (tileCoord.z * tileDepth);
+
+      // offset to top-left of bottom
+      result.x += halfTileWidth;
+      result.y += tileDepth;
+
+      // center in screen
+      result.x += (screenWidth / 2) - (halfTileWidth);
+    end;
+end;
+
+function ViewToWorld (x, y: TScalar): TVec2;
+begin  
+  with World do
+    begin
+      // offset view point to top-left of tile
+      x -= halfTileWidth;
+      y -= tileDepth;
+
+      x -= (World.screenWidth / 2) - (World.halfTileWidth);
+
+      result.x := x / tileWidth + y / tileHeight;
+      result.y := y / tileHeight - x / tileWidth;
+
+      // translate from tile coords
+      result *= tileSize;
+    end;
+end;
+
+function WorldPoly (x, y, z: TScalar): TVec2Array;
+begin  
+  SetLength(result, 4);
+  with World do
+    begin
+      result[0] := WorldToView(x, y, z);
+      result[1] := WorldToView(x + tileSize, y, z);
+      result[2] := WorldToView(x + tileSize, y + tileSize, z);
+      result[3] := WorldToView(x, y + tileSize, z);
+    end;
+end;
+
+function BoundingViewRect(x, y, z: TScalar; constref imageSize: TVec2): TRect;
+var
+  pt: TVec2;
+begin
+  pt := WorldToView(x, y, z);
+  result := RectMake(pt.x, pt.y, imageSize.width, imageSize.height);
+
+  // align bottom of image to point
+  result.origin.x -= imageSize.width / 2;
+  result.origin.y -= imageSize.height - imageSize.width / 2;
+end;
+
+type
   TMap = record
     tiles: TJSONArray;
     minX: byte;
@@ -81,7 +166,6 @@ var
   map: TMap;
   mapOffset: TVec2;
   mouse: TVec2;
-  waitForKey: pGLPT_Semaphore;
 
 procedure EventCallback(event: pGLPT_MessageRec);
 begin
@@ -114,94 +198,23 @@ begin
           mapOffset.x := map.maxX - map.minX;
         if mapOffset.y > map.maxY - map.minY then
           mapOffset.y := map.maxY - map.minY;
-
-        GLPT_SemaphorePost(waitForKey);
       end;
   end;
 end; 
 
-{
-  World.pas unit
-
-  everything for drawing and transforms
-}
-type
-  TWorld = record
-    mapOffset: TVec2;
-    tileWidth: integer;
-    tileHeight: integer;
-    tileDepth: integer;
-    halfTileWidth: integer;
-    halfTileHeight: integer;
-    mapWidth: integer;
-    mapHeight: integer;
-    mapDepth: integer;
-    drawSize: integer;
-    drawScale: single;
-  end;
 var
-  World: TWorld;
+  font: TBitmapFont;
 
-{ world tile coord to view point }
-function WorldToView (x, y, z: integer; tileWidth, tileHeight, tileDepth: integer): TVec2; 
-var
-  halfTileWidth, halfTileHeight: TScalar;
-  tileCoord: TVec2;
-begin
-  x *= tileHeight;
-  y *= tileHeight;
-
-  halfTileWidth := tileWidth / 2;
-  halfTileHeight := tileHeight / 2;
-  
-  // convert pixel coords to tile coords
-  tileCoord := V2(x / tileHeight, y / tileHeight);
-  
-  // convert tile coord to screen coords
-  result.x := (tileCoord.x - tileCoord.y) * halfTileWidth;
-  result.y := (tileCoord.x + tileCoord.y) * halfTileHeight;
-  result.y -= (z * tileDepth);
-end;
-
-// http://clintbellanger.net/articles/isometric_math/
-function ViewToWorld (x, y: integer; tileWidth, tileHeight: integer): TVec2;
-var
-  halfTileWidth, halfTileHeight: TScalar;
-begin  
-  halfTileWidth := tileWidth / 2;
-  halfTileHeight := tileHeight / 2;
-
-  x -= trunc(halfTileWidth);
-    
-  result.x := (((x / halfTileWidth) + (y / halfTileHeight)) / 2) * halfTileWidth;
-  result.y := (((y / halfTileHeight) - (x / halfTileWidth)) / 2) * tileHeight; 
-end;
-
-function IsoPolyAtWorld (x, y, z: integer; tileWidth, tileHeight, tileDepth: integer): TVec2Array;
+procedure DrawDebug;
 var
   pt: TVec2;
-  halfTileWidth, halfTileHeight: TScalar;
-begin  
-  halfTileWidth := tileWidth / 2;
-  halfTileHeight := tileHeight / 2;
-
-  SetLength(result, 4);
-
-  pt := WorldToView(x, y, z, tileWidth, tileHeight, tileDepth);
-  x := trunc(pt.x);
-  y := trunc(pt.y);
-  Y += tileDepth;
-
-  result[0] := V2(x + halfTileWidth, y);
-  result[1] := V2(result[0].x + halfTileWidth, result[0].y + tileDepth);
-  result[2] := V2(result[1].x - halfTileWidth, result[1].y + tileDepth);
-  result[3] := V2(result[2].x - halfTileWidth, result[2].y - tileDepth);
-end;
-
-// TODO: rect to draw texture, bottom aligned
-function BoundingViewRect(x, y, z, depth: single): TRect;
 begin
-  
+  // map offset text
+  DrawText(font, mapOffset.ToStr, V2(120, 20));
+
+  // mouse world position
+  pt := ViewToWorld(trunc(mouse.x), trunc(mouse.y));
+  DrawText(font, Trunc(pt / World.tileSize).ToStr, V2(120, 40));
 end;
 
 const
@@ -210,23 +223,18 @@ const
 
 var
   mapTexture: TTextureSheet;
+  textures: array[0..0] of TTexture;
   i, x, y, z: integer;
   startTime: longint;
 var
   texture: TTexture;
-  font: TBitmapFont;
   pt: TVec2;
   rect: TRect;
+  tileX,
+  tileY,
+  tileZ: float;
   s: ansistring;
-  tileID,
-  mapWidth,
-  mapHeight,
-  mapDepth,
-  tileWidth,
-  tileHeight,
-  tileDepth,
-  drawSize: integer;
-  drawScale: single;
+  tileID: integer;
   json: TJSONObject;
   game: integer;
   poly: array of TVec2;
@@ -234,15 +242,10 @@ begin
   SetupCanvas(window_size_width, window_size_height, @EventCallback);
   SetViewTransform(0, 0, 1.0);
 
-
-  // TODO: if we change V2 to SizeMake get an error
-  //Assembling (pipe) /Users/ryanjoseph/Developer/Projects/FPC/GLCanvas/console.debug.ppcx64/CoreGL_Iso.s
-  //<stdin>:889:12: error: invalid operand for instruction
-  //        movd    %rdx,-824(%rbp)
   mapTexture := TTextureSheet.Create(GLPT_GetBasePath+'/syndicate_map_2.png', V2(64, 48));
   font := TBitmapFont.Create(GLPT_GetBasePath+'/coders_crux');
 
-  json := TJSONObject(GetJSON(ReadFile('/Users/ryanjoseph/Desktop/maps2.json')));
+  json := TJSONObject(GetJSON(ReadFile(GLPT_GetBasePath+'/maps1.json')));
 
   game := 0;
   map.tiles := json.FindObject(['maps', game, 'tiles']) as TJSONArray;
@@ -253,101 +256,46 @@ begin
   map.country := json.FindValue(['maps', game, 'country']);
 
   writeln(map.country);
-  mapOffset := V2({map.minX, map.minY}0,0);
+  mapOffset := V2(68, 31);
 
-  waitForKey := GLPT_CreateSemaphore();
-
-  // TODO: no generics for integer vectors! damn it already
-  mapWidth := 128;
-  mapHeight := 96;
-  // TODO: search max z from tiles
-  mapDepth := 12;
-  drawSize := 20;
-  drawScale := 1.00;
-
-  // TODO: we need to make some concrete types going in or everything will fall apart later....
-  // tile dimensions
-  tileWidth := 64;
-  tileHeight := 32;
-  tileDepth := 16;
+  World.mapWidth := 128;
+  World.mapHeight := 96;
+  World.mapDepth := 12;   // TODO: search max z from tiles
+  World.drawSize := 16;
+  World.drawScale := 1.00;
+  World.tileWidth := 64;
+  World.tileHeight := 32;
+  World.tileDepth := 16;
+  World.tileSize := 32;
+  World.halfTileWidth := trunc(world.tileWidth / 2);
+  World.halfTileHeight := trunc(world.tileHeight / 2);
+  World.screenWidth := window_size_width;
+  World.screenHeight := window_size_height;
 
   while IsRunning do
     begin
       ClearBackground;
-
-      pt := WorldToView(0, 0, 0, tileWidth, tileHeight, tileDepth);
-      DrawTexture(mapTexture[40], RectMake(pt.x * drawScale, pt.y * drawScale, mapTexture.cellSize.width * drawScale, mapTexture.cellSize.height * drawScale));
       
-      pt := WorldToView(3, 0, 0, tileWidth, tileHeight, tileDepth);
-      DrawTexture(mapTexture[41], RectMake(pt.x * drawScale, pt.y * drawScale, mapTexture.cellSize.width * drawScale, mapTexture.cellSize.height * drawScale));
+      for z := 0 to World.mapDepth - 1 do
+      for y := trunc(mapOffset.y) to (trunc(mapOffset.y) + World.drawSize) - 1 do
+      for x := trunc(mapOffset.x) to (trunc(mapOffset.x) + World.drawSize) - 1 do
+        begin
+          i := (x + y * World.mapWidth) + (z * World.mapWidth * World.mapHeight);
+          if i > map.tiles.Count - 1 then
+            continue;
+          tileID := map.tiles[i].value;
+          if tileID = 0 then
+            continue;
 
-      // tile coord bounding box
-      pt := WorldToView(1, 0, 0, tileWidth, tileHeight, tileDepth);
-      rect := RectMake(pt.x * drawScale, pt.y * drawScale, mapTexture.cellSize.width * drawScale, mapTexture.cellSize.height * drawScale);
-      // TODO: align to bottom
-      // TODO: our rect is going to make this not possible .... damn it
-      rect.origin.y -= rect.height - tileHeight + tileDepth;
-      //rect.height -= rect.height - tileHeight + tileDepth;
-      StrokeRect(rect, V4(0, 0, 1, 1));
+          tileX := (x - trunc(mapOffset.x)) * World.tileSize;
+          tileY := (y - trunc(mapOffset.y)) * World.tileSize;
+          tileZ := z * World.tileDepth;
+          rect := BoundingViewRect(tileX, tileY, tileZ, mapTexture.cellSize);
+          DrawTexture(mapTexture[tileID], rect * World.drawScale);
+        end;
 
-
-      //for z := 0 to mapDepth - 1 do
-      //for y := trunc(mapOffset.y) to (trunc(mapOffset.y) + drawSize) - 1 do
-      //for x := trunc(mapOffset.x) to (trunc(mapOffset.x) + drawSize) - 1 do
-      //  begin
-      //    i := (x + y * mapWidth) + (z * mapWidth * mapHeight);
-      //    if i > map.tiles.Count - 1 then
-      //      continue;
-      //    tileID := map.tiles[i].value;
-      //    if tileID = 0 then
-      //      continue;
-
-      //    // TODO: make new general functions
-      //    // mouse picking
-      //    // screen pixel to iso pixel for scrolling
-      //    // https://www.youtube.com/watch?v=ukkbNKTgf5U
-      //    pt := WorldToView(x - trunc(mapOffset.x), y - trunc(mapOffset.y), z, tileWidth, tileHeight, tileDepth);
-      //    // align to center of window
-      //    //pt.x += (window_size_width / 2) - (tileWidth / 2);
-
-      //    //pt.x -= 32;
-      //    //pt.y -= 16;
-
-      //    DrawTexture(mapTexture[tileID], RectMake(pt.x * drawScale, pt.y * drawScale, mapTexture.cellSize.width * drawScale, mapTexture.cellSize.height * drawScale));
-      //  end;
-      
-      DrawText(font, mapOffset.ToStr, V2(120, 20));
-
-      pt := ViewToWorld(trunc(mouse.x), trunc(mouse.y), tileWidth, tileHeight);
-      DrawText(font, pt.ToStr+' '+trunc(pt / 32).ToStr, V2(120, 40));
-      
-      pt := trunc(pt / 32);
-      pt := WorldToView(trunc(pt.x), trunc(pt.y), z, tileWidth, tileHeight, tileDepth);
-      rect := RectMake(pt.x * drawScale, pt.y * drawScale, mapTexture.cellSize.width * drawScale, mapTexture.cellSize.height * drawScale);
-      StrokeRect(rect, V4(1, 0, 0, 1));
-
-      //pt := WorldToView(trunc(pt.x), trunc(pt.y), 0, tileWidth, tileHeight, tileDepth);
-      //pt := trunc(mouse / mapTexture.cellSize);
-      //DrawText(font, pt.ToStr, V2(20, 40));
-
-      //pt := WorldToView(0, 0, 0, tileWidth, tileHeight, tileDepth);
-      //StrokeRect(RectMake(trunc(pt.x) * mapTexture.cellSize.width, trunc(pt.y) * mapTexture.cellSize.height, mapTexture.cellSize.width, mapTexture.cellSize.height), V4(1, 0, 0, 1));
-
-      //poly := [V2(100, 100), V2(100, 150), V2(250, 300)];
-      poly := IsoPolyAtWorld(0, 0, 0, tileWidth, trunc(tileHeight / 2), tileDepth);
-      if PolyContainsPoint(poly, mouse) then
-        StrokePolygon(poly, V4(0, 1, 0, 1))
-      else
-        StrokePolygon(poly, V4(1, 0, 0, 1));
-
+      DrawDebug;      
       SwapBuffers;
-
-      // TODO: blocks main thread and we can't get key down
-      // maybe we need to make a new thread for polling events?
-      // make a new example program
-
-      //Sleep(100);
-      //GLPT_SemaphoreWait(waitForKey);
     end;
 
   QuitApp;

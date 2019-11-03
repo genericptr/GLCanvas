@@ -7,7 +7,6 @@ uses
 	CWString, Contnrs, VectorMath, SysUtils, DOM, FGL;
 
 {$define INTERFACE}
-{$include include/Geometry.inc}
 {$include include/Utils.inc}
 {$undef INTERFACE}
 
@@ -164,7 +163,6 @@ uses
 	Variants, XMLRead;
 
 {$define IMPLEMENTATION}
-{$include Geometry.inc}
 {$include Utils.inc}
 {$undef IMPLEMENTATION}
 

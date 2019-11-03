@@ -5,7 +5,7 @@
 unit VectorMath;
 interface
 uses
-	Math, SysUtils;
+	FGL, Math, SysUtils;
 
 // NOTE: constref is bugged on 3.0.4 and below
 {$macro on}
@@ -14,7 +14,8 @@ uses
 {$endif}
 
 type
-	TScalar = single;
+	TScalar = Single;
+	Float = TScalar;
 
 type
 	TVec2 = record
@@ -138,21 +139,21 @@ type
 			function Ptr: pointer;
 			class function Identity: TMat4; static; inline;
 						
-			constructor Translate(tx,ty,tz:TScalar); overload;
-      constructor Translate(constref pTranslate:TVec3); overload;
-      constructor Translate(tx,ty,tz,tw:TScalar); overload;
+			constructor Translate(tx, ty, tz: TScalar); overload;
+      constructor Translate(constref pTranslate: TVec3); overload;
+      constructor Translate(tx, ty, tz, tw: TScalar); overload;
       
 			constructor Scale (x, y, z: TScalar);
-			constructor RotateX(Angle:TScalar);
-      constructor RotateY(Angle:TScalar);
-      constructor RotateZ(Angle:TScalar);
-      constructor Rotate(Angle:TScalar; constref Axis:TVec3); overload;
-      constructor Rotate(constref pMatrix:TMat4); overload;
-			constructor Ortho(Left,Right,Bottom,Top,zNear,zFar:TScalar);
-			constructor OrthoGL(Left,Right,Bottom,Top,zNear,zFar:TScalar);
-			constructor Perspective (fovy,Aspect,zNear,zFar:TScalar);
-			constructor PerspectiveGL(fovy,Aspect,zNear,zFar:TScalar);
-			constructor LookAt (constref Eye,Center,Up:TVec3);
+			constructor RotateX(Angle: TScalar);
+      constructor RotateY(Angle: TScalar);
+      constructor RotateZ(Angle: TScalar);
+      constructor Rotate(Angle: TScalar; constref Axis: TVec3); overload;
+      constructor Rotate(constref pMatrix: TMat4); overload;
+			constructor Ortho(Left, Right, Bottom, Top, zNear, zFar: TScalar);
+			constructor OrthoGL(Left, Right, Bottom, Top, zNear, zFar: TScalar);
+			constructor Perspective (fovy, Aspect, zNear, zFar: TScalar);
+			constructor PerspectiveGL(fovy, Aspect, zNear, zFar: TScalar);
+			constructor LookAt (constref Eye, Center, Up: TVec3);
 			
 			function Inverse: TMat4; inline;
       function Transpose: TMat4; inline;
@@ -195,6 +196,11 @@ type
 	TVec2Array = array of TVec2;
 	TVec3Array = array of TVec3;
 	TVec4Array = array of TVec4;
+
+type
+	TVec2List = specialize TFPGList<TVec2>;
+	TVec3List = specialize TFPGList<TVec3>;
+	TVec4List = specialize TFPGList<TVec4>;
 
 type
   TRect = record
@@ -248,6 +254,20 @@ type
 function RectMake(x, y: TScalar; width, height: TScalar): TRect; overload; inline;
 function RectMake(origin, size: TVec2): TRect; overload; inline;
 function RectMake(origin: TVec2; width, height: TScalar): TRect; overload; inline;
+function RectMake(x, y: TScalar; size: TVec2): TRect; overload; inline;
+
+{ Colors }
+type
+	TColorHelper = record helper for TVec4
+		class function Red(alpha: TScalar = 1.0): TVec4; static;
+		class function Green(alpha: TScalar = 1.0): TVec4; static;
+		class function Blue(alpha: TScalar = 1.0): TVec4; static;
+		class function White(alpha: TScalar = 1.0): TVec4; static;
+		class function Black(alpha: TScalar = 1.0): TVec4; static;
+		class function Clear: TVec4; static;
+	end;
+
+function HexColorToRGB (hexValue: integer; alpha: TScalar = 1.0): TVec4;
 
 { Functions }
 
@@ -283,9 +303,44 @@ const
   RAD2DEG=180.0/pi;
   HalfPI=pi*0.5;	
 
-{=============================================}
-{@! ___RECT___ } 
-{=============================================}
+function HexColorToRGB (hexValue: integer; alpha: TScalar = 1.0): TVec4;
+begin
+  result.r := ((hexValue shr 16) and $FF) / 255.0;  // Extract the RR byte
+  result.g := ((hexValue shr 8) and $FF) / 255.0;   // Extract the GG byte
+  result.b := ((hexValue) and $FF) / 255.0;         // Extract the BB byte
+  result.a := alpha;
+end;
+
+class function TColorHelper.Red(alpha: TScalar = 1.0): TVec4;
+begin
+	result := V4(1, 0, 0, alpha);
+end;
+
+class function TColorHelper.Green(alpha: TScalar = 1.0): TVec4;
+begin
+	result := V4(0, 1, 0, alpha);
+end;
+
+class function TColorHelper.Blue(alpha: TScalar = 1.0): TVec4;
+begin
+	result := V4(0, 0, 1, alpha);
+end;
+
+class function TColorHelper.White(alpha: TScalar = 1.0): TVec4;
+begin
+	result := V4(1, 1, 1, alpha);
+end;
+
+class function TColorHelper.Black(alpha: TScalar = 1.0): TVec4;
+begin
+	result := V4(0, 0, 0, alpha);
+end;
+
+class function TColorHelper.Clear: TVec4;
+begin
+	result := V4(0, 0, 0, 0);
+end;
+
 function TSizeHelper.Min: TScalar;
 begin
 	if width < height then
@@ -335,6 +390,11 @@ end;
 function RectMake(origin: TVec2; width, height: TScalar): TRect;
 begin
 	result := TRect.Create(origin.x, origin.y, width, height);
+end;
+
+function RectMake(x, y: TScalar; size: TVec2): TRect;
+begin
+	result := TRect.Create(x, y, size.width, size.height);
 end;
 
 procedure TRect.Show;
