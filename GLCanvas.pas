@@ -9,7 +9,7 @@ unit GLCanvas;
 interface
 uses
   GL, GLExt, FGL, Classes, 
-  GLPT, VectorMath;
+  GLPT, VectorMath, GeometryTypes;
 
 {$define INTERFACE}
 {$include include/Textures.inc}
@@ -41,6 +41,7 @@ procedure DrawPoint(constref point: TVec2; constref color: TColor);
 procedure DrawTexture (texture: TTexture; x, y: single); overload;
 procedure DrawTexture (texture: TTexture; constref rect: TRect); overload; inline;
 procedure DrawTexture (texture: TTexture; constref rect: TRect; constref textureFrame: TRect); overload;
+procedure DrawTexture (texture: TTexture; constref rect: TRect; constref textureFrame: TRect; constref color: TVec4); overload;
 
 { Buffers }
 procedure FlushDrawing;
@@ -67,7 +68,7 @@ var
 
 implementation
 uses
-  BeRoPNG, GLShader,
+  BeRoPNG, GLShader, GLVertexBuffer, GLUtils,
   Contnrs, Variants, CTypes,
   SysUtils, DOM, XMLRead, Strings;
 
@@ -112,6 +113,7 @@ begin
 end;
 
 { Types }
+// TODO: TVertex3 doesn't make sense. rename to TDefaultVertex to go with default shader
 type
   TVertex3 = record
     pos: TVec2;
@@ -218,6 +220,7 @@ end;
 type
   TVertex3Quad = specialize TTexturedQuad<TVertex3>;
   TVertex3List = specialize TFPGList<TVertex3>;
+  TVertex3VertexBuffer = specialize TVertexBuffer<TVertex3>;
 
 { Shaders }
 const
@@ -264,7 +267,7 @@ type
 var
   context: GLPT_Context;
   defaultShader: TVertex3Shader = nil;
-  vertexBuffer: TVertex3List;
+  vertexBuffer: TVertex3VertexBuffer;
   textureUnits: array[0..7] of GLint = (0, 1, 2, 3, 4, 5, 6, 7);
   drawState: TGLDrawState;
 
@@ -273,56 +276,10 @@ begin
   result := not GLPT_WindowShouldClose(GLCanvasState.window);
 end;
 
-procedure QuitApp;
+procedure error_callback(error: integer; description: string);
 begin
-  GLPT_DestroyWindow(GLCanvasState.window);
-  GLPT_Terminate;
-end;
-
-procedure Prepare;
-const
-  kFarNearPlane = 100000;
-begin
-  glClearColor(1, 1, 1, 1);
-  glEnable(GL_BLEND); 
-  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-  glDisable(GL_MULTISAMPLE);
-  glDisable(GL_DEPTH_TEST);
-
-  with GLCanvasState do
-    begin
-      projTransform := TMat4.Ortho(0, width, height, 0, -kFarNearPlane, kFarNearPlane);
-      viewTransform := TMat4.Identity;
-
-      defaultShader := TVertex3Shader.Create(DefaultVertexShader, 
-                                             DefaultFragmentShader,  
-                                             [TShaderAttribute.Create(GL_FLOAT, 2),         // position
-                                              TShaderAttribute.Create(GL_FLOAT, 2),         // textureCoord
-                                              TShaderAttribute.Create(GL_FLOAT, 4),         // color
-                                              TShaderAttribute.Create(GL_UNSIGNED_BYTE, 1)  // UV
-                                              ]);
-
-      defaultShader.Push;
-      glUniformMatrix4fv(defaultShader.GetUniformLocation('projTransform'), 1, GL_FALSE, projTransform.Ptr);
-      glUniformMatrix4fv(defaultShader.GetUniformLocation('viewTransform'), 1, GL_FALSE, viewTransform.Ptr);
-      glUniform1iv(defaultShader.GetUniformLocation('textures'), 8, @textureUnits);
-    end;
-end;
-
-procedure Load; 
-begin
-  vertexBuffer := TVertex3List.Create;
-
-  //with GLCanvasState do
-  //  begin
-  //    glGenVertexArrays(1, @vertexArrayObject);
-  //    glBindVertexArray(vertexArrayObject);
-
-  //    glGenBuffers(1, @bufferID);
-  //    glBindBuffer(GL_ARRAY_BUFFER, bufferID);
-  //  end;
-
-  //shader.EnableVertexAttributes;
+  writeln(stderr, description);
+  halt(-1);
 end;
 
 procedure SetViewTransform(x, y, scale: single);
@@ -345,58 +302,15 @@ begin
     end;
 end;
 
-procedure error_callback(error: integer; description: string);
+procedure QuitApp;
 begin
-  writeln(stderr, description);
-  halt(-1);
-end;
-
-procedure SetupCanvas(inWidth, inHeight: integer; eventCallback: GLPT_EventCallback); 
-begin
-  GLPT_SetErrorCallback(@error_callback);
-
-  if not GLPT_Init then
-    halt(-1);
-
-  with GLCanvasState do
-    begin
-      width := inWidth;
-      height := inHeight;
-
-      context := GLPT_GetDefaultContext;
-      context.majorVersion := 3;
-      context.minorVersion := 2;
-      context.profile := GLPT_CONTEXT_PROFILE_CORE;
-      context.vsync := true;
-
-      window := GLPT_CreateWindow(GLPT_WINDOW_POS_CENTER, GLPT_WINDOW_POS_CENTER, width, height, '', context);
-      if window = nil then
-        begin
-          GLPT_Terminate;
-          halt(-1);
-        end;
-
-      window^.event_callback := eventCallback;
-
-      if not Load_GL_VERSION_3_2 then
-        Halt(-1);
-
-      writeln('OpenGL version: ', glGetString(GL_VERSION));
-      writeln('GLPT version: ', GLPT_GetVersionString);
-
-      // note: clear an opengl error
-      glGetError();
-
-      SetViewPort(width, height);
-      Prepare;
-      Load;
-    end;
+  GLPT_DestroyWindow(GLCanvasState.window);
+  GLPT_Terminate;
 end;
 
 procedure ChangePrimitiveType (typ: GLint); 
 begin
   if vertexBuffer.Count > 0 then
-    //Assert(drawState.bufferPrimitiveType = typ, 'must flush drawing before changing primitive type');
     FlushDrawing;
   drawState.bufferPrimitiveType := typ;
 end;
@@ -622,7 +536,7 @@ begin
   FlushDrawing;
 end;
 
-procedure DrawTexture (texture: TTexture; constref rect: TRect; constref textureFrame: TRect);
+procedure DrawTexture (texture: TTexture; constref rect: TRect; constref textureFrame: TRect; constref color: TVec4);
 var
   quad: TVertex3Quad;
   textureUnit: TGLTextureUnit;
@@ -633,19 +547,18 @@ begin
   else
     textureUnit := PushTexture(texture);
   ChangePrimitiveType(GL_TRIANGLES);
-  //writeln('draw ', rect.tostr, ' = ', textureUnit);
 
-  quad.SetColor(1, 1, 1, 1);
+  quad.SetColor(color.r, color.g, color.b, color.a);
   quad.SetPosition(rect);
   quad.SetTexture(textureFrame);
   quad.SetUV(textureUnit);
 
-  vertexBuffer.Add(quad.v[0]);
-  vertexBuffer.Add(quad.v[1]);
-  vertexBuffer.Add(quad.v[2]);
-  vertexBuffer.Add(quad.v[3]);
-  vertexBuffer.Add(quad.v[4]);
-  vertexBuffer.Add(quad.v[5]);
+  vertexBuffer.AddQuad(@quad);
+end;
+
+procedure DrawTexture (texture: TTexture; constref rect: TRect; constref textureFrame: TRect);
+begin
+  DrawTexture(texture, rect, textureFrame, RGBA(1, 1, 1, 1));
 end;
 
 procedure DrawTexture (texture: TTexture; constref rect: TRect);
@@ -670,12 +583,7 @@ begin
 
   Assert(ShaderStack.Last = defaultShader, 'active shader must be default.');
 
-  glBufferData(GL_ARRAY_BUFFER, sizeof(TVertex3) * vertexBuffer.Count, TFPSList(vertexBuffer).First, GL_DYNAMIC_DRAW);
-  Assert(glGetError() = 0, 'glBufferData error '+IntToStr(glGetError()));
-  glDrawArrays(drawState.bufferPrimitiveType, 0, vertexBuffer.Count);
-  Assert(glGetError() = 0, 'glDrawArrays error '+IntToStr(glGetError()));
-  
-  // TODO: clear shrinks capacity!
+  vertexBuffer.Draw(drawState.bufferPrimitiveType);
   vertexBuffer.Clear;
 end;
 
@@ -685,11 +593,82 @@ begin
   GLPT_SwapBuffers(GLCanvasState.window);
   GLPT_PollEvents;
 end;
+procedure Prepare;
+const
+  kFarNearPlane = 100000;
+begin
+  glClearColor(1, 1, 1, 1);
+  glEnable(GL_BLEND); 
+  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+  glDisable(GL_MULTISAMPLE);
+  glDisable(GL_DEPTH_TEST);
+
+  with GLCanvasState do
+    begin
+      projTransform := TMat4.Ortho(0, width, height, 0, -kFarNearPlane, kFarNearPlane);
+      viewTransform := TMat4.Identity;
+
+      vertexBuffer := TVertex3VertexBuffer.Create([TVertexAttribute.Create(GL_FLOAT, 2),         // position
+                                                   TVertexAttribute.Create(GL_FLOAT, 2),         // textureCoord
+                                                   TVertexAttribute.Create(GL_FLOAT, 4),         // color
+                                                   TVertexAttribute.Create(GL_UNSIGNED_BYTE, 1)  // UV
+                                                   ]);
+
+      defaultShader := TVertex3Shader.Create(DefaultVertexShader, DefaultFragmentShader);
+
+      defaultShader.Push;
+      defaultShader.SetUniformMatrix4fv('projTransform', projTransform);
+      defaultShader.SetUniformMatrix4fv('viewTransform', viewTransform);
+      defaultShader.SetUniform1iv('textures', 8, @textureUnits);
+    end;
+end;
+
+procedure SetupCanvas(inWidth, inHeight: integer; eventCallback: GLPT_EventCallback); 
+begin
+  GLPT_SetErrorCallback(@error_callback);
+
+  if not GLPT_Init then
+    halt(-1);
+
+  with GLCanvasState do
+    begin
+      width := inWidth;
+      height := inHeight;
+
+      context := GLPT_GetDefaultContext;
+      context.majorVersion := 3;
+      context.minorVersion := 2;
+      context.profile := GLPT_CONTEXT_PROFILE_CORE;
+      context.vsync := true;
+
+      window := GLPT_CreateWindow(GLPT_WINDOW_POS_CENTER, GLPT_WINDOW_POS_CENTER, width, height, '', context);
+      if window = nil then
+        begin
+          GLPT_Terminate;
+          halt(-1);
+        end;
+
+      window^.event_callback := eventCallback;
+
+      if not Load_GL_VERSION_3_2 then
+        Halt(-1);
+
+      writeln('OpenGL version: ', glGetString(GL_VERSION));
+      writeln('GLPT version: ', GLPT_GetVersionString);
+      writeln('Texture Units: ', GetMaximumTextureUnits);
+
+      // note: clear an opengl error
+      glGetError();
+
+      SetViewPort(width, height);
+      Prepare;
+    end;
+end;
 
 var
   i: integer;
 begin
-  for i := 0 to 64 - 1 do
+  for i := 0 to 127 do
     TextureSlots[i] := nil;
   System.Randomize;
 end.

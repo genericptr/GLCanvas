@@ -1,5 +1,6 @@
 {$mode objfpc}
 {$modeswitch advancedrecords}
+{$modeswitch typehelpers}
 {$modeswitch multihelpers}
 
 unit VectorMath;
@@ -186,10 +187,10 @@ type
       class operator / (a:TScalar;constref b:TMat4):TMat4;
 		public
 			case integer of
-				0:(m:array[0..3,0..3] of TScalar);
-				1:(column: array[0..3] of TVec4);
-				2:(Right,Up,Forwards,Offset:TVec4);
-				3:(Tangent,Bitangent,Normal,Translation:TVec4);
+				0: (m: array[0..3, 0..3] of TScalar);
+				1: (column: array[0..3] of TVec4);
+				2: (Right, Up, Forwards, Offset: TVec4);
+				3: (Tangent, Bitangent, Normal, Translation: TVec4);
 	end;
 
 type
@@ -202,96 +203,110 @@ type
 	TVec3List = specialize TFPGList<TVec3>;
 	TVec4List = specialize TFPGList<TVec4>;
 
-type
-  TRect = record
+{ Generic Vectors }
+
+type 
+  generic TGVec2<TComponent> = record
   	public
-	    origin: TVec2;
-	    size: TVec2;
-	  public
-	  	constructor Create(inX, inY: TScalar; inWidth, inHeight: TScalar);
+  		x, y: TComponent;
+		private
+			function GetComponent(index: byte): TComponent; inline;
+      procedure SetComponent(index: byte; newValue: TComponent); inline;
+    public
+      constructor Create (_x, _y: TComponent);
+      function ToStr: string;
+      procedure Show;
 
-	    property Width: TScalar read size.x;
-	    property Height: TScalar read size.y;
-	    property MinX: TScalar read origin.x;
-	    property MinY: TScalar read origin.y;
+    public
+      property V[index: byte]: TComponent read GetComponent write SetComponent; default;
+      property Width: TComponent read x write x;
+      property Height: TComponent read y write y;
+  end;
 
-	    function MaxX: TScalar; inline;
-	    function MidX: TScalar; inline;
-	    function MaxY: TScalar; inline;
-	    function MidY: TScalar; inline;
+type 
+  generic TGVec3<TComponent> = record
+  	public
+  		x, y, z: TComponent;
+		private
+			function GetComponent(index: byte): TComponent; inline;
+      procedure SetComponent(index: byte; newValue: TComponent); inline;
+    public
+      constructor Create (_x, _y, _z: TComponent);
+      function ToStr: string;
+      procedure Show;
+    public
+      property V[index: byte]: TComponent read GetComponent write SetComponent; default;
+      
+      property R: TComponent read x write x;
+      property G: TComponent read y write y;
+      property B: TComponent read z write z;
 
-	    property X: TScalar read origin.x write origin.x;
-	    property Y: TScalar read origin.y write origin.y;
-	    property W: TScalar read size.x write size.x;
-	    property H: TScalar read size.y write size.y;
+      property Width: TComponent read x write x;
+      property Height: TComponent read y write y;
+      property Depth: TComponent read z write z;
+  end;
 
-	    procedure Show;
-	    function ToStr: string;
-	  public
-	  	class operator + (r1, r2: TRect): TRect; overload;
-	  	class operator - (r1, r2: TRect): TRect; overload; 
-	  	class operator * (r1, r2: TRect): TRect; overload; 
-	  	class operator / (r1, r2: TRect): TRect;  overload;
-	  	class operator + (r1: TRect; r2: TScalar): TRect; overload; 
-	  	class operator - (r1: TRect; r2: TScalar): TRect; overload; 
-	  	class operator * (r1: TRect; r2: TScalar): TRect; overload; 
-	  	class operator / (r1: TRect; r2: TScalar): TRect; overload;
-	  	class operator = (r1, r2: TRect): boolean; 
+type 
+  generic TGVec4<TComponent> = record
+  	public
+  		x, y, z, w: TComponent;
+		private
+			function GetComponent(index: byte): TComponent; inline;
+      procedure SetComponent(index: byte; newValue: TComponent); inline;
+    public
+      constructor Create (_x, _y, _z, _w: TComponent);
+      function ToStr: string;
+      procedure Show;
+    public
+      property V[index: byte]: TComponent read GetComponent write SetComponent; default;
+      
+      property R: TComponent read x write x;
+      property G: TComponent read y write y;
+      property B: TComponent read z write z;
+      property A: TComponent read w write w;
   end;
 
 type
-	TSizeHelper = record helper for TVec2
-		function Min: TScalar; inline;
-		function Max: TScalar; inline;
-		procedure SetWidth(newValue: TScalar); inline;
-		procedure SetHeight(newValue: TScalar); inline;
-		function GetWidth: TScalar; inline;
-		function GetHeight: TScalar; inline;
-		property Width: TScalar read GetWidth write SetWidth;
-		property Height: TScalar read GetHeight write SetHeight;
-	end;
+	TVec2i = specialize TGVec2<Integer>;
+	TVec3i = specialize TGVec3<Integer>;
+	TVec4i = specialize TGVec4<Integer>;
 
-function RectMake(x, y: TScalar; width, height: TScalar): TRect; overload; inline;
-function RectMake(origin, size: TVec2): TRect; overload; inline;
-function RectMake(origin: TVec2; width, height: TScalar): TRect; overload; inline;
-function RectMake(x, y: TScalar; size: TVec2): TRect; overload; inline;
-
-{ Colors }
-type
-	TColorHelper = record helper for TVec4
-		class function Red(alpha: TScalar = 1.0): TVec4; static;
-		class function Green(alpha: TScalar = 1.0): TVec4; static;
-		class function Blue(alpha: TScalar = 1.0): TVec4; static;
-		class function White(alpha: TScalar = 1.0): TVec4; static;
-		class function Black(alpha: TScalar = 1.0): TVec4; static;
-		class function Clear: TVec4; static;
-	end;
-
-function HexColorToRGB (hexValue: integer; alpha: TScalar = 1.0): TVec4;
+{	Generic Vector Functions }
+function V2i (x, y: integer): TVec2i;
+function V3i (x, y, z: integer): TVec3i;
+function V4i (x, y, z, w: integer): TVec4i;
 
 { Functions }
 
 function M4: TMat4;
 
-function Vec2 (x, y: TScalar): TVec2;
+function Vec2 (x, y: TScalar): TVec2; overload;
+function Vec2 (constref vec: TVec2i): TVec2; overload;
+
 function Vec3 (x, y, z: TScalar): TVec3; overload;
 function Vec3 (constref vec: TVec2; z: TScalar): TVec3; overload;
+function Vec3 (constref vec: TVec3i): TVec3; overload;
+
 function Vec4 (x, y, z, w: TScalar): TVec4; overload;
 function Vec4 (constref vec: TVec3; w: TScalar): TVec4; overload;
 function Vec4 (constref vec: TVec2; z, w: TScalar): TVec4; overload;
+function Vec4 (constref vec: TVec4i): TVec4; overload;
 
 function V2 (x, y: TScalar): TVec2;
+function V2 (constref vec: TVec2i): TVec2; overload;
+
 function V3 (x, y, z: TScalar): TVec3; overload;
 function V3 (constref vec: TVec2; z: TScalar): TVec3; overload;
+function V3 (constref vec: TVec3i): TVec3; overload;
+
 function V4 (x, y, z, w: TScalar): TVec4;
 function V4 (constref vec: TVec3; w: TScalar): TVec4; overload;
 function V4 (constref vec: TVec2; z, w: TScalar): TVec4; overload;
+function V4 (constref vec: TVec4i): TVec4; overload;
 
 function Trunc(vec: TVec2): TVec2; overload;
 function Trunc(vec: TVec3): TVec3; overload;
 function Trunc(vec: TVec4): TVec4; overload;
-
-function PolyContainsPoint (points: TVec2Array; point: TVec2): boolean;
 
 implementation
 
@@ -303,203 +318,129 @@ const
   RAD2DEG=180.0/pi;
   HalfPI=pi*0.5;	
 
-function HexColorToRGB (hexValue: integer; alpha: TScalar = 1.0): TVec4;
+type
+  TComponentIntegerHelper = type helper for Integer
+    function ToStr: String;
+  end;
+
+function TComponentIntegerHelper.ToStr: String;
 begin
-  result.r := ((hexValue shr 16) and $FF) / 255.0;  // Extract the RR byte
-  result.g := ((hexValue shr 8) and $FF) / 255.0;   // Extract the GG byte
-  result.b := ((hexValue) and $FF) / 255.0;         // Extract the BB byte
-  result.a := alpha;
+	result := IntToStr(self);
 end;
 
-class function TColorHelper.Red(alpha: TScalar = 1.0): TVec4;
+{ Generic Vector Functions }
+
+function V2i (x, y: integer): TVec2i;
 begin
-	result := V4(1, 0, 0, alpha);
+	result.x := x;
+	result.y := y;
 end;
 
-class function TColorHelper.Green(alpha: TScalar = 1.0): TVec4;
+function V3i (x, y, z: integer): TVec3i;
 begin
-	result := V4(0, 1, 0, alpha);
+	result.x := x;
+	result.y := y;
+	result.z := z;
 end;
 
-class function TColorHelper.Blue(alpha: TScalar = 1.0): TVec4;
+function V4i (x, y, z, w: integer): TVec4i;
 begin
-	result := V4(0, 0, 1, alpha);
+	result.x := x;
+	result.y := y;
+	result.z := z;
+	result.w := w;
 end;
 
-class function TColorHelper.White(alpha: TScalar = 1.0): TVec4;
+{ TGVec2 }
+
+function TGVec2.GetComponent(index: byte): TComponent;
 begin
-	result := V4(1, 1, 1, alpha);
+	result := v[index];
 end;
 
-class function TColorHelper.Black(alpha: TScalar = 1.0): TVec4;
+procedure TGVec2.SetComponent(index: byte; newValue: TComponent);
 begin
-	result := V4(0, 0, 0, alpha);
+	v[index] := newValue;
 end;
 
-class function TColorHelper.Clear: TVec4;
+constructor TGVec2.Create (_x, _y: TComponent);
 begin
-	result := V4(0, 0, 0, 0);
+	x := _x;
+	y := _y;
 end;
 
-function TSizeHelper.Min: TScalar;
+function TGVec2.ToStr: string;
 begin
-	if width < height then
-		result := width
-	else
-		result := height;
+	result := '{'+x.ToStr+','+y.ToStr+'}';
 end;
 
-function TSizeHelper.Max: TScalar;
-begin
-	if width > height then
-		result := width
-	else
-		result := height;
-end;
-
-procedure TSizeHelper.SetWidth(newValue: TScalar);
-begin
-	x := newValue;
-end;
-
-procedure TSizeHelper.SetHeight(newValue: TScalar);
-begin
-	y := newValue;	
-end;
-
-function TSizeHelper.GetWidth: TScalar;
-begin
-	result := x;
-end;
-
-function TSizeHelper.GetHeight: TScalar;
-begin
-	result := y;
-end;
-
-function RectMake(origin, size: TVec2): TRect;
-begin
-	result := TRect.Create(origin.x, origin.y, size.width, size.height);
-end;
-
-function RectMake(x, y: TScalar; width, height: TScalar): TRect;
-begin
-	result := TRect.Create(x, y, width, height);
-end;
-
-function RectMake(origin: TVec2; width, height: TScalar): TRect;
-begin
-	result := TRect.Create(origin.x, origin.y, width, height);
-end;
-
-function RectMake(x, y: TScalar; size: TVec2): TRect;
-begin
-	result := TRect.Create(x, y, size.width, size.height);
-end;
-
-procedure TRect.Show;
+procedure TGVec2.Show;
 begin
 	writeln(ToStr);
 end;
 
-function TRect.ToStr: string;
+{ TGVec3 }
+
+function TGVec3.GetComponent(index: byte): TComponent;
 begin
-	result := '{'+origin.ToStr+','+size.ToStr+'}';
+	result := v[index];
 end;
 
-constructor TRect.Create(inX, inY: TScalar; inWidth, inHeight: TScalar);
+procedure TGVec3.SetComponent(index: byte; newValue: TComponent);
 begin
-	self.origin.x := inX;
-	self.origin.y := inY;
-	self.size.width := inWidth;
-	self.size.height := inHeight;
+	v[index] := newValue;
 end;
 
-function TRect.MaxX: TScalar;
+constructor TGVec3.Create (_x, _y, _z: TComponent);
 begin
-	result := MinX + Width;
+	x := _x;
+	y := _y;
+	z := _z;
 end;
 
-function TRect.MidX: TScalar;
+function TGVec3.ToStr: string;
 begin
-	result := MinX + Width / 2;
+	result := '{'+x.ToStr+','+y.ToStr+','+z.ToStr+'}';
 end;
 
-function TRect.MaxY: TScalar;
+procedure TGVec3.Show;
 begin
-	result := MinY + Height;
+	writeln(ToStr);
 end;
 
-function TRect.MidY: TScalar;
+{ TGVec4 }
+
+function TGVec4.GetComponent(index: byte): TComponent;
 begin
-	result := MinY + Height / 2;
+	result := v[index];
 end;
 
-class operator TRect.+ (r1, r2: TRect): TRect;
+procedure TGVec4.SetComponent(index: byte; newValue: TComponent);
 begin
-	result := RectMake(r1.origin.x + r2.origin.x, r1.origin.y + r2.origin.y, r1.size.width + r2.size.width, r1.size.height + r2.size.height);
+	v[index] := newValue;
 end;
 
-class operator TRect.- (r1, r2: TRect): TRect;
+constructor TGVec4.Create (_x, _y, _z, _w: TComponent);
 begin
-	result := RectMake(r1.origin.x - r2.origin.x, r1.origin.y - r2.origin.y, r1.size.width - r2.size.width, r1.size.height - r2.size.height);
+	x := _x;
+	y := _y;
+	z := _z;
+	w := _w;
 end;
 
-class operator TRect.* (r1, r2: TRect): TRect; 
+function TGVec4.ToStr: string;
 begin
-	result := RectMake(r1.origin.x * r2.origin.x, r1.origin.y * r2.origin.y, r1.size.width * r2.size.width, r1.size.height * r2.size.height);
+	result := '{'+x.ToStr+','+y.ToStr+','+z.ToStr+','+w.ToStr+'}';
 end;
 
-class operator TRect./ (r1, r2: TRect): TRect; 
+procedure TGVec4.Show;
 begin
-	result := RectMake(r1.origin.x / r2.origin.x, r1.origin.y / r2.origin.y, r1.size.width / r2.size.width, r1.size.height / r2.size.height);
-end;
-
-class operator TRect.= (r1, r2: TRect): boolean; 
-begin
-	result := (r1.origin = r2.origin) and (r1.size = r2.size);
-end;
-
-class operator TRect.+ (r1: TRect; r2: TScalar): TRect;
-begin
-	result := RectMake(r1.origin.x + r2, r1.origin.y + r2, r1.size.width + r2, r1.size.height + r2);
-end;
-
-class operator TRect.- (r1: TRect; r2: TScalar): TRect;
-begin
-	result := RectMake(r1.origin.x - r2, r1.origin.y +- r2, r1.size.width - r2, r1.size.height - r2);
-end;
-
-class operator TRect.* (r1: TRect; r2: TScalar): TRect;
-begin
-	result := RectMake(r1.origin.x * r2, r1.origin.y * r2, r1.size.width * r2, r1.size.height * r2);
-end;
-
-class operator TRect./ (r1: TRect; r2: TScalar): TRect;
-begin
-	result := RectMake(r1.origin.x / r2, r1.origin.y / r2, r1.size.width / r2, r1.size.height / r2);
+	writeln(ToStr);
 end;
 
 {=============================================}
 {@! ___PROCEDURAL___ } 
 {=============================================}
-function PolyContainsPoint (points: TVec2Array; point: TVec2): boolean;
-var
-	i, j, c: integer;
-begin
-	i := 0;
-	j := high(points);
-	c := 0;
-	while i < length(points) do
-		begin
-			if ((points[i].y > point.y) <> (points[j].y > point.y)) 
-					and (point.x < (points[j].x - points[i].x) * (point.y - points[i].y) / (points[j].y - points[i].y) + points[i].x) then
-				c := not c;
-			j := i;
-			i += 1;
-		end;
-	result := c <> 0;
-end;
 
 function Trunc(vec: TVec2): TVec2;
 begin
@@ -522,16 +463,30 @@ begin
 	result.w := trunc(vec.w);
 end;
 
+{ Vec2 }
+
 function Vec2 (x, y: TScalar): TVec2; inline;
 begin
 	result.x := x;
 	result.y := y;
 end;
 
+function Vec2 (constref vec: TVec2i): TVec2; inline;
+begin
+	result := Vec2(vec.x, vec.y);
+end;
+
 function V2 (x, y: TScalar): TVec2; inline;
 begin
 	result := Vec2(x, y);
 end;
+
+function V2 (constref vec: TVec2i): TVec2; inline;
+begin
+	result := Vec2(vec.x, vec.y);
+end;
+
+{ Vec3 }
 
 function Vec3 (x, y, z: TScalar): TVec3; inline;
 begin
@@ -547,6 +502,11 @@ begin
 	result.z := z;
 end;
 
+function Vec3 (constref vec: TVec3i): TVec3; inline;
+begin
+	result := Vec3(vec.x, vec.y, vec.z);
+end;
+
 function V3 (x, y, z: TScalar): TVec3; inline;
 begin
 	result := Vec3(x, y, z);
@@ -556,6 +516,13 @@ function V3 (constref vec: TVec2; z: TScalar): TVec3; inline;
 begin
 	result := Vec3(vec, z);
 end;
+
+function V3 (constref vec: TVec3i): TVec3; inline;
+begin
+	result := Vec3(vec.x, vec.y, vec.z);
+end;
+
+{ Vec4 }
 
 function Vec4 (x, y, z, w: TScalar): TVec4; inline;
 begin
@@ -581,6 +548,11 @@ begin
 	result.w := w;
 end;
 
+function Vec4 (constref vec: TVec4i): TVec4; inline;
+begin
+	result := Vec4(vec.x, vec.y, vec.z, vec.w);
+end;
+
 function V4 (constref vec: TVec3; w: TScalar): TVec4; inline;
 begin
 	result := Vec4(vec, w);
@@ -594,6 +566,11 @@ end;
 function V4 (x, y, z, w: TScalar): TVec4; inline;
 begin
 	result := Vec4(x, y, z, w);
+end;
+
+function V4 (constref vec: TVec4i): TVec4; inline;
+begin
+	result := Vec4(vec.x, vec.y, vec.z, vec.w);
 end;
 
 {=============================================}

@@ -11,7 +11,6 @@ type
 																);
 
 type
-	TColor = TVec4;
 	// TODO: what are we doing for image data now? we have png and tga loaders
 	TImage = pointer;
 
@@ -166,8 +165,8 @@ type
 			destructor Destroy; override;
 	end;
 
-function RGBA(r, g, b, a: TScalar): TColor; inline;
 procedure SetMaximumTextureUnits(newValue: integer); 
+function PushTexture (texture: TTextureSource): TGLTextureUnit;
 
 {$endif}
 
@@ -175,7 +174,7 @@ procedure SetMaximumTextureUnits(newValue: integer);
 
 var
 	DefaultTextureParameters: TTextureParameters = [kTextureNearestFilter, kTextureClampToEdge];
-	TextureSlots: array[0..64-1] of TTextureSource;
+	TextureSlots: array[0..127] of TTextureSource;
 
 type
 	TFileParts = record
@@ -249,7 +248,7 @@ begin
 	Assert((texUnit < GetMaximumTextureUnits) and (texUnit >= 0), 'texture unit '+IntToStr(texUnit)+' is out of bounds (0-'+IntToStr(GetMaximumTextureUnits-1)+')');
 	glActiveTexture(GL_TEXTURE0 + texUnit);
 	glBindTexture(GL_TEXTURE_2D, texID);
-	Assert(glGetError() = 0, 'glBindTexture error '+IntToStr(glGetError()));	
+	GLAssert('glBindTexture');	
 end;
 	
 procedure LoadTexture2D (width, height: GLsizei; data: pointer; params: TTextureParameters = []);
@@ -259,7 +258,7 @@ begin
 	else
 		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
 
-	Assert(glGetError() = 0, 'glTexImage2D error '+IntToStr(glGetError()));
+	GLAssert('glTexImage2D');	
 
 	if kTextureLinearFilter in params then
 		begin
@@ -500,15 +499,6 @@ begin
 end;
 
 //$bookmark -
-//$bookmark TYPE HELPERS
-//$bookmark -
-
-function RGBA(r, g, b, a: TScalar): TColor;
-begin
-	result := V4(r, g, b, a);
-end;
-
-//$bookmark -
 //$bookmark TEXTURE SOURCE
 //$bookmark -
 
@@ -523,6 +513,8 @@ begin
 	if not IsLoaded then
 	  Load;
 	Assert(textureID > 0, 'Texture is not loaded');
+	if TextureSlots[inUnit] <> nil then
+		Assert(false, 'Another texture ('+TextureSlots[inUnit].GetName+') is loaded in unit '+IntToStr(inUnit));
 	TextureSlots[inUnit] := self;
 	BindTexture2D(textureID, inUnit);
 	textureUnit := inUnit;
@@ -534,6 +526,7 @@ procedure TTextureSource.Unlock;
 begin
 	Assert(locked, 'Texture is already unlocked');
 	locked := false;
+	TextureSlots[textureUnit] := nil;
 end;
 
 function TTextureSource.GetName: string;

@@ -5,15 +5,7 @@
 unit GLShader;
 interface
 uses
-  Contnrs, GL, GLExt;
-
-type
-  TShaderAttribute = record
-    kind: GLenum;
-    count: integer;
-    constructor Create(_kind: GLenum; _count: integer);
-  end;
-  TShaderAttributes = array of TShaderAttribute;
+  Contnrs, VectorMath, GL, GLExt;
 
 type
   generic TShader<T> = class
@@ -21,17 +13,14 @@ type
       TVertexType = T;
     private
       programID: GLuint;
-      vertexArrayObject: GLuint;
-      bufferID: GLuint;
-      shaderAttributes: TShaderAttributes;
-      function SizeofAttribute(kind: GLuint): integer;
       procedure Use;
     public
-      constructor Create (vertexShaderSource, fragmentShaderSource: pchar; attributes: TShaderAttributes);
-      procedure EnableVertexAttributes; 
+      constructor Create (vertexShaderSource, fragmentShaderSource: pchar);
       procedure Push;
       procedure Pop;
       function GetUniformLocation(name: pchar): integer;
+      procedure SetUniformMatrix4fv(name: pchar; constref mat: TMat4);
+      procedure SetUniform1iv(name: pchar; count: integer; ints: PInteger);
       destructor Destroy; override;
   end;
 
@@ -42,14 +31,7 @@ implementation
 uses
   SysUtils;
 
-
-constructor TShaderAttribute.Create(_kind: GLenum; _count: integer);
-begin
-  kind := _kind;
-  count := _count;
-end;
-
-constructor TShader.Create (vertexShaderSource, fragmentShaderSource: pchar; attributes: TShaderAttributes);
+constructor TShader.Create (vertexShaderSource, fragmentShaderSource: pchar);
 var
   vertexShaderID: GLuint;
   fragmentShaderID: GLuint;
@@ -59,8 +41,6 @@ var
   logArray: array of GLChar;
   i: integer;
 begin 
-  shaderAttributes := attributes;
-
   // create shader
   vertexShaderID := glCreateShader(GL_VERTEX_SHADER);
   fragmentShaderID := glCreateShader(GL_FRAGMENT_SHADER);
@@ -105,55 +85,12 @@ begin
   Assert(success = GL_TRUE, 'Error with linking shader program'); 
 end;
 
-function TShader.SizeofAttribute(kind: GLuint): integer;
-begin
-  case kind of
-    GL_FLOAT:
-      result := sizeof(single);
-    GL_UNSIGNED_BYTE:
-      result := sizeof(byte);
-    otherwise
-      Assert(false, 'unsupported attribute kind '+IntToStr(kind));
-  end;
-end;
-
-procedure TShader.EnableVertexAttributes; 
-var
-  offset: pointer;
-  attribute: TShaderAttribute;
-  i: integer;
-begin
-  if vertexArrayObject = 0 then
-    begin
-      glGenVertexArrays(1, @vertexArrayObject);
-      glBindVertexArray(vertexArrayObject);
-
-      glGenBuffers(1, @bufferID);
-      glBindBuffer(GL_ARRAY_BUFFER, bufferID);
-
-      offset := nil;
-      for i := 0 to high(shaderAttributes) do
-        begin
-          attribute := shaderAttributes[i];
-          glEnableVertexAttribArray(i);
-          glVertexAttribPointer(i, attribute.count, attribute.kind, GL_FALSE, sizeof(TVertexType), offset);
-          Inc(offset, SizeofAttribute(attribute.kind) * attribute.count);
-        end;
-    end
-  else
-    begin
-      glBindVertexArray(vertexArrayObject);
-      glBindBuffer(GL_ARRAY_BUFFER, bufferID);
-    end;
-end;
-
 procedure TShader.Push;
 begin
   if ShaderStack = nil then
     ShaderStack := TObjectList.Create(false);
   ShaderStack.Add(self);
   Use;
-  EnableVertexAttributes;
 end;
 
 procedure TShader.Pop;
@@ -163,13 +100,22 @@ begin
   ShaderStack.Delete(ShaderStack.Count - 1);
   Assert(ShaderStack.Count > 0, 'attempting to pop empty shader stack.');
   TShader(ShaderStack.Last).Use;
-  TShader(ShaderStack.Last).EnableVertexAttributes;
 end;
 
 procedure TShader.Use;
 begin
   glUseProgram(programID);
   //writeln('use shader ', programID);
+end;
+
+procedure TShader.SetUniformMatrix4fv(name: pchar; constref mat: TMat4);
+begin
+  glUniformMatrix4fv(GetUniformLocation(name), 1, GL_FALSE, mat.Ptr);
+end;
+
+procedure TShader.SetUniform1iv(name: pchar; count: integer; ints: PInteger);
+begin
+  glUniform1iv(GetUniformLocation(name), count, ints);
 end;
 
 function TShader.GetUniformLocation(name: pchar): integer;

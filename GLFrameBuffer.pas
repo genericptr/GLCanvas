@@ -25,27 +25,7 @@ type
 
 implementation
 uses
-  SysUtils;
-
-procedure GLFatal (messageString: string = 'Fatal OpenGL error'); inline; 
-var
-  error: GLenum;
-begin
-  error := glGetError();
-  if error <> GL_NO_ERROR then
-    begin
-      case error of
-        GL_INVALID_VALUE:
-          Assert(false, messageString+' GL_INVALID_VALUE');
-        GL_INVALID_OPERATION:
-          Assert(false, messageString+' GL_INVALID_OPERATION');
-        GL_INVALID_ENUM:
-          Assert(false, messageString+' GL_INVALID_ENUM');
-        otherwise
-          Assert(false, messageString+' '+HexStr(error, 4));
-      end;
-    end;
-end;
+  GLUtils, SysUtils;
 
 procedure LoadTexture2D (width, height: GLsizei; format: GLenum; data: pointer = nil);
 begin
@@ -56,7 +36,7 @@ begin
       glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
   end;
 
-  GLFatal('glTexImage2D failed');
+  GLAssert('glTexImage2D failed');
 
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
@@ -91,7 +71,7 @@ begin
   LoadTexture2D(width, height, pixelFormat);
 
   glBindFramebuffer(GL_FRAMEBUFFER, buffer);
-  GLFatal('glBindFramebuffer '+IntToStr(buffer));
+  GLAssert('glBindFramebuffer '+IntToStr(buffer));
   glFrameBufferTexture2D(GL_FRAMEBUFFER,
                         GL_COLOR_ATTACHMENT0,
                         GL_TEXTURE_2D,
@@ -100,7 +80,7 @@ begin
   Assert(glCheckFramebufferStatus(GL_FRAMEBUFFER) = GL_FRAMEBUFFER_COMPLETE, 'glFramebufferTexture2D failed with error $'+HexStr(glCheckFramebufferStatus(GL_FRAMEBUFFER), 4));
 
   glFrameBufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, texture, 0);
-  GLFatal('glFrameBufferTexture2D '+IntToStr(buffer));
+  GLAssert('glFrameBufferTexture2D '+IntToStr(buffer));
 
   glBindTexture(GL_TEXTURE_2D, 0);
 
@@ -110,13 +90,13 @@ end;
 procedure TFrameBuffer.Bind;
 begin
   glBindFramebuffer(GL_FRAMEBUFFER, buffer);
-  GLFatal('glBindFramebuffer '+IntToStr(buffer));
+  GLAssert('glBindFramebuffer '+IntToStr(buffer));
 end;
 
 procedure TFrameBuffer.Unbind;
 begin
   glBindFramebuffer(GL_FRAMEBUFFER, 0);
-  GLFatal('glBindFramebuffer '+IntToStr(buffer));
+  GLAssert('glBindFramebuffer '+IntToStr(buffer));
 end;
 
 destructor TFrameBuffer.Destroy;
