@@ -166,7 +166,7 @@ type
 	end;
 
 procedure SetMaximumTextureUnits(newValue: integer); 
-function PushTexture (texture: TTextureSource): TGLTextureUnit;
+function PushTexture (texture: TTexture): TGLTextureUnit;
 
 {$endif}
 
@@ -290,7 +290,7 @@ begin
 		end;
 end;
 
-function PushTexture (texture: TTextureSource): TGLTextureUnit;
+function PushTextureInternal (texture: TTextureSource): TGLTextureUnit;
 var
 	i: integer;
 	textureUnit,
@@ -339,6 +339,14 @@ begin
 	BindTexture2D(texture.textureID, textureUnit);
 	writeln('bind texture ', texture.textureID, ' to unit ', textureUnit);
 	result := textureUnit;
+end;
+
+function PushTexture (texture: TTexture): TGLTextureUnit;
+begin
+	if texture.GetOwner <> nil then
+		result := PushTextureInternal(texture.GetOwner)
+	else
+		result := PushTextureInternal(texture);
 end;
 
 procedure RestoreTextureUnit (textureUnit: TGLTextureUnit; textureID: TGLTextureID);

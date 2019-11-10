@@ -84,6 +84,7 @@ const
 { Utils }
 function TimeSinceNow: longint;
 begin
+  // TODO: replace with GLPT_Time
   result := round(TimeStampToMSecs(DateTimeToTimeStamp(Now)));
 end;    
 
@@ -123,7 +124,6 @@ type
     constructor Create(inPos: TVec2; inTexCoord: TVec2; inColor: TVec4; inUV: byte);
     class operator = (constref a, b: TVertex3): boolean;
   end;
-  TVertex3Shader = specialize TShader<TVertex3>;
 
 constructor TVertex3.Create(inPos: TVec2; inTexCoord: TVec2; inColor: TVec4; inUV: byte);
 begin
@@ -266,7 +266,7 @@ type
 
 var
   context: GLPT_Context;
-  defaultShader: TVertex3Shader = nil;
+  defaultShader: TShader = nil;
   vertexBuffer: TVertex3VertexBuffer;
   textureUnits: array[0..7] of GLint = (0, 1, 2, 3, 4, 5, 6, 7);
   drawState: TGLDrawState;
@@ -542,10 +542,7 @@ var
   textureUnit: TGLTextureUnit;
 begin
   Assert(texture <> nil, 'texture must not be nil');
-  if texture.GetOwner <> nil then
-    textureUnit := PushTexture(texture.GetOwner)
-  else
-    textureUnit := PushTexture(texture);
+  textureUnit := PushTexture(texture);
   ChangePrimitiveType(GL_TRIANGLES);
 
   quad.SetColor(color.r, color.g, color.b, color.a);
@@ -593,6 +590,7 @@ begin
   GLPT_SwapBuffers(GLCanvasState.window);
   GLPT_PollEvents;
 end;
+
 procedure Prepare;
 const
   kFarNearPlane = 100000;
@@ -614,7 +612,7 @@ begin
                                                    TVertexAttribute.Create(GL_UNSIGNED_BYTE, 1)  // UV
                                                    ]);
 
-      defaultShader := TVertex3Shader.Create(DefaultVertexShader, DefaultFragmentShader);
+      defaultShader := TShader.Create(DefaultVertexShader, DefaultFragmentShader);
 
       defaultShader.Push;
       defaultShader.SetUniformMatrix4fv('projTransform', projTransform);

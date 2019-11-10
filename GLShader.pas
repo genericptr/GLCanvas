@@ -8,9 +8,7 @@ uses
   Contnrs, VectorMath, GL, GLExt;
 
 type
-  generic TShader<T> = class
-    public type
-      TVertexType = T;
+  TShader = class
     private
       programID: GLuint;
       procedure Use;
