@@ -12,7 +12,9 @@ type
 
 type
 	// TODO: what are we doing for image data now? we have png and tga loaders
-	TImage = pointer;
+	TImagePixel = TPNGPixel;
+	TImagePixelArray = array[0..0] of TImagePixel;
+	TImage = ^TImagePixelArray;
 
 type
 	ITexture = interface
@@ -21,9 +23,15 @@ type
 
 type
 	TTextureSource = class
-		public
-			function TextureFrameForTextureSpace (textureSpace: TRect): TRect; virtual;
+		public	
 			function GetName: string; virtual;
+
+			// TODO: these names are terrible
+			// PixelToTexture -> TextureToPixel?
+			function TextureFrameForTextureSpace (textureSpace: TRect): TRect; virtual;
+			function TextureSpaceForTextureFrame (textureFrame: TRect): TRect; virtual;
+
+			function PixelAt(x, y: integer): TImagePixel; virtual;
 
 			procedure Lock(inUnit: TGLTextureUnit); virtual;
 			procedure Unlock;
@@ -50,6 +58,8 @@ type
 			procedure SetCropping (newValue: TRect);
 			procedure SetTextureSpace (newValue: TRect);
 
+			// TODO: kills "Get" prefix and many of these can be properties into rects
+			// like faceSize.height
 			function GetSize: TVec2; inline;
 			function GetBounds: TRect; inline;
 			function GetHeight: integer; inline;
@@ -87,7 +97,7 @@ type
 			procedure LoadImage (image: TImage);
 	end;
 	TTextureList = specialize TFPGObjectList<TTexture>;
-	TTextureMap = specialize TFPGMap<string, TTexture>;
+	TTextureMap = specialize TFPGMapObject<string, TTexture>;
 
 type
 	TTextureSheet = class (TTextureSource, ITexture)
@@ -106,6 +116,8 @@ type
 			function GetTexture: TGLTextureID;
 
 			function TextureFrameForTextureSpace (textureSpace: TRect): TRect; override;
+			function TextureSpaceForTextureFrame (textureFrame: TRect): TRect; override;
+			function PixelAt(x, y: integer): TImagePixel; override;
 
 			{ Faces }
 			function GetTexture (index: integer): TTexture; overload;
@@ -512,7 +524,17 @@ end;
 
 function TTextureSource.TextureFrameForTextureSpace (textureSpace: TRect): TRect;
 begin
-	result := RectMake(0, 0, 0, 0);
+	result := Default(TRect);
+end;
+
+function TTextureSource.TextureSpaceForTextureFrame (textureFrame: TRect): TRect;
+begin
+	result := Default(TRect);
+end;
+
+function TTextureSource.PixelAt(x, y: integer): TImagePixel;
+begin
+	result := Default(TImagePixel);
 end;
 
 procedure TTextureSource.Lock(inUnit: TGLTextureUnit);
@@ -521,6 +543,7 @@ begin
 	if not IsLoaded then
 	  Load;
 	Assert(textureID > 0, 'Texture is not loaded');
+	Assert(textureID < GetMaximumTextureUnits, 'Invalid texture unit');
 	if TextureSlots[inUnit] <> nil then
 		Assert(false, 'Another texture ('+TextureSlots[inUnit].GetName+') is loaded in unit '+IntToStr(inUnit));
 	TextureSlots[inUnit] := self;
@@ -546,20 +569,6 @@ end;
 //$bookmark TEXTURE PACK
 //$bookmark -
 
-type
-	TFPGObjectMap =  specialize TFPGMap<string, TObject>;
-
-procedure FreeMapAndObjects (var inMap); 
-var
-	i: integer;
-	map: TFPGObjectMap absolute inMap;
-begin
-	for i := 0 to map.Count - 1 do
-		if assigned(map.data[i]) then
-			map.data[i].Free;
-	map.Free;
-end;
-
 constructor TTexturePack.Create;
 begin
 	scale := 1.0;
@@ -577,8 +586,7 @@ end;
 
 destructor TTexturePack.Destroy;
 begin
-	if assigned(textures) then
-		FreeMapAndObjects(textures);
+	FreeAndNil(textures);
 	if textureID <> 0 then
 		glDeleteTextures(1, @textureID);
 end;
@@ -625,12 +633,10 @@ end;
 
 procedure TTexturePack.LoadImage (imagePath: ansistring);
 var
-	parts: TFileParts;
 	image: TImage;
 	width, height: integer;
 begin
 	Assert(FileExists(imagePath), imagePath+' for sprite pack doesn'' exist.');
-	parts := ExtractFileParts(imagePath);
 	image := LoadImageFromFile(imagePath, width, height);
 	if assigned(image) then
 		begin
@@ -639,7 +645,7 @@ begin
 			LoadTexture2D(width, height, image, texParams);
 			RestoreTextureUnit(0, textureID);
 			textureSize := V2(width, height);
-			FreeMem(image);
+			//FreeMem(image);
 		end;
 end;
 
@@ -706,8 +712,17 @@ begin
 					attributes := NodeAttributes(node);
 					
 					spriteSize := V2(attributes['w'], attributes['h']);
-					originalSize := V2(attributes['oW'], attributes['oH']);
-					offset := V2(attributes['oX'], attributes['oY']);
+					
+					if attributes.Indexof('oW') <> -1 then
+						originalSize := V2(attributes['oW'], attributes['oH'])
+					else
+						originalSize := spriteSize;
+					
+					if attributes.Indexof('oX') <> -1 then
+						offset := V2(attributes['oX'], attributes['oY'])
+					else
+						offset := V2(0, 0);
+
 					position := V2(attributes['x'], attributes['y']);
 					pivot := V2(attributes['pX'], attributes['pY']);
 										
@@ -772,6 +787,16 @@ begin
 	result := RectMake(textureSpace.minX / textureSize.width, textureSpace.minY / textureSize.height, textureSpace.width / textureSize.width, textureSpace.height / textureSize.height);
 end;
 
+function TTextureSheet.TextureSpaceForTextureFrame (textureFrame: TRect): TRect;
+begin
+	result := RectMake(trunc(textureFrame.minX * textureSize.width), trunc(textureFrame.minY * textureSize.height), trunc(textureFrame.width * textureSize.width), trunc(textureFrame.height * textureSize.height));
+end;
+
+function TTextureSheet.PixelAt(x, y: integer): TImagePixel;
+begin
+	result := sourceImage[x + y * imageWidth];
+end;
+
 destructor TTextureSheet.Destroy;
 begin
 	textures.Free;
@@ -826,7 +851,7 @@ begin
 	Assert(not IsLoaded, 'Texture is already loaded.');
 	LoadImage(sourceImage);
 	LoadFromTexture(V2(imageWidth, imageHeight));
-	FreeMem(sourceImage);
+	//FreeMem(sourceImage);
 end;
 
 constructor TTextureSheet.Create (path: ansistring; _cellSize: TVec2; _tableSize: TVec2);
@@ -893,7 +918,7 @@ begin
 	LoadTexture2D(trunc(faceSize.width), trunc(faceSize.height), image, texParams);
 	RestoreTextureUnit(0, textureID);
 
-	FreeMem(sourceImage);
+	//FreeMem(sourceImage);
 	sourceImage := nil;
 end;
 

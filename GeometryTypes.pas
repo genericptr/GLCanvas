@@ -9,6 +9,8 @@ uses
 
 type
   TRect = record
+    private
+      function GetPoint(index: integer): TVec2;
     public
       origin: TVec2;
       size: TVec2;
@@ -38,6 +40,7 @@ type
       property Y: TScalar read origin.y write origin.y;
       property W: TScalar read size.x write size.x;
       property H: TScalar read size.y write size.y;
+      property Points[index: integer]: TVec2 read GetPoint;
 
       function IsEmpty: boolean;
       function ContainsPoint (point: TVec2): boolean;
@@ -49,15 +52,15 @@ type
       procedure Show;
       function ToStr: string;
     public
-      class operator + (r1, r2: TRect): TRect; overload;
-      class operator - (r1, r2: TRect): TRect; overload; 
-      class operator * (r1, r2: TRect): TRect; overload; 
-      class operator / (r1, r2: TRect): TRect;  overload;
-      class operator + (r1: TRect; r2: TScalar): TRect; overload; 
-      class operator - (r1: TRect; r2: TScalar): TRect; overload; 
-      class operator * (r1: TRect; r2: TScalar): TRect; overload; 
-      class operator / (r1: TRect; r2: TScalar): TRect; overload;
-      class operator = (r1, r2: TRect): boolean; 
+      class operator + (left, right: TRect): TRect; overload;
+      class operator - (left, right: TRect): TRect; overload; 
+      class operator * (left, right: TRect): TRect; overload; 
+      class operator / (left, right: TRect): TRect;  overload;
+      class operator + (left: TRect; right: TScalar): TRect; overload; 
+      class operator - (left: TRect; right: TScalar): TRect; overload; 
+      class operator * (left: TRect; right: TScalar): TRect; overload; 
+      class operator / (left: TRect; right: TScalar): TRect; overload;
+      class operator = (left, right: TRect): boolean; 
   end;
 
 type
@@ -139,7 +142,10 @@ type
 function RGBA(r, g, b, a: TScalar): TColor;
 function HexColorToRGB (hexValue: integer; alpha: TScalar = 1.0): TVec4;
 
-function PolyContainsPoint (points: TVec2Array; point: TVec2): boolean;
+function PolyContainsPoint (const points: TVec2Array; constref point: TVec2): boolean;
+function PolyIntersectsRect(const vertices: TVec2Array; constref rect: TRect): boolean;
+function PolyIntersectsPoly(const p1, p2: TVec2Array): boolean;
+
 function PointOnSide (p, a, b: TVec2): integer;
 function LineIntersectsRect (p1, p2: TVec2; rect: TRect): boolean;
 function LineIntersectsCircle (p1, p2: TVec2; origin: TVec2; radius: single): boolean; 
@@ -154,6 +160,162 @@ function PointOnSide (p, a, b: TVec2): integer;
 begin
   result := Sign(((b.x - a.x) * (p.y - a.y)) - ((b.y - a.y) * (p.x - a.x)));
 end;
+
+// http://jeffreythompson.org/collision-detection/poly-rect.php
+// http://jeffreythompson.org/collision-detection/poly-poly.php
+// http://jeffreythompson.org/collision-detection/poly-line.php
+
+function LineLine(x1, y1, x2, y2, x3, y3, x4, y4: TScalar): boolean;
+var
+  uA, uB: TScalar;
+begin
+  // calculate the direction of the lines
+  uA := ((x4-x3)*(y1-y3) - (y4-y3)*(x1-x3)) / ((y4-y3)*(x2-x1) - (x4-x3)*(y2-y1));
+  uB := ((x2-x1)*(y1-y3) - (y2-y1)*(x1-x3)) / ((y4-y3)*(x2-x1) - (x4-x3)*(y2-y1));
+
+  // if uA and uB are between 0-1, lines are colliding
+  result := (uA >= 0) and (uA <= 1) and (uB >= 0) and (uB <= 1);
+end;
+
+function LineRect (x1, y1, x2, y2, rx, ry, rw, rh: TScalar): boolean;
+var
+  left,
+  right,
+  top,
+  bottom: boolean;
+begin
+  // check if the line has hit any of the rectangle's sides
+  // uses the Line/Line function below
+  left := LineLine(x1,y1,x2,y2, rx,ry,rx, ry+rh);
+  right := LineLine(x1,y1,x2,y2, rx+rw,ry, rx+rw,ry+rh);
+  top := LineLine(x1,y1,x2,y2, rx,ry, rx+rw,ry);
+  bottom := LineLine(x1,y1,x2,y2, rx,ry+rh, rx+rw,ry+rh);
+
+  // if ANY of the above are true,
+  // the line has hit the rectangle
+  result := (left or right or top or bottom);
+end;
+
+function PolyLine(const vertices: TVec2Array; x1, y1, x2, y2: TScalar): boolean;
+var
+  next,
+  current: integer;
+  x3, y3, x4, y4: TScalar;
+begin
+  // go through each of the vertices, plus the next
+  // vertex in the list
+  next := 0;
+  for current := 0 to high(vertices) do
+    begin
+      // get next vertex in list
+      // if we've hit the end, wrap around to 0
+      next := current+1;
+      if (next = length(vertices)) then
+        next := 0;
+
+      // get the PVectors at our current position
+      // extract X/Y coordinates from each
+      x3 := vertices[current].x;
+      y3 := vertices[current].y;
+      x4 := vertices[next].x;
+      y4 := vertices[next].y;
+
+      // do a Line/Line comparison
+      // if true, return 'true' immediately and
+      // stop testing (faster)
+      if LineLine(x1, y1, x2, y2, x3, y3, x4, y4) then
+        exit(true);
+    end;
+
+  // never got a hit
+  result := false;
+end;
+
+function LineIntersectsLine(constref a1, a2: TVec2; constref b1, b2: TVec2): boolean;
+begin
+  result := LineLine(a1.x, a1.y,
+                     a2.x, a2.y,
+                     b1.x, b1.y,
+                     b2.x, b2.y);
+end;
+
+function PolyIntersectsPoly(const p1, p2: TVec2Array): boolean;
+var
+  next,
+  current: integer;
+  vc, vn: TVec2;
+begin
+  // go through each of the vertices, plus the next
+  // vertex in the list
+  next := 0;
+  for current := 0 to high(p1) do
+    begin
+      // get next vertex in list
+      // if we've hit the end, wrap around to 0
+      next := current+1;
+      if (next = length(p1)) then
+        next := 0;
+
+      // get the PVectors at our current position
+      // this makes our if statement a little cleaner
+      vc := p1[current];    // c for "current"
+      vn := p1[next];       // n for "next"
+
+      // now we can use these two points (a line) to compare
+      // to the other polygon's vertices using polyLine()
+      if PolyLine(p2,vc.x,vc.y,vn.x,vn.y) then
+        exit(true);
+
+      // optional: check if the 2nd polygon is INSIDE the first
+      if PolyContainsPoint(p1, p2[0]) then
+        exit(true);
+    end;
+
+  result := false;
+end;
+
+function PolyIntersectsRect(const vertices: TVec2Array; constref rect: TRect): boolean;
+var
+  next,
+  current: integer;
+  vc, vn: TVec2;
+  rx, ry, rw, rh: TScalar;
+begin
+  rx := rect.x;
+  ry := rect.y;
+  rw := rect.w;
+  rh := rect.h;
+
+  // go through each of the vertices, plus the next
+  // vertex in the list
+  next := 0;
+  for current := 0 to high(vertices) do
+    begin
+      // get next vertex in list
+      // if we've hit the end, wrap around to 0
+      next := current+1;
+      if (next = length(vertices)) then
+        next := 0;
+
+      // get the PVectors at our current position
+      // this makes our if statement a little cleaner
+      vc := vertices[current];    // c for "current"
+      vn := vertices[next];       // n for "next"
+
+      // check against all four sides of the rectangle
+      if lineRect(vc.x,vc.y,vn.x,vn.y, rx,ry,rw,rh) then
+        exit(true);
+
+      // optional: test if the rectangle is INSIDE the polygon
+      // note that this iterates all sides of the polygon
+      // again, so only use this if you need to
+      if PolyContainsPoint(vertices, V2(rx,ry)) then
+        exit(true);
+    end;
+
+  result := false;
+end;
+
 
 // http://stackoverflow.com/questions/99353/how-to-test-if-a-line-segment-intersects-an-axis-aligned-rectange-in-2d
 function LineIntersectsRect (p1, p2: TVec2; rect: TRect): boolean;
@@ -287,7 +449,7 @@ begin
   result.a := alpha;
 end;
 
-function PolyContainsPoint (points: TVec2Array; point: TVec2): boolean;
+function PolyContainsPoint (const points: TVec2Array; constref point: TVec2): boolean;
 var
   i, j, c: integer;
 begin
@@ -502,6 +664,20 @@ begin
   result := '{'+origin.ToStr+','+size.ToStr+'}';
 end;
 
+function TRect.GetPoint(index: integer): TVec2;
+begin
+  case index of
+    0:
+      result := TopLeft;
+    1:
+      result := TopRight;
+    2:
+      result := BottomLeft;
+    3:
+      result := BottomRight;
+  end;
+end;
+
 constructor TRect.Create(inX, inY: TScalar; inWidth, inHeight: TScalar);
 begin
   self.origin.x := inX;
@@ -540,7 +716,7 @@ end;
 
 function TRect.Min: TVec2;
 begin
-  result := V2(MinX, MinY);
+  result := origin;
 end;
 
 function TRect.Max: TVec2;
@@ -548,7 +724,7 @@ begin
   result := V2(MaxX, MaxY);
 end;
 
-function TRect.Center: TVec2; inline;
+function TRect.Center: TVec2;
 begin
   result := V2(MidX, MidY);
 end;
@@ -593,49 +769,49 @@ begin
   result := MinY + Height / 2;
 end;
 
-class operator TRect.+ (r1, r2: TRect): TRect;
+class operator TRect.+ (left, right: TRect): TRect;
 begin
-  result := RectMake(r1.origin.x + r2.origin.x, r1.origin.y + r2.origin.y, r1.size.width + r2.size.width, r1.size.height + r2.size.height);
+  result := RectMake(left.origin.x + right.origin.x, left.origin.y + right.origin.y, left.size.width + right.size.width, left.size.height + right.size.height);
 end;
 
-class operator TRect.- (r1, r2: TRect): TRect;
+class operator TRect.- (left, right: TRect): TRect;
 begin
-  result := RectMake(r1.origin.x - r2.origin.x, r1.origin.y - r2.origin.y, r1.size.width - r2.size.width, r1.size.height - r2.size.height);
+  result := RectMake(left.origin.x - right.origin.x, left.origin.y - right.origin.y, left.size.width - right.size.width, left.size.height - right.size.height);
 end;
 
-class operator TRect.* (r1, r2: TRect): TRect; 
+class operator TRect.* (left, right: TRect): TRect; 
 begin
-  result := RectMake(r1.origin.x * r2.origin.x, r1.origin.y * r2.origin.y, r1.size.width * r2.size.width, r1.size.height * r2.size.height);
+  result := RectMake(left.origin.x * right.origin.x, left.origin.y * right.origin.y, left.size.width * right.size.width, left.size.height * right.size.height);
 end;
 
-class operator TRect./ (r1, r2: TRect): TRect; 
+class operator TRect./ (left, right: TRect): TRect; 
 begin
-  result := RectMake(r1.origin.x / r2.origin.x, r1.origin.y / r2.origin.y, r1.size.width / r2.size.width, r1.size.height / r2.size.height);
+  result := RectMake(left.origin.x / right.origin.x, left.origin.y / right.origin.y, left.size.width / right.size.width, left.size.height / right.size.height);
 end;
 
-class operator TRect.= (r1, r2: TRect): boolean; 
+class operator TRect.= (left, right: TRect): boolean; 
 begin
-  result := (r1.origin = r2.origin) and (r1.size = r2.size);
+  result := (left.origin = right.origin) and (left.size = right.size);
 end;
 
-class operator TRect.+ (r1: TRect; r2: TScalar): TRect;
+class operator TRect.+ (left: TRect; right: TScalar): TRect;
 begin
-  result := RectMake(r1.origin.x + r2, r1.origin.y + r2, r1.size.width + r2, r1.size.height + r2);
+  result := RectMake(left.origin.x + right, left.origin.y + right, left.size.width + right, left.size.height + right);
 end;
 
-class operator TRect.- (r1: TRect; r2: TScalar): TRect;
+class operator TRect.- (left: TRect; right: TScalar): TRect;
 begin
-  result := RectMake(r1.origin.x - r2, r1.origin.y +- r2, r1.size.width - r2, r1.size.height - r2);
+  result := RectMake(left.origin.x - right, left.origin.y +- right, left.size.width - right, left.size.height - right);
 end;
 
-class operator TRect.* (r1: TRect; r2: TScalar): TRect;
+class operator TRect.* (left: TRect; right: TScalar): TRect;
 begin
-  result := RectMake(r1.origin.x * r2, r1.origin.y * r2, r1.size.width * r2, r1.size.height * r2);
+  result := RectMake(left.origin.x * right, left.origin.y * right, left.size.width * right, left.size.height * right);
 end;
 
-class operator TRect./ (r1: TRect; r2: TScalar): TRect;
+class operator TRect./ (left: TRect; right: TScalar): TRect;
 begin
-  result := RectMake(r1.origin.x / r2, r1.origin.y / r2, r1.size.width / r2, r1.size.height / r2);
+  result := RectMake(left.origin.x / right, left.origin.y / right, left.size.width / right, left.size.height / right);
 end;
 
 function RadiusForRect (rect: TRect): TScalar;

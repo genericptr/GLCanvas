@@ -5,7 +5,7 @@
 program CoreGL_Iso;
 uses
   CThreads, FGL, Contnrs, Classes, BaseUnix, FPJSON, JSONParser, SysUtils,
-  GLPT, GLCanvas, VectorMath;
+  GLPT, GLCanvas, GeometryTypes, VectorMath;
 
 type
   TJSONObjectHelper = class helper for TJSONObject

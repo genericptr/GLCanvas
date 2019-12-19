@@ -11,19 +11,29 @@ function Explode(delimiter: char; s: ansistring): TStringList;
 function ReadFile(path: ansistring): ansistring;
 var
   f: File;
+  list: TStringList;
 begin
   Assert(FileExists(path), 'file '+path+' doesnt''t exist');
   try
-    AssignFile(f, path);
-    FileMode := fmOpenRead;
-    Reset(f, 1);
-    SetLength(result, FileSize(f));
-    BlockRead(f, pointer(result)^, FileSize(f));
-    CloseFile(f);
+    list := TStringList.Create;
+    list.LoadFromFile(path);
+    result := list.Text;
   except
     on E:Exception do
       writeln(path+': ', E.Message);
   end;
+  list.Free;
+  //try
+  //  AssignFile(f, path);
+  //  FileMode := fmOpenRead;
+  //  Reset(f, 1);
+  //  SetLength(result, FileSize(f));
+  //  BlockRead(f, pointer(result)^, FileSize(f));
+  //  CloseFile(f);
+  //except
+  //  on E:Exception do
+  //    writeln(path+': ', E.Message);
+  //end;
 end;
 
 function Explode(delimiter: char; s: ansistring): TStringList;

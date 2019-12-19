@@ -5,7 +5,7 @@
 unit GLShader;
 interface
 uses
-  Contnrs, VectorMath, GL, GLExt;
+  FGL, VectorMath, GL, GLExt;
 
 type
   TShader = class
@@ -16,18 +16,22 @@ type
       constructor Create (vertexShaderSource, fragmentShaderSource: pchar);
       procedure Push;
       procedure Pop;
+      function IsActive: boolean;
       function GetUniformLocation(name: pchar): integer;
-      procedure SetUniformMatrix4fv(name: pchar; constref mat: TMat4);
-      procedure SetUniform1iv(name: pchar; count: integer; ints: PInteger);
+      procedure SetUniformMat4(name: pchar; constref mat: TMat4);
+      procedure SetUniformInts(name: pchar; count: integer; ints: PInteger);
+      procedure SetUniformInt(name: pchar; value: integer);
+      procedure SetUniformFloat(name: pchar; value: float);
       destructor Destroy; override;
   end;
+  TShaderObjectList = specialize TFPGObjectList<TShader>;
 
 var
-  ShaderStack: TObjectList;
+  ShaderStack: TShaderObjectList;
 
 implementation
 uses
-  SysUtils;
+  GLUtils, SysUtils;
 
 constructor TShader.Create (vertexShaderSource, fragmentShaderSource: pchar);
 var
@@ -86,7 +90,7 @@ end;
 procedure TShader.Push;
 begin
   if ShaderStack = nil then
-    ShaderStack := TObjectList.Create(false);
+    ShaderStack := TShaderObjectList.Create(false);
   ShaderStack.Add(self);
   Use;
 end;
@@ -94,10 +98,10 @@ end;
 procedure TShader.Pop;
 begin
   if ShaderStack = nil then
-    ShaderStack := TObjectList.Create(false);
+    ShaderStack := TShaderObjectList.Create(false);
   ShaderStack.Delete(ShaderStack.Count - 1);
   Assert(ShaderStack.Count > 0, 'attempting to pop empty shader stack.');
-  TShader(ShaderStack.Last).Use;
+  ShaderStack.Last.Use;
 end;
 
 procedure TShader.Use;
@@ -106,14 +110,37 @@ begin
   //writeln('use shader ', programID);
 end;
 
-procedure TShader.SetUniformMatrix4fv(name: pchar; constref mat: TMat4);
+function TShader.IsActive: boolean;
 begin
-  glUniformMatrix4fv(GetUniformLocation(name), 1, GL_FALSE, mat.Ptr);
+  result := ShaderStack.Last = self;
 end;
 
-procedure TShader.SetUniform1iv(name: pchar; count: integer; ints: PInteger);
+procedure TShader.SetUniformMat4(name: pchar; constref mat: TMat4);
 begin
+  Assert(IsActive, 'shader must be active before setting uniforms.');
+  glUniformMatrix4fv(GetUniformLocation(name), 1, GL_FALSE, mat.Ptr);
+  GLAssert('glUniformMatrix4fv '+name);
+end;
+
+procedure TShader.SetUniformFloat(name: pchar; value: float);
+begin
+  Assert(IsActive, 'shader must be active before setting uniforms.');
+  glUniform1f(GetUniformLocation(name), value);
+  GLAssert('glUniform1f '+name);
+end;
+
+procedure TShader.SetUniformInt(name: pchar; value: integer);
+begin
+  Assert(IsActive, 'shader must be active before setting uniforms.');
+  glUniform1i(GetUniformLocation(name), value);
+  GLAssert('glUniform1i '+name);
+end;
+
+procedure TShader.SetUniformInts(name: pchar; count: integer; ints: PInteger);
+begin
+  Assert(IsActive, 'shader must be active before setting uniforms.');
   glUniform1iv(GetUniformLocation(name), count, ints);
+  GLAssert('glUniform1iv '+name);
 end;
 
 function TShader.GetUniformLocation(name: pchar): integer;

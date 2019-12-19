@@ -137,7 +137,7 @@ type
 			procedure SetTile (tileset: TTMXTileSet; index: integer; gid: GIDInt);
 	end;
 	TTMXLayerList = specialize TFPGObjectList<TTMXLayer>;
-	TTMXLayerMap = specialize TFPGObjectMap<TTMXLayer>;
+	TTMXLayerMap = specialize TFPGMapObject<String, TTMXLayer>;
 
 type
 	TTMXFile = class

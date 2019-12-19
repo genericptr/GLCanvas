@@ -9,7 +9,7 @@ unit GLCanvas;
 interface
 uses
   GL, GLExt, FGL, Classes, 
-  GLPT, VectorMath, GeometryTypes;
+  BeRoPNG, GLPT, VectorMath, GeometryTypes;
 
 {$define INTERFACE}
 {$include include/Textures.inc}
@@ -33,8 +33,8 @@ procedure FillOval (constref rect: TRect; constref color: TColor; segments: sing
 procedure StrokeOval (constref rect: TRect; constref color: TColor; segments: single = 32; lineWidth: single = 1.0); 
 procedure FillPolygon(points: array of TVec2; constref color: TColor);
 procedure StrokePolygon(points: array of TVec2; constref color: TColor; lineWidth: single = 1.0);
-procedure DrawLine(p1, p2: TVec2; thickness: single = 1); inline;
-procedure DrawLine(points: PVec2Array; count: integer; thickness: single = 1);
+procedure DrawLine(p1, p2: TVec2; constref color: TColor; thickness: single = 1); inline;
+procedure DrawLine(points: PVec2Array; count: integer; constref color: TColor; thickness: single = 1);
 procedure DrawPoint(constref point: TVec2; constref color: TColor);
 
 { Textures }
@@ -68,7 +68,7 @@ var
 
 implementation
 uses
-  BeRoPNG, GLShader, GLVertexBuffer, GLUtils,
+  GLShader, GLVertexBuffer, GLUtils,
   Contnrs, Variants, CTypes,
   SysUtils, DOM, XMLRead, Strings;
 
@@ -267,7 +267,7 @@ type
 var
   context: GLPT_Context;
   defaultShader: TShader = nil;
-  vertexBuffer: TVertex3VertexBuffer;
+  vertexBuffer: TVertex3VertexBuffer = nil;
   textureUnits: array[0..7] of GLint = (0, 1, 2, 3, 4, 5, 6, 7);
   drawState: TGLDrawState;
 
@@ -406,23 +406,24 @@ begin
   FlushDrawing;
 end;
 
-procedure DrawLine(p1, p2: TVec2; thickness: single = 1);
+procedure DrawLine(p1, p2: TVec2; constref color: TColor; thickness: single = 1);
 var
   points: array[0..1] of TVec2;
 begin
   points[0] := p1;
   points[1] := p2;
-  DrawLine(@points[0], 2, thickness);
+  DrawLine(@points[0], 2, color, thickness);
 end;
 
-procedure DrawLine(points: PVec2Array; count: integer; thickness: single = 1);
+procedure DrawLine(points: PVec2Array; count: integer; constref color: TColor; thickness: single = 1);
 var
   v: array[0..3] of TVertex3;
   n: TVec2;
   r, a: single;
   i: integer;
 begin
-  Assert(thickness >= 1, 'line thickness must be >= 1.');
+  if thickness < 0 then
+    thickness := 1;
 
   // https://artgrammer.blogspot.com/2011/05/drawing-nearly-perfect-2d-line-segments.html
   // https://people.eecs.ku.edu/~jrmiller/Courses/OpenGL/DrawModes.html
@@ -439,7 +440,7 @@ begin
           //    vertexBuffer.Add(TVertex3.Create(points[i - 1], V2(0, 0), V4(0, 0, 0, 1), 255));
           //    vertexBuffer.Add(TVertex3.Create(points[i], V2(0, 0), V4(0, 0, 0, 1), 255));
           //  end;
-          vertexBuffer.Add(TVertex3.Create(points[i], V2(0, 0), V4(0, 0, 0, 1), 255));
+          vertexBuffer.Add(TVertex3.Create(points[i], V2(0, 0), color, 255));
         end;
     end
   else if thickness > 1 then
@@ -460,12 +461,12 @@ begin
 
           if i = 0 then
             begin
-              v[0] := TVertex3.Create(points[i] + n.Rotate(a + PI * 0.25) * r, V2(0, 0), V4(0, 0, 0, 1), 255);
-              v[1] := TVertex3.Create(points[i] + n.Rotate(a + PI * 1.25) * r, V2(0, 0), V4(0, 0, 0, 1), 255);
+              v[0] := TVertex3.Create(points[i] + n.Rotate(a + PI * 0.25) * r, V2(0, 0), color, 255);
+              v[1] := TVertex3.Create(points[i] + n.Rotate(a + PI * 1.25) * r, V2(0, 0), color, 255);
             end;
           
-          v[2] := TVertex3.Create(points[i + 1] + n.Rotate(a + PI * 0.25) * r, V2(0, 0), V4(0, 0, 0, 1), 255);
-          v[3] := TVertex3.Create(points[i + 1] + n.Rotate(a + PI * 1.25) * r, V2(0, 0), V4(0, 0, 0, 1), 255);
+          v[2] := TVertex3.Create(points[i + 1] + n.Rotate(a + PI * 0.25) * r, V2(0, 0), color, 255);
+          v[3] := TVertex3.Create(points[i + 1] + n.Rotate(a + PI * 1.25) * r, V2(0, 0), color, 255);
 
           vertexBuffer.Add(v[0]);
           vertexBuffer.Add(v[1]);
@@ -500,16 +501,11 @@ var
 begin
   ChangePrimitiveType(GL_TRIANGLES);
 
-  quad.SetPosition(rect.x, rect.y, rect.width, rect.height);
+  quad.SetPosition(rect);
   quad.SetColor(color.r, color.g, color.b, color.a);
   quad.SetUV(255);
 
-  vertexBuffer.Add(quad.v[0]);
-  vertexBuffer.Add(quad.v[1]);
-  vertexBuffer.Add(quad.v[2]);
-  vertexBuffer.Add(quad.v[3]);
-  vertexBuffer.Add(quad.v[4]);
-  vertexBuffer.Add(quad.v[5]);
+  vertexBuffer.AddQuad(@quad);
 end;
 
 procedure StrokeRect (constref rect: TRect; constref color: TColor; lineWidth: single = 1.0);
@@ -575,10 +571,10 @@ end;
 
 procedure FlushDrawing;
 begin
-  if vertexBuffer.Count = 0 then
+  if not assigned(vertexBuffer) or (vertexBuffer.Count = 0) then
     exit;
 
-  Assert(ShaderStack.Last = defaultShader, 'active shader must be default.');
+  //Assert(ShaderStack.Last = defaultShader, 'active shader must be default.');
 
   vertexBuffer.Draw(drawState.bufferPrimitiveType);
   vertexBuffer.Clear;
@@ -598,7 +594,9 @@ begin
   glClearColor(1, 1, 1, 1);
   glEnable(GL_BLEND); 
   glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-  glDisable(GL_MULTISAMPLE);
+  //glDisable(GL_MULTISAMPLE);
+  //glEnable(GL_MULTISAMPLE_ARB);
+  glEnable(GL_MULTISAMPLE);
   glDisable(GL_DEPTH_TEST);
 
   with GLCanvasState do
@@ -615,9 +613,9 @@ begin
       defaultShader := TShader.Create(DefaultVertexShader, DefaultFragmentShader);
 
       defaultShader.Push;
-      defaultShader.SetUniformMatrix4fv('projTransform', projTransform);
-      defaultShader.SetUniformMatrix4fv('viewTransform', viewTransform);
-      defaultShader.SetUniform1iv('textures', 8, @textureUnits);
+      defaultShader.SetUniformMat4('projTransform', projTransform);
+      defaultShader.SetUniformMat4('viewTransform', viewTransform);
+      defaultShader.SetUniformInts('textures', 8, @textureUnits);
     end;
 end;
 
