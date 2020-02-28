@@ -1,6 +1,5 @@
 {$mode objfpc}
 {$assertions on}
-{$modeswitch multihelpers}
 
 program CoreGL_Iso;
 uses

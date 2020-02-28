@@ -2,6 +2,7 @@
 {$modeswitch advancedrecords}
 {$modeswitch typehelpers}
 {$modeswitch autoderef}
+{$modeswitch multihelpers}
 {$interfaces CORBA}
 {$assertions on}
 
@@ -13,6 +14,7 @@ uses
 
 {$define INTERFACE}
 {$include include/Textures.inc}
+{$include include/Text.inc}
 {$include include/BitmapFont.inc}
 {$include include/FileUtils.inc}
 {$undef INTERFACE}
@@ -38,10 +40,14 @@ procedure DrawLine(points: PVec2Array; count: integer; constref color: TColor; t
 procedure DrawPoint(constref point: TVec2; constref color: TColor);
 
 { Textures }
-procedure DrawTexture (texture: TTexture; x, y: single); overload;
-procedure DrawTexture (texture: TTexture; constref rect: TRect); overload; inline;
-procedure DrawTexture (texture: TTexture; constref rect: TRect; constref textureFrame: TRect); overload;
-procedure DrawTexture (texture: TTexture; constref rect: TRect; constref textureFrame: TRect; constref color: TVec4); overload;
+procedure DrawTexture (texture: ITexture; x, y: single); overload;
+procedure DrawTexture (texture: ITexture; constref rect: TRect); overload; inline;
+procedure DrawTexture (texture: ITexture; constref rect: TRect; constref textureFrame: TRect); overload;
+procedure DrawTexture (texture: ITexture; constref rect: TRect; constref textureFrame: TRect; constref color: TVec4); overload;
+
+{ Clip Rects }
+procedure PushClipRect (rect: TRect); 
+procedure PopClipRect; 
 
 { Buffers }
 procedure FlushDrawing;
@@ -50,17 +56,29 @@ procedure SwapBuffers;
 
 procedure SetViewTransform(x, y, scale: single);
 procedure SetViewPort (inWidth, inHeight: integer);
+function GetViewPort: TRect; inline;
 
 { Utilities }
+function FRand (min, max: single): single;
+function FRand (min, max: single; decimal: integer): single;
 function Rand(min, max: longint): longint;
 function TimeSinceNow: longint;
 
 type
+  TRectList = specialize TFPGList<TRect>;
   TGLCanvasState = record
     width, height: integer;
     window: PGLPTWindow;
     projTransform: TMat4;
     viewTransform: TMat4;
+    clipRectStack: TRectList;
+  end;
+
+type
+  TTextureHelper = class helper for TTextureSource
+    procedure Draw(x, y: single); overload;
+    procedure Draw(constref rect: TRect); overload;
+    procedure Draw(constref rect: TRect; constref color: TVec4); overload;
   end;
 
 var
@@ -74,6 +92,7 @@ uses
 
 {$define IMPLEMENTATION}
 {$include include/Textures.inc}
+{$include include/Text.inc}
 {$include include/BitmapFont.inc}
 {$include include/FileUtils.inc}
 {$undef IMPLEMENTATION}
@@ -87,6 +106,16 @@ begin
   // TODO: replace with GLPT_Time
   result := round(TimeStampToMSecs(DateTimeToTimeStamp(Now)));
 end;    
+
+function FRand (min, max: single): single;
+begin
+  result := FRand(min, max, 100);
+end;
+
+function FRand (min, max: single; decimal: integer): single;
+begin
+  result := Rand(trunc(min * decimal), trunc(max * decimal)) / decimal;
+end;
 
 function Rand(min, max: longint): longint;
 var
@@ -111,6 +140,23 @@ begin
   if zero then
     min -= 1;
   result += min;
+end;
+
+{ Texture Helper }
+
+procedure TTextureHelper.Draw(x, y: single);
+begin
+  DrawTexture(self, x, y);
+end;
+
+procedure TTextureHelper.Draw(constref rect: TRect);
+begin
+  DrawTexture(self, rect);
+end;
+
+procedure TTextureHelper.Draw(constref rect: TRect; constref color: TVec4);
+begin
+  DrawTexture(self, rect, GetTextureFrame.Texture, color);
 end;
 
 { Types }
@@ -252,6 +298,7 @@ const
                                  '    if (vertexColor.a < fragColor.a) {'+
                                  '      fragColor.a = vertexColor.a;'+
                                  '    }'+
+                                 '  fragColor.rgb = fragColor.rgb * vertexColor.rgb;'+
                                  '  } else {'+
                                  '    fragColor = vertexColor;'+
                                  '  }'+
@@ -300,6 +347,15 @@ begin
       height := inHeight;
       glViewPort(0, 0, width, height);
     end;
+end;
+
+function GetViewPort: TRect;
+//var
+//  viewPort: array[0..3] of GLint;
+begin
+  //glGetIntegerv(GL_VIEWPORT, @viewPort);
+  //result := RectMake(viewPort[0], viewPort[1], viewPort[2], viewPort[3]);
+  result := RectMake(0, 0, GLCanvasState.width, GLCanvasState.height);
 end;
 
 procedure QuitApp;
@@ -512,6 +568,9 @@ procedure StrokeRect (constref rect: TRect; constref color: TColor; lineWidth: s
 var
   texCoord: TVec2;
 begin
+
+  // TODO: line width doesn't work now???
+  // https://stackoverflow.com/questions/3484260/opengl-line-width
   ChangePrimitiveType(GL_LINE_LOOP);
 
   if drawState.lineWidth <> lineWidth then
@@ -532,7 +591,7 @@ begin
   FlushDrawing;
 end;
 
-procedure DrawTexture (texture: TTexture; constref rect: TRect; constref textureFrame: TRect; constref color: TVec4);
+procedure DrawTexture (texture: ITexture; constref rect: TRect; constref textureFrame: TRect; constref color: TVec4);
 var
   quad: TVertex3Quad;
   textureUnit: TGLTextureUnit;
@@ -549,24 +608,63 @@ begin
   vertexBuffer.AddQuad(@quad);
 end;
 
-procedure DrawTexture (texture: TTexture; constref rect: TRect; constref textureFrame: TRect);
+procedure DrawTexture (texture: ITexture; constref rect: TRect; constref textureFrame: TRect);
 begin
   DrawTexture(texture, rect, textureFrame, RGBA(1, 1, 1, 1));
 end;
 
-procedure DrawTexture (texture: TTexture; constref rect: TRect);
+procedure DrawTexture (texture: ITexture; constref rect: TRect);
 begin
-  DrawTexture(texture, rect, texture.GetTextureFrame);
+  DrawTexture(texture, rect, texture.GetTextureFrame.texture);
 end;
 
-procedure DrawTexture (texture: TTexture; x, y: single);
+procedure DrawTexture (texture: ITexture; x, y: single);
+var
+  size: TVec2;
 begin
-  DrawTexture(texture, RectMake(x, y, texture.GetWidth, texture.GetHeight));
+  size := texture.GetTextureFrame.pixel.size;
+  DrawTexture(texture, RectMake(x, y, size.width, size.height));
 end;
 
 procedure ClearBackground;
 begin
   glClear(GL_COLOR_BUFFER_BIT);
+end;
+
+procedure PushClipRect (rect: TRect); 
+begin
+  with GLCanvasState do
+    begin
+      if clipRectStack.Count = 0 then
+        glEnable(GL_SCISSOR_TEST);
+      //rect := RectFlip(rect, GetViewPort);
+      // TODO: if the new rect is outside of the previous than don't clip
+      if clipRectStack.Count > 0 then
+        begin
+          if clipRectStack.Last.ContainsRect(rect) then
+            glScissor(Trunc(rect.MinX), Trunc(rect.MinY), Trunc(rect.Width), Trunc(rect.Height));
+        end
+      else
+        glScissor(Trunc(rect.MinX), Trunc(rect.MinY), Trunc(rect.Width), Trunc(rect.Height));
+      clipRectStack.Add(rect);
+    end;
+end;
+
+procedure PopClipRect; 
+var
+  rect: TRect;
+begin
+  with GLCanvasState do
+    begin
+      clipRectStack.Delete(clipRectStack.Count - 1);
+      if clipRectStack.Count > 0 then
+        begin
+          rect := clipRectStack.Last;
+          glScissor(Trunc(rect.MinX), Trunc(rect.MinY), Trunc(rect.Width), Trunc(rect.Height));
+        end
+      else
+        glDisable(GL_SCISSOR_TEST);
+    end;
 end;
 
 procedure FlushDrawing;
@@ -630,6 +728,8 @@ begin
     begin
       width := inWidth;
       height := inHeight;
+      
+      clipRectStack := TRectList.Create;
 
       context := GLPT_GetDefaultContext;
       context.majorVersion := 3;
@@ -661,10 +761,9 @@ begin
     end;
 end;
 
-var
-  i: integer;
+
 begin
-  for i := 0 to 127 do
-    TextureSlots[i] := nil;
+  FillChar(TextureSlots, sizeof(TextureSlots), 0);
   System.Randomize;
+  ChDir(GLPT_GetBasePath);
 end.

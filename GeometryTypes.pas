@@ -8,6 +8,14 @@ uses
   VectorMath;
 
 type
+  TRectEdge = ( TRectEdgeMinX, 
+                TRectEdgeMinY,
+                TRectEdgeMaxX,
+                TRectEdgeMaxY,
+                TRectEdgeAny
+                );
+
+type
   TRect = record
     private
       function GetPoint(index: integer): TVec2;
@@ -48,10 +56,13 @@ type
       function IntersectsRect (rect: TRect): boolean;
       function Inset (byX, byY: TScalar): TRect; overload; inline;
       function Inset (amount: TScalar): TRect; overload; inline;
+      function Union (rect: TRect): TRect;
 
       procedure Show;
       function ToStr: string;
     public
+      class operator := (right: TScalar): TRect;
+      class operator := (right: array of TScalar): TRect;
       class operator + (left, right: TRect): TRect; overload;
       class operator - (left, right: TRect): TRect; overload; 
       class operator * (left, right: TRect): TRect; overload; 
@@ -91,6 +102,8 @@ type
   TSizeHelper = record helper for TVec2
     function Min: TScalar; inline;
     function Max: TScalar; inline;
+    procedure AddWidth(by: TScalar); inline;
+    procedure AddHeight(by: TScalar); inline;
     procedure SetWidth(newValue: TScalar); inline;
     procedure SetHeight(newValue: TScalar); inline;
     function GetWidth: TScalar; inline;
@@ -104,7 +117,14 @@ function RectMake(origin, size: TVec2): TRect; overload; inline;
 function RectMake(origin: TVec2; width, height: TScalar): TRect; overload; inline;
 function RectMake(x, y: TScalar; size: TVec2): TRect; overload; inline;
 
+function RectCenter (rect: TRect; target: TRect): TRect;
+function RectCenterX (rect: TRect; target: TRect): TRect; inline;
+function RectCenterY (rect: TRect; target: TRect): TRect; inline;
+function RectFlip (sourceRect, destRect: TRect): TRect;
+
 function RadiusForRect (rect: TRect): TScalar; inline;
+
+function Trunc (rect: TRect): TRect; overload;
 
 type
   TCircle = record
@@ -140,6 +160,7 @@ type
   end;
 
 function RGBA(r, g, b, a: TScalar): TColor;
+function RGBA(white: TScalar; alpha: TScalar = 1.0): TColor;
 function HexColorToRGB (hexValue: integer; alpha: TScalar = 1.0): TVec4;
 
 function PolyContainsPoint (const points: TVec2Array; constref point: TVec2): boolean;
@@ -441,6 +462,11 @@ begin
   result := V4(r, g, b, a);
 end;
 
+function RGBA(white: TScalar; alpha: TScalar = 1.0): TColor;
+begin
+  result := V4(white, white, white, alpha);
+end;
+
 function HexColorToRGB (hexValue: integer; alpha: TScalar = 1.0): TVec4;
 begin
   result.r := ((hexValue shr 16) and $FF) / 255.0;  // Extract the RR byte
@@ -609,6 +635,16 @@ begin
     result := height;
 end;
 
+procedure TSizeHelper.AddWidth(by: TScalar);
+begin
+  x += by;
+end;
+
+procedure TSizeHelper.AddHeight(by: TScalar);
+begin
+  y += by;
+end;
+
 procedure TSizeHelper.SetWidth(newValue: TScalar);
 begin
   x := newValue;
@@ -627,6 +663,41 @@ end;
 function TSizeHelper.GetHeight: TScalar;
 begin
   result := y;
+end;
+
+function RectCenterX (rect: TRect; target: TRect): TRect;
+begin
+  result := rect;
+  
+  if target.Width >= rect.Width then
+    result.origin.x += (target.Width / 2) - (rect.Width / 2)
+  else
+    result.origin.x := target.MidX - (rect.Width / 2);
+end;
+
+function RectCenterY (rect: TRect; target: TRect): TRect;
+begin
+  result := rect;
+  
+  if target.Height >= rect.Height then
+    result.origin.y := target.MinY + ((target.Height / 2) - (rect.Height / 2))
+  else
+    result.origin.y := target.MidY - (rect.Height / 2);
+end;
+
+function RectCenter (rect: TRect; target: TRect): TRect;
+begin
+  result.size := rect.size;
+  result.origin := target.origin;
+  
+  result := RectCenterX(result, target);
+  result := RectCenterY(result, target);
+end;
+
+function RectFlip (sourceRect, destRect: TRect): TRect;
+begin
+  result := sourceRect;
+  result.origin.y := destRect.MaxY - (result.MinY + result.Height);
 end;
 
 function RectMake(origin, size: TVec2): TRect;
@@ -694,6 +765,35 @@ end;
 function TRect.ContainsRect (rect: TRect): boolean;
 begin
   result := (rect.MinX >= MinX) and (rect.MinY >= MinY) and (rect.MaxX <= MaxX) and (rect.MaxY <= MaxY);
+end;
+
+function TRect.Union (rect: TRect): TRect;
+var
+  aabb: TAABB;
+begin
+  result := self;
+  
+  if result.MinX < rect.MinX then
+    aabb.x := result.MinX
+  else
+    aabb.x := rect.MinX;
+  
+  if result.MinY < rect.MinY then
+    aabb.y := result.MinY
+  else
+    aabb.y := rect.MinY;
+  
+  if result.MaxX > rect.MaxX then
+    aabb.right := result.MaxX
+  else
+    aabb.right := rect.MaxX;
+  
+  if result.MaxY > rect.MaxY then
+    aabb.bottom := result.MaxY
+  else
+    aabb.bottom := rect.MaxY;
+  
+  result := aabb;
 end;
 
 function TRect.Inset (byX, byY: TScalar): TRect;
@@ -769,6 +869,21 @@ begin
   result := MinY + Height / 2;
 end;
 
+class operator TRect.:= (right: TScalar): TRect;
+begin
+  result.origin := right;
+  result.size := right;
+end;
+
+
+class operator TRect.:= (right: array of TScalar): TRect;
+begin
+  result.origin.x := right[0];
+  result.origin.y := right[1];
+  result.size.x := right[2];
+  result.size.y := right[3];
+end;
+
 class operator TRect.+ (left, right: TRect): TRect;
 begin
   result := RectMake(left.origin.x + right.origin.x, left.origin.y + right.origin.y, left.size.width + right.size.width, left.size.height + right.size.height);
@@ -817,6 +932,11 @@ end;
 function RadiusForRect (rect: TRect): TScalar;
 begin
   result := rect.Min.Distance(rect.Max) / 2;
+end;
+
+function Trunc (rect: TRect): TRect;
+begin
+  result := RectMake(trunc(rect.origin.x), trunc(rect.origin.y), trunc(rect.size.x), trunc(rect.size.y));
 end;
 
 procedure TAABB.Show;

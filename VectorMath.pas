@@ -235,6 +235,7 @@ type
       property Width: TComponent read x write x;
       property Height: TComponent read y write y;
     public
+      class operator := (right: TComponent): TGVec2;
       class operator = (constref left, right: TGVec2): boolean; 
       class operator + (constref p1, p2: TGVec2): TGVec2; overload;
       class operator - (constref p1, p2: TGVec2): TGVec2; overload; 
@@ -272,6 +273,7 @@ type
       property Depth: TComponent read z write z;
       function Volume: TComponent; inline;
     public
+      class operator := (right: TComponent): TGVec3;
       class operator = (constref left, right: TGVec3): boolean;
       class operator + (constref p1, p2: TGVec3): TGVec3; overload;
       class operator - (constref p1, p2: TGVec3): TGVec3; overload; 
@@ -362,7 +364,10 @@ function Trunc (vec: TVec3): TVec3; overload;
 function Trunc (vec: TVec4): TVec4; overload;
 
 function Angle (constref a,b,c: TVec3): TScalar;
-function Clamp (int: integer; lowest, highest: integer): integer; inline;
+function Clamp (int: integer; lowest, highest: integer): integer; overload; inline;
+function Clamp (int: TScalar; lowest, highest: TScalar): TScalar; overload; inline;
+function RoundTo(Number: TScalar; Places: longint): TScalar;
+function RoundUp(Number: TScalar): longint;
 
 implementation
 
@@ -454,9 +459,15 @@ begin
 end;
 
 { TGVec2 }
+class operator TGVec2.:= (right: TComponent): TGVec2;
+begin
+  result.x := right;
+  result.y := right;
+end;
+
 class operator TGVec2.= (constref left, right: TGVec2): boolean; 
 begin
-  result := (left.x = left.x) and (left.y = left.y);
+  result := (left.x = right.x) and (left.y = right.y);
 end;
 
 class operator TGVec2.+ (constref p1, p2: TGVec2): TGVec2;
@@ -538,6 +549,13 @@ begin
 end;
 
 { TGVec3 }
+class operator TGVec3.:= (right: TComponent): TGVec3;
+begin
+  result.x := right;
+  result.y := right;
+  result.z := right;
+end;
+
 class operator TGVec3.= (constref left, right: TGVec3): boolean;
 begin
   result := (left.x = right.x) and (left.y = right.y) and (left.z = right.z);
@@ -667,6 +685,24 @@ end;
 {=============================================}
 {@! ___PROCEDURAL___ } 
 {=============================================}
+function RoundUp(number: TScalar): longint;
+begin
+  if Frac(number) > 0 then
+    result := trunc(number) + 1
+  else
+    result := trunc(number);
+end;
+
+function RoundTo(Number: TScalar; Places: longint): TScalar;
+var
+  t: TScalar;
+begin
+  if places = 0 then
+    exit(number);
+  t := power(10, places);
+  result := round(Number*t)/t;
+end;
+
 function Angle(constref a,b,c: TVec3): TScalar;
 var 
   DeltaAB, DeltaCB: TVec3;
@@ -683,6 +719,16 @@ begin
 end;
 
 function Clamp (int: integer; lowest, highest: integer): integer;
+begin
+  if int < lowest then
+    result := lowest
+  else if int > highest then
+    result := highest
+  else
+    result := int;
+end;
+
+function Clamp (int: TScalar; lowest, highest: TScalar): TScalar;
 begin
   if int < lowest then
     result := lowest
