@@ -4,7 +4,8 @@
 unit TileMap;
 interface
 uses
-	CWString, Contnrs, VectorMath, SysUtils, DOM, FGL;
+	CWString, Contnrs, SysUtils, DOM, FGL,
+	VectorMath, GeometryTypes;
 
 {$define INTERFACE}
 {$include include/Utils.inc}
@@ -25,7 +26,7 @@ type
 	TTMXTileImage = record
 		source: ansistring;
 		fullPath: ansistring;
-		size: TSize;
+		size: TVec2;
 	end;
 
 type
@@ -89,7 +90,7 @@ type
 	TTMXTileSet = class (TTMXNode)
 		public
 			firstGID: GIDInt;
-			tileSize: TSize;
+			tileSize: TVec2;
 			image: TTMXTileImage;
 			index: integer;
 		public
@@ -97,7 +98,7 @@ type
 			function GetProperty (gid: GIDInt; propertyName: string): string; overload;
 			function GetProperties (gid: GIDInt): TMap; overload;
 			// TODO: swap this out
-			function GetTileCoordForID (tileID: integer): TPoint; 			
+			function GetTileCoordForID (tileID: integer): TVec2; 			
 		protected
 			destructor Destroy; override;
 		private
@@ -125,7 +126,7 @@ type
 type
 	TTMXLayer = class (TTMXNode)
 		public
-			size: TSize;
+			size: TVec2;
 			tiles: TTMXTileList;
 		public
 			function GetTile (x, y: integer): TTMXTile;
@@ -163,7 +164,7 @@ uses
 	Variants, XMLRead;
 
 {$define IMPLEMENTATION}
-{$include Utils.inc}
+{$include include/Utils.inc}
 {$undef IMPLEMENTATION}
 
 const
@@ -258,7 +259,7 @@ end;
 procedure TTMXTile.LoadImageTag (basePath: ansistring; info: TMap);
 begin
 	image.source := ExtractFileName(info['source']);
-	image.size := SizeMake(info['width'], info['height']);
+	image.size := V2(info['width'], info['height']);
 	image.fullpath := basePath+'/'+image.source;
 end;
 
@@ -288,7 +289,7 @@ begin
 	inherited HandleLoad(info);
 
 	tiles := TTMXTileList.Create(true);
-	size := SizeMake(info['width'], info['height']);
+	size := V2(info['width'], info['height']);
 	tiles.Count := info['width'] * info['height'];
 end;
 
@@ -364,11 +365,11 @@ begin
 end;
 
 // TODO: this is wrong. use / and % to get x/y coords from index
-function TTMXTileSet.GetTileCoordForID (tileID: integer): TPoint; 
+function TTMXTileSet.GetTileCoordForID (tileID: integer): TVec2; 
 var
 	row: integer;
 begin
-	result := PointMake(0, 0);
+	result := V2(0, 0);
 	row := tileID;
 	while row > columns do
 		begin
@@ -419,7 +420,7 @@ begin
 				begin
 					attributes := NodeAttributes(node.ChildNodes.Item[i], pool);
 					image.source := attributes['source'];
-					image.size := SizeMake(attributes['width'], attributes['height']);
+					image.size := V2(attributes['width'], attributes['height']);
 					image.fullPath := basePath+'/'+image.source
 				end;
 		end;
@@ -429,7 +430,7 @@ end;
 procedure TTMXTileSet.LoadAttributes (info: TMap);
 begin
 	name := info['name'];
-	tileSize := SizeMake(info['tilewidth'], info['tileheight']);
+	tileSize := V2(info['tilewidth'], info['tileheight']);
 	columns := info['columns'];
 	tilecount := info['tilecount'];
 end;
