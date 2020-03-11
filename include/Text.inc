@@ -27,6 +27,11 @@ type
 function MeasureText (font: IFont; text: ansistring; maximumWidth: integer = MaxInt): TVec2;
 function WrapText (font: IFont; text: ansistring; maximumWidth: integer): TStringList;
 
+function DrawText (text: ansistring; textAlignment: TTextAlignment; bounds: TRect; color: TColor): TVec2; overload; inline;
+function DrawText (text: ansistring; textAlignment: TTextAlignment; bounds: TRect): TVec2; overload; inline;
+procedure DrawText (text: ansistring; where: TVec2; color: TColor; scale: single = 1.0); overload; inline;
+procedure DrawText (text: ansistring; where: TVec2; scale: single = 1.0); overload; inline;
+
 function DrawText (font: IFont; text: ansistring; textAlignment: TTextAlignment; bounds: TRect; color: TColor): TVec2; overload;
 function DrawText (font: IFont; text: ansistring; textAlignment: TTextAlignment; bounds: TRect): TVec2; overload; inline;
 procedure DrawText (font: IFont; text: ansistring; where: TVec2; color: TColor; scale: single = 1.0); overload;
@@ -187,6 +192,26 @@ begin
 	WrapTextInternal(font, text, maximumWidth, result);
 end;
 
+function DrawText (text: ansistring; textAlignment: TTextAlignment; bounds: TRect; color: TColor): TVec2;
+begin
+	DrawText(GLCanvasState.activeFont, text, textAlignment, bounds, color);
+end;
+
+function DrawText (text: ansistring; textAlignment: TTextAlignment; bounds: TRect): TVec2;
+begin
+	DrawText(GLCanvasState.activeFont, text, textAlignment, bounds, 1);	
+end;
+
+procedure DrawText (text: ansistring; where: TVec2; color: TColor; scale: single = 1.0);
+begin
+	DrawText(GLCanvasState.activeFont, text, where, color, scale);
+end;
+
+procedure DrawText (text: ansistring; where: TVec2; scale: single = 1.0);
+begin
+	DrawText(GLCanvasState.activeFont, text, where, 1, scale);
+end;
+
 function DrawText (font: IFont; text: ansistring; textAlignment: TTextAlignment; bounds: TRect; color: TColor): TVec2;
 var
 	line: ansistring;
@@ -215,7 +240,7 @@ end;
 
 function DrawText (font: IFont; text: ansistring; textAlignment: TTextAlignment; bounds: TRect): TVec2;
 begin
-	result := DrawText(font, text, textAlignment, bounds, RGBA(1, 1, 1, 1));
+	result := DrawText(font, text, textAlignment, bounds, 1);
 end;
 
 procedure DrawText (font: IFont; text: ansistring; where: TVec2; color: TColor; scale: single = 1.0);
@@ -259,7 +284,7 @@ end;
 
 procedure DrawText (font: IFont; text: ansistring; where: TVec2; scale: single = 1.0);
 begin
-	DrawText(font, text, where, RGBA(1, 1, 1, 1), scale);
+	DrawText(font, text, where, 1, scale);
 end;
 
 {$endif}

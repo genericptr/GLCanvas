@@ -26,7 +26,8 @@ type
 	ITexture = interface
 		function GetTexture: TGLTextureID;
 		function GetTextureUnit: TGLTextureUnit;
-		function GetTextureFrame: TTextureFrame;
+		function GetFrame: TTextureFrame;
+
 		procedure Lock(inUnit: TGLTextureUnit);
 		procedure Unlock;
 		procedure Load;
@@ -40,26 +41,32 @@ type
 		public	
 			function GetTexture: TGLTextureID;
 			function GetTextureUnit: TGLTextureUnit;
+			function GetFrame: TTextureFrame;
 
 			function TextureToPixel (textureRect: TRect): TRect;
 			function PixelToTexture (pixelRect: TRect): TRect;
-			function GetTextureFrame: TTextureFrame;
+			function SubTextureFrame (x, y, w, h: float): TRect;
+			function PixelAt(x, y: integer): TImagePixel; virtual;
 
-			function PixelAt(x, y: integer): TImagePixel;
+			procedure Lock(inUnit: TGLTextureUnit); virtual;
+			procedure Unlock; virtual;
+			procedure Load; virtual;
+			procedure Unload; virtual;
+			function IsLoaded: boolean; virtual;
+			function IsLocked: boolean; virtual;
 
-			procedure Lock(inUnit: TGLTextureUnit);
-			procedure Unlock;
-			procedure Load;
-			procedure Unload;
-			function IsLoaded: boolean;
-			function IsLocked: boolean;
+			procedure LoadIfNeeded; inline;
 		private
-			textureID: TGLTextureID;
-			textureUnit: TGLTextureUnit;
-			textureFrame: TTextureFrame;
-			m_locked: boolean;
+			m_textureID: TGLTextureID;
+			m_textureUnit: TGLTextureUnit;
+			m_textureFrame: TTextureFrame;
+			m_owner: TTextureSource;
 		public
-			property TextureSize: TVec2 read textureFrame.pixel.size;
+			property TextureSize: TVec2 read m_textureFrame.pixel.size;
+			property TextureFrame: TRect read m_textureFrame.texture;
+			property PixelFrame: TRect read m_textureFrame.pixel;
+			property TextureID: TGLTextureID read m_textureID;
+			property Owner: TTextureSource read m_owner;
 	end;
 	
 type
@@ -78,18 +85,17 @@ type
 			procedure SetTextureFrame (newValue: TRect);
 			procedure SetPixelFrame (newValue: TRect);
 
-			function GetTextureFrame: TTextureFrame;
 			function GetSize: TVec2; inline;
 			function GetBounds: TRect; inline;
 			function GetHeight: integer; inline;
 			function GetWidth: integer; inline;
-			function GetTexture: TGLTextureID; inline;
 			
 			{ Methods } 
-			procedure Load; virtual;
-			function IsLoaded: boolean;
+			procedure Load; override;
+			procedure Lock(inUnit: TGLTextureUnit); override;
+			function IsLocked: boolean; override;
 			destructor Destroy; override;
-			function PixelAt(x, y: integer): TImagePixel;
+			function PixelAt(x, y: integer): TImagePixel; override;
 			
 			function Subdivide (cellSize: TVec2): TTextureSheet;
 			function Splice(rect: TRect): TTexture;
@@ -102,20 +108,25 @@ type
 
 			procedure SetSize (newValue: TVec2);
 			procedure LoadImage (image: TImage);
-			constructor Create (texture: TGLTextureID; inPixelFrame, inTextureFrame: TRect);
+
+			{ Constructors for sub-textures }
+			constructor Create (source: TTextureSource); overload;
+			constructor Create (source: TTextureSource; inPixelFrame, inTextureFrame: TRect); overload;
 	end;
 	TTextureMap = specialize TFPGMapObject<String, TTexture>;
 	TTextureArray = array of TTexture;
 
 	TTextureSheet = class (TTexture)
-		public
-			cellSize: TVec2i;
-			tableSize: TVec2i;
+		private
+			m_cellSize: TVec2i;
+			m_tableSize: TVec2i;
+			function GetCellSize: TVec2i; inline;
+			function GetTableSize: TVec2i; inline;
 		public
 					
 			{ Constructors }
-			constructor Create (path: ansistring; _cellSize: TVec2); overload;
-			constructor Create (path: ansistring; _cellSize: TVec2; _tableSize: TVec2); overload;
+			constructor Create (path: ansistring; inCellSize: TVec2i); overload;
+			constructor Create (path: ansistring; inCellSize, inTableSize: TVec2i); overload;
 
 			{ Accessors }
 			function Columns: integer; inline;
@@ -130,13 +141,16 @@ type
 			function GetTexture (x, y: integer): TTexture; overload;
 			property Cells[x, y: integer]: TTexture read GetTexture; default;
 
+			property TableSize: TVec2i read GetTableSize;
+			property CellSize: TVec2i read GetCellSize;
+
 			procedure Load; override;
 			destructor Destroy; override;
 		private
 			textures: TTextureList;
 			procedure Subdivide;
 			function GetIndex (x, y: integer): integer; inline;
-			constructor Create (_textureID: TGLTextureID; _textureFrame: TTextureFrame; _cellSize, _tableSize: TVec2); overload;
+			constructor Create (inTextureID: TGLTextureID; inTextureFrame: TTextureFrame; inCellSize, inTableSize: TVec2i); overload;
 	end;
 
 type
@@ -148,18 +162,14 @@ type
 			constructor Create (_path: ansistring); overload;
 			
 			{ Accessors }
-			function GetTexture (name: string): TTexture;
+			function GetTexture (name: string): TTexture; overload;
 			function GetCount: integer;
 			procedure SetTextureParameters (newValue: TTextureParameters); 
-			function GetTexture: TGLTextureID;
 
 			property Indexer[name: string]: TTexture read GetTexture; default;
 
-			procedure Load;
-			function IsLoaded: boolean;
-
+			procedure Load; override;
 			destructor Destroy; override;
-
 		private
 			textures: TTextureMap;
 			path: string;
@@ -180,20 +190,17 @@ type
 			constructor Create(canvasSize: TVec2i; images: TImagePathArray);
 			
 			{ Accessors }
-			function GetTexture (name: string): TTexture;
+			function GetTexture (name: string): TTexture; overload;
 			function GetCount: integer;
 			procedure SetTextureParameters (newValue: TTextureParameters); 
-			function GetTexture: TGLTextureID;
 
 			property Indexer[name: string]: TTexture read GetTexture; default;
 
 			{ Loading }
-			procedure Load;
-			function IsLoaded: boolean;
+			procedure Load; override;
 
 			function Subdivide (cellSize: TVec2): TTextureSheet;
 			destructor Destroy; override;
-
 		private
 			textures: TTextureMap;
 			textureParams: TTextureParameters;
@@ -221,7 +228,10 @@ type
 
 class operator TTextureSlot.= (left: TTextureSlot; right: ITexture): boolean;
 begin
-	result := left.id = right.GetTexture;
+	if right = nil then
+		result := (left.obj = right)
+	else
+		result := left.id = right.GetTexture;
 end;
 
 procedure TTextureSlot.SetTexture(newValue: ITexture);
@@ -312,21 +322,43 @@ end;
 procedure GenerateTexture (var texID: TGLTextureID);
 begin
 	glGenTextures(1, @texID);
+	GLAssert('glGenTextures');	
 end;	
 
 procedure DeleteTexture (texID: TGLTextureID);
 begin
 	glDeleteTextures(1, @texID);
+	GLAssert('glDeleteTextures');
 end;
 
+var
+	PreviousTextureID: GLint = -1;
+	PreviousTextureUnit: GLint = -1;
+
 function BindTexture2D (texID: TGLTextureID; texUnit: TGLTextureUnit = 0): boolean;
+var
+	saved: GLint;
 begin
 	Assert((texUnit < GetMaximumTextureUnits) and (texUnit >= 0), 'texture unit '+IntToStr(texUnit)+' is out of bounds (0-'+IntToStr(GetMaximumTextureUnits-1)+')');
 	glActiveTexture(GL_TEXTURE0 + texUnit);
 	glBindTexture(GL_TEXTURE_2D, texID);
 	GLAssert('glBindTexture');	
+	GlCanvasState.bindTextureCount += 1;
+
+	PreviousTextureID := texID;
+	PreviousTextureUnit := texUnit;
 end;
 	
+function RestorePreviousTexture: boolean;
+begin
+	Assert((PreviousTextureID > -1) and (PreviousTextureUnit > -1), 'No previous texture was set.');
+	glActiveTexture(GL_TEXTURE0 + PreviousTextureUnit);
+	glBindTexture(GL_TEXTURE_2D, PreviousTextureID);
+	PreviousTextureID := -1;
+	PreviousTextureUnit := -1;
+	result := true;
+end;
+
 procedure LoadTexture2D (width, height: GLsizei; data: pointer; params: TTextureParameters = []);
 begin
 	if kTextureRGB in params then
@@ -373,10 +405,9 @@ end;
 
 procedure ChangeTextureUnit(texture: ITexture; textureUnit: integer); 
 begin
-	Assert(texture.GetTexture > 0, 'Texture is not loaded');
-	Assert(texture.GetTexture < GetMaximumTextureUnits, 'Invalid texture unit');
-	if TextureSlots[textureUnit] <> nil then
-	  Assert(false, 'Another texture ('+IntToStr(TextureSlots[textureUnit].id)+') is loaded in unit '+IntToStr(textureUnit));
+	Assert(texture.GetTexture > 0, 'Texture is not loaded (invalid texture ID)');
+	Assert(textureUnit < GetMaximumTextureUnits, 'Texture unit '+IntToStr(textureUnit)+' exceeds maximum ('+IntToStr(GetMaximumTextureUnits)+')');
+	Assert(TextureSlots[textureUnit] = nil, 'Another texture ('+IntToStr(TextureSlots[textureUnit].id)+') is loaded in unit '+IntToStr(textureUnit));
 	TextureSlots[textureUnit].SetTexture(texture);
 	BindTexture2D(texture.GetTexture, textureUnit);
 end;
@@ -384,13 +415,14 @@ end;
 function PushTexture (texture: ITexture): TGLTextureUnit;
 var
 	i: integer;
-	textureUnit,
-	lastLocked: integer;
+	textureUnit: integer;
 begin
 	if not texture.IsLoaded then
 		texture.Load;
 
-	Assert(texture.GetTexture > 0, 'Texture is not loaded');
+	Assert(texture.GetTexture > 0, 'Texture is not loaded (invalid texture ID)');
+
+	//writeln('push texture id ', texture.GetTexture, ' locked=', texture.IsLocked, ' unit=', texture.GetTextureUnit);
 
 	// locked texture can guarantee their texture unit
 	if texture.IsLocked then
@@ -398,13 +430,9 @@ begin
 
 	// find the next available unit
 	textureUnit := -1;
-	lastLocked := 0;
 	for i := 0 to GetMaximumTextureUnits - 1 do
 		if TextureSlots[i].IsUsed and TextureSlots[i].IsLocked then
-		  begin
-		  	lastLocked := i;
-		  	continue;
-		  end
+		  continue
 		else if TextureSlots[i] = texture then
 			exit(i)
 		else if not TextureSlots[i].IsUsed then
@@ -418,16 +446,20 @@ begin
 	if textureUnit < 0 then
 		begin
 			FlushDrawing;
-			textureUnit := lastLocked + 1;
-			for i := lastLocked + 1 to GetMaximumTextureUnits - 1 do
-				TextureSlots[i].SetTexture(nil);
+			for i := 0 to GetMaximumTextureUnits - 1 do
+				if not TextureSlots[i].IsLocked then
+					begin
+						if textureUnit = -1 then
+							textureUnit := i;
+						TextureSlots[i].SetTexture(nil);
+					end;
 		end;
 
-	Assert((textureUnit >= 0) and (textureUnit < GetMaximumTextureUnits), 'No texture units available for '+IntToStr(texture.GetTexture));
+	Assert((textureUnit >= 0) and (textureUnit < GetMaximumTextureUnits), 'No texture units available for textureID '+IntToStr(texture.GetTexture));
 
 	TextureSlots[textureUnit].SetTexture(texture);
 	BindTexture2D(texture.GetTexture, textureUnit);
-	writeln('bind texture ', texture.GetTexture, ' ', HexStr(texture), ' to unit ', textureUnit);
+	//writeln('bind texture ', texture.GetTexture, ' ', HexStr(texture), ' to unit ', textureUnit);
 	result := textureUnit;
 end;
 
@@ -609,9 +641,21 @@ begin
 										 pixelRect.height / textureSize.height);
 end;
 
-function TTextureSource.GetTextureFrame: TTextureFrame;
+{ Returns a sub-frame of the texture frame using AABB
+  0,0,1,1 = entire frame
+	0,0.5,1,1 = 50% split at minY }
+function TTextureSource.SubTextureFrame (x, y, w, h: float): TRect;
 begin
-	result := textureFrame{Default(TTextureFrame)};
+	result := AABB(TextureFrame.MinX + (TextureFrame.size.Width * x),
+								 TextureFrame.MinY + (TextureFrame.size.Height * y),
+								 TextureFrame.MinX + (TextureFrame.size.Width * w), 
+								 TextureFrame.MinY + (TextureFrame.size.Height * h)
+								 );
+end;
+
+function TTextureSource.GetFrame: TTextureFrame;
+begin
+	result := m_textureFrame;
 end;
 
 function TTextureSource.PixelAt(x, y: integer): TImagePixel;
@@ -622,19 +666,22 @@ end;
 procedure TTextureSource.Lock(inUnit: TGLTextureUnit);
 begin
 	Assert(not IsLocked, 'Texture is already locked');
-	if not IsLoaded then
-	  Load;
+	LoadIfNeeded;
 	ChangeTextureUnit(self, inUnit);
-	textureUnit := inUnit;
-	m_locked := true;
-	writeln('bound and locked texture ', textureID, ' to unit ', textureUnit);
+	m_textureUnit := inUnit;
+	writeln('bound and locked texture ', textureID, ' to unit ', GetTextureUnit);
 end;
 
 procedure TTextureSource.Unlock;
 begin
 	Assert(IsLocked, 'Texture is already unlocked');
-	m_locked := false;
-	TextureSlots[textureUnit].SetTexture(nil);
+	TextureSlots[GetTextureUnit].SetTexture(nil);
+end;
+
+procedure TTextureSource.LoadIfNeeded;
+begin
+	if not IsLoaded then
+		Load;
 end;
 
 procedure TTextureSource.Load;
@@ -647,12 +694,12 @@ end;
 
 function TTextureSource.IsLoaded: boolean;
 begin
-	result := false;
+	result := textureID > 0;
 end;
 
 function TTextureSource.IsLocked: boolean;
 begin
-	result := m_locked;
+	result := TextureSlots[GetTextureUnit].obj = ITexture(self);
 end;
 
 function TTextureSource.GetTexture: TGLTextureID;
@@ -662,7 +709,10 @@ end;
 
 function TTextureSource.GetTextureUnit: TGLTextureUnit;
 begin
-	result := textureUnit;
+	if owner <> nil then
+		result := owner.GetTextureUnit
+	else
+	result := m_textureUnit;
 end;
 
 //#########################################################
@@ -687,19 +737,14 @@ end;
 destructor TTexturePack.Destroy;
 begin
 	FreeAndNil(textures);
-	if textureID <> 0 then
-		glDeleteTextures(1, @textureID);
+	if IsLoaded then
+		DeleteTexture(textureID);
 end;
 
 procedure TTexturePack.SetTextureParameters (newValue: TTextureParameters); 
 begin
 	Assert(not IsLoaded, 'texture parameters must be set before loading.');
 	textureParams := newValue;
-end;
-
-function TTexturePack.GetTexture: TGLTextureID;
-begin
-	result := textureID;
 end;
 
 function TTexturePack.GetCount: integer;
@@ -709,16 +754,10 @@ end;
 
 function TTexturePack.GetTexture (name: string): TTexture;
 begin
-	if not IsLoaded then
-		Load;
+	LoadIfNeeded;
 	Assert(textures <> nil, 'Pack textures haven''t been allocated.');
 	result := textures[name] as TTexture;
 	Assert(result <> nil, 'Pack face "'+name+'" is nil.');
-end;
-
-function TTexturePack.IsLoaded: boolean;
-begin
-	result := textureID > 0;
 end;
 
 procedure TTexturePack.LoadImage (imagePath: ansistring);
@@ -730,13 +769,14 @@ begin
 	image := LoadImageFromFile(imagePath, width, height);
 	if assigned(image) then
 		begin
-			GenerateTexture(textureID);
+			GenerateTexture(m_textureID);
+
 			BindTexture2D(textureID);
 			LoadTexture2D(width, height, image, textureParams);
 			RestoreTextureUnit(0, textureID);
 
-			textureFrame.texture := RectMake(0, 0, 1, 1);
-			textureFrame.pixel := RectMake(0, 0, width, height);
+			m_textureFrame.texture := RectMake(0, 0, 1, 1);
+			m_textureFrame.pixel := RectMake(0, 0, width, height);
 
 			//FreeMem(image);
 		end;
@@ -747,9 +787,9 @@ var
 	texture: TTexture; 
 begin
 	Assert(textureID > 0, 'must load image before adding textures');
-	texture := TTexture.Create(textureID);
+	texture := TTexture.Create(self);
 	texture.SetTextureFrame(PixelToTexture(RectMake(position, spriteSize)));
-	texture.SetSize(spriteSize*scale);
+	texture.SetSize(spriteSize * scale);
 	texture.SetPixelFrame(RectMake(position, spriteSize));
 	textures.Add(name, texture);
 end;
@@ -793,8 +833,8 @@ begin
 			LoadImage(imagePath);
 
 			//textureSize := V2(attributes['width'], attributes['height']);
-			textureFrame.texture := RectMake(0, 0, 1, 1);
-			textureFrame.pixel := RectMake(0, 0, attributes['width'], attributes['height']);
+			m_textureFrame.texture := RectMake(0, 0, 1, 1);
+			m_textureFrame.pixel := RectMake(0, 0, attributes['width'], attributes['height']);
 
 			// loop through all <sprite> tags
 			node := node.FirstChild;	
@@ -836,15 +876,14 @@ constructor TTextureComposite.Create(canvasSize: TVec2i; images: TImagePathArray
 begin
 	textureParams := DefaultTextureParameters;
 	textures := TTextureMap.Create;
-	textureFrame.texture := RectMake(0, 0, 1, 1);
-	textureFrame.pixel := RectMake(0, 0, canvasSize);
+	m_textureFrame.texture := RectMake(0, 0, 1, 1);
+	m_textureFrame.pixel := RectMake(0, 0, canvasSize);
 	imagePaths := images;
 end;
 
 function TTextureComposite.GetTexture (name: string): TTexture;
 begin
-	if not IsLoaded then
-		Load;
+	LoadIfNeeded;
 	Assert(textures <> nil, 'Pack textures haven''t been allocated.');
 	result := textures[name] as TTexture;
 	Assert(result <> nil, 'Pack face "'+name+'" is nil.');
@@ -861,23 +900,18 @@ begin
 	textureParams := newValue;
 end;
 
-function TTextureComposite.GetTexture: TGLTextureID;
-begin
-	result := textureID;
-end;
-
 procedure TTextureComposite.Load;
 var
 	width, height: integer;
 	image: TImage;
 	offset: TVec2i;
 	imagePath: string;
-	pixelFrame: TRect;
+	rect: TRect;
 	texture: TTexture;
 begin
 	Assert(not IsLoaded, 'Texture is already loaded.');
 
-	GenerateTexture(textureID);
+	GenerateTexture(m_textureID);
 	BindTexture2D(textureID);
 	LoadTexture2D(trunc(textureSize.width), trunc(textureSize.height), nil, textureParams);
 
@@ -890,12 +924,12 @@ begin
 			glTexSubImage2D(GL_TEXTURE_2D, 0, offset.x, offset.y, width, height, GL_RGBA, GL_UNSIGNED_BYTE, image);
 			GLAssert('glTexSubImage2D');	
 
-			pixelFrame := RectMake(offset, width, height);
+			rect := RectMake(offset, width, height);
 
-			texture := TTexture.Create(textureID);
-			texture.SetTextureFrame(PixelToTexture(pixelFrame));
+			texture := TTexture.Create(self);
+			texture.SetTextureFrame(PixelToTexture(rect));
 			texture.SetSize(V2(width, height));
-			texture.SetPixelFrame(pixelFrame);
+			texture.SetPixelFrame(rect);
 			textures.Add(ExtractFileParts(imagePath).name, texture);
 
 			// TODO: replace with bin packer, UPacker works?
@@ -906,29 +940,23 @@ begin
 	RestoreTextureUnit(0, textureID);
 end;
 
-function TTextureComposite.IsLoaded: boolean;
-begin
-	result := textureID > 0;
-end;
-
 function TTextureComposite.Subdivide (cellSize: TVec2): TTextureSheet;
 var
 	tableSize: TVec2;
 begin
-	if not IsLoaded then
-		Load;
+	LoadIfNeeded;
 
 	tableSize.width := trunc(textureSize.width / cellSize.width);
 	tableSize.height := trunc(textureSize.height / cellSize.height);
 
-	result := TTextureSheet.Create(GetTexture, GetTextureFrame, cellSize, tableSize);
+	result := TTextureSheet.Create(GetTexture, GetFrame, cellSize, tableSize);
 end;
 
 destructor TTextureComposite.Destroy;
 begin
 	FreeAndNil(textures);
-	if textureID <> 0 then
-		glDeleteTextures(1, @textureID);
+	if IsLoaded then
+		DeleteTexture(textureID);
 end;
 
 
@@ -938,8 +966,7 @@ end;
 
 function TTextureSheet.GetTexture (index: integer): TTexture;
 begin
-	if not IsLoaded then
-		Load;
+	LoadIfNeeded;
 	result := TTexture(textures[index]);
 end;
 
@@ -955,19 +982,30 @@ end;
 
 function TTextureSheet.GetTexture (cell: TVec2): TTexture;
 begin
-	if not IsLoaded then
-		Load;
+	LoadIfNeeded;
 	result := TTexture(textures[GetIndex(trunc(cell.x), trunc(cell.y))]);
 end;
 
 function TTextureSheet.Columns: integer;
 begin
-	result := tableSize.width;
+	result := TableSize.width;
 end;
 
 function TTextureSheet.Rows: integer;
 begin
-	result := tableSize.height;
+	result := TableSize.height;
+end;
+
+function TTextureSheet.GetCellSize: TVec2i;
+begin
+	LoadIfNeeded;
+	result := m_cellSize;
+end;
+
+function TTextureSheet.GetTableSize: TVec2i;
+begin
+	LoadIfNeeded;
+	result := m_tableSize;
 end;
 
 function TTextureSheet.GetCount: integer;
@@ -997,32 +1035,37 @@ begin
 	Assert(textures = nil, 'Texture sheet is already subdivided.');
 	Assert(textureSize.x + textureSize.y > 0, 'Texture sheet must be larger than 0 in order to subdivide.');
 
-	if not IsLoaded then
-		Load;
+	LoadIfNeeded;
 
 	textures := TTextureList.Create(true);
 
 	if (tableSize.width = 0) or (tableSize.height = 0) then
 		begin
-			tableSize.width := trunc(textureSize.width / cellSize.width);
-			tableSize.height := trunc(textureSize.height / cellSize.height);
+			// TODO: bug in helpers so we need to access directly
+			// https://bugs.freepascal.org/view.php?id=36768
+			m_tableSize.width := trunc(textureSize.width / cellSize.width);
+			m_tableSize.height := trunc(textureSize.height / cellSize.height);
 		end;
 
-	for y := Round(tableSize.height) downto 1 do
-		for x := 1 to Round(tableSize.width) do
+	//writeln('textureSize: ',textureSize.Tostr);
+	//writeln('tableSize: ',tableSize.tostr);
+	//writeln('cellSize: ',cellSize.tostr);
+
+	for y := tableSize.height downto 1 do
+		for x := 1 to tableSize.width do
 			begin
 				scale := V2((tableSize.width * cellSize.width) / textureSize.width, 
 										(tableSize.height * cellSize.height) / textureSize.height);
 				
-				spanX := textureFrame.texture.size.x;
-				spanY := textureFrame.texture.size.y;
+				spanX := TextureFrame.Width;
+				spanY := TextureFrame.Height;
 
-				cellFrame.origin.x := textureFrame.texture.origin.x + (((x - 1) * (spanX / tableSize.width)) * scale.width);
-				cellFrame.origin.y := textureFrame.texture.origin.y + (((spanY - ((spanY / tableSize.height) * y))) * scale.height);
+				cellFrame.origin.x := TextureFrame.MinX + (((x - 1) * (spanX / tableSize.width)) * scale.width);
+				cellFrame.origin.y := TextureFrame.MinY + (((spanY - ((spanY / tableSize.height) * y))) * scale.height);
 				cellFrame.size.x := (spanX / tableSize.width) * scale.width;
 				cellFrame.size.y := (spanX / tableSize.height) * scale.height;
 
-				texture := TTexture.Create(GetTexture);
+				texture := TTexture.Create(self);
 				texture.SetTextureFrame(cellFrame);
 				texture.SetPixelFrame(RectMake(V2((x - 1) * cellSize.width, (tableSize.height - y) * cellSize.height), cellSize));
 				texture.SetSize(cellSize);
@@ -1036,27 +1079,24 @@ begin
 	Subdivide;
 end;
 
-constructor TTextureSheet.Create (path: ansistring; _cellSize: TVec2; _tableSize: TVec2);
+constructor TTextureSheet.Create (path: ansistring; inCellSize, inTableSize: TVec2i);
 begin
 	inherited Create(path);
-	cellSize := _cellSize;
-	tableSize := _tableSize;
-	//writeln('imageSize: ',V2(imageWidth, imageHeight).Tostr);
-	//writeln('tableSize: ',tableSize.tostr);
-	//writeln('cellSize: ',cellSize.tostr);
+	m_cellSize := inCellSize;
+	m_tableSize := inTableSize;
 end;
 
-constructor TTextureSheet.Create (path: ansistring; _cellSize: TVec2);
+constructor TTextureSheet.Create (path: ansistring; inCellSize: TVec2i);
 begin
-	Create(path, _cellSize, 0);
+	Create(path, inCellSize, 0);
 end;
 
-constructor TTextureSheet.Create (_textureID: TGLTextureID; _textureFrame: TTextureFrame; _cellSize, _tableSize: TVec2);
+constructor TTextureSheet.Create (inTextureID: TGLTextureID; inTextureFrame: TTextureFrame; inCellSize, inTableSize: TVec2i);
 begin
-	inherited Create(_textureID, trunc(_textureFrame.pixel.width), trunc(_textureFrame.pixel.height));
-	cellSize := _cellSize;
-	tableSize := _tableSize;
-	textureFrame := _textureFrame;
+	inherited Create(inTextureID, trunc(inTextureFrame.pixel.width), trunc(inTextureFrame.pixel.height));
+	m_cellSize := inCellSize;
+	m_tableSize := inTableSize;
+	m_textureFrame := inTextureFrame;
 	Subdivide;
 end;
 
@@ -1066,19 +1106,18 @@ end;
 
 procedure TTexture.SetTextureFrame (newValue: TRect);
 begin
-	textureFrame.texture := newValue;
+	m_textureFrame.texture := newValue;
 end;
 
 procedure TTexture.SetPixelFrame (newValue: TRect);
 begin
-	textureFrame.pixel := newValue;
+	m_textureFrame.pixel := newValue;
 end;
 
 function TTexture.Splice(rect: TRect): TTexture;
 begin
-	if not IsLoaded then
-		Load;
-	result := TTexture.Create(GetTexture, rect, PixelToTexture(rect));
+	LoadIfNeeded;
+	result := TTexture.Create(self, rect, PixelToTexture(rect));
 	if slices = nil then
 		slices := TTextureList.Create;
 	slices.Add(result);
@@ -1088,31 +1127,30 @@ function TTexture.Subdivide (cellSize: TVec2): TTextureSheet;
 var
 	tableSize: TVec2;
 begin
-	if not IsLoaded then
-		Load;
-
+	LoadIfNeeded;
 	tableSize.width := trunc(textureSize.width / cellSize.width);
 	tableSize.height := trunc(textureSize.height / cellSize.height);
-
-	result := TTextureSheet.Create(GetTexture, GetTextureFrame, cellSize, tableSize);
+	result := TTextureSheet.Create(GetTexture, GetFrame, cellSize, tableSize);
 end;
 
 procedure TTexture.LoadImage (image: TImage);
 begin
 	generatedTexture := true;
-	GenerateTexture(textureID);
+	GenerateTexture(m_textureID);
 	
 	BindTexture2D(textureID);
 	LoadTexture2D(GetWidth, GetHeight, image, textureParams);
 	RestoreTextureUnit(0, textureID);
 
+	// TOOD: make this an option? we need to keep it around for PixelAt but this can be an option
 	//FreeMem(sourceImage);
-	sourceImage := nil;
+	//sourceImage := nil;
 end;
 
 function TTexture.PixelAt(x, y: integer): TImagePixel;
 begin
 	Assert(IsLoaded, 'Texture must be loaded before inspecting pixels.');
+	Assert(sourceImage <> nil, 'Texture image data was freed before inspecting pixels.');
 	result := sourceImage[x + y * trunc(textureSize.width)];
 end;
 
@@ -1122,15 +1160,26 @@ begin
 	LoadImage(sourceImage);
 end;
 
-function TTexture.IsLoaded: boolean;
+procedure TTexture.Lock(inUnit: TGLTextureUnit);
 begin
-	result := textureID > 0;
+	if owner <> nil then
+		owner.Lock(inUnit)
+	else
+		inherited Lock(inUnit);
+end;
+
+function TTexture.IsLocked: boolean;
+begin
+	if owner <> nil then
+		result := owner.IsLocked
+	else
+		result := inherited;
 end;
 
 procedure TTexture.SetSize (newValue: TVec2);
 begin
 	Assert(newValue.Max < GetMaximumTextureSize, 'Sprite face texture exceeds maximum texture size ('+IntToStr(GetMaximumTextureSize)+')');
-	textureFrame.pixel.size := newValue;
+	m_textureFrame.pixel.size := newValue;
 end;
 
 function TTexture.GetSize: TVec2;
@@ -1153,16 +1202,6 @@ begin
 	result := trunc(GetSize.height);
 end;
 
-function TTexture.GetTexture: TGLTextureID;
-begin
-	result := textureID;
-end;
-
-function TTexture.GetTextureFrame: TTextureFrame;
-begin
-	result := textureFrame;
-end;
-
 destructor TTexture.Destroy;
 begin	
 	// delete the texture if we own it
@@ -1178,23 +1217,25 @@ begin
 	inherited;
 end;
 
-constructor TTexture.Create (texture: TGLTextureID; inPixelFrame, inTextureFrame: TRect);
+constructor TTexture.Create (source: TTextureSource; inPixelFrame, inTextureFrame: TRect);
 begin
-	Assert(texture > 0, 'Must use a valid texture ID.');
-	textureID := texture;
-	textureFrame.pixel := inPixelFrame;
-	textureFrame.texture := inTextureFrame;
-	// TODO: we need to call this from the parent!
-	//writeln(texturesize.tostr, ' ', textureFrame.pixel.tostr, ' ', textureFrame.texture.tostr);
-	//SetSize(V2(width, height));
-	//SetTextureFrame(RectMake(0, 0, 1, 1));
+	Create(source);
+	m_textureFrame.pixel := inPixelFrame;
+	m_textureFrame.texture := inTextureFrame;
 	textureParams := DefaultTextureParameters;
+end;
+
+constructor TTexture.Create (source: TTextureSource);
+begin
+	m_owner := source;
+	m_textureID := source.GetTexture;
+	Create(textureID);
 end;
 
 constructor TTexture.Create (texture: TGLTextureID; width: integer = 0; height: integer = 0);
 begin
 	Assert(texture > 0, 'Must use a valid texture ID.');
-	textureID := texture;
+	m_textureID := texture;
 	SetSize(V2(width, height));
 	SetTextureFrame(RectMake(0, 0, 1, 1));
 	textureParams := DefaultTextureParameters;

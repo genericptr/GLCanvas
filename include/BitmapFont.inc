@@ -59,10 +59,11 @@ type
 			procedure SetCharAdvance (newValue: integer);
 			function TextureForCharacter (c: char): TTexture; inline;
 			function GetTexture: TGLTextureID;
-			function GetTextureFrame: TTextureFrame;
+			function GetFrame: TTextureFrame;
 			property Name: string read m_name;
 			
-			procedure Lock(inUnit: TGLTextureUnit);
+			procedure Lock(inUnit: TGLTextureUnit); override;
+			function IsLocked: boolean; override;
 
 			{ IFont }
 			function CharacterRenderFrame(c: char): TFontRenderFrame;
@@ -89,7 +90,7 @@ function TBitmapFont.CharacterRenderFrame(c: char): TFontRenderFrame;
 begin
 	result.bearing.y := fontInfo.chars[ord(c)].yoffset;
 	result.bearing.x := 0;
-	result.textureFrame := TextureForCharacter(c).GetTextureFrame.texture;
+	result.textureFrame := TextureForCharacter(c).TextureFrame;
 	result.faceSize := TextureForCharacter(c).GetSize;
 	result.advance := trunc(result.faceSize.width) + m_charAdvance;
 end;
@@ -124,9 +125,9 @@ begin
 	result := texturePack.GetTexture;
 end;
 
-function TBitmapFont.GetTextureFrame: TTextureFrame;
+function TBitmapFont.GetFrame: TTextureFrame;
 begin
-	result := texturePack.GetTextureFrame;
+	result := texturePack.GetFrame;
 end;
 
 procedure TBitmapFont.SetCharAdvance (newValue: integer);
@@ -243,6 +244,11 @@ begin
 	texturePack.Lock(inUnit);
 end;
 
+function TBitmapFont.IsLocked: boolean;
+begin
+	result := texturePack.IsLocked;
+end;
+
 destructor TBitmapFont.Destroy;
 begin
 	texturePack.Free;
@@ -250,18 +256,23 @@ end;
 
 constructor TBitmapFont.Create (path: ansistring);
 begin
+	// TODO: should implement Loading!
 	texturePack := TTexturePack.Create;
 	texturePack.SetTextureParameters([kTextureNearestFilter, kTextureClampToEdge]);
 	texturePack.LoadImage(path+'/font.png');
 
-	textureID := texturePack.textureID;
+	m_textureID := texturePack.textureID;
+	m_owner := texturePack;
 
 	infoPath := path+'/font.fnt';
 	Assert(FileExists(infoPath), 'font.fnt file doesn''t exist.');
+
 	m_name := ExtractFileName(path);
 	m_spaceWidth := 3;
 	m_tabWidth := 4;
 	LoadProperties;
+
+	//writeln('loaded bitmap font textureID=', textureID, ' textureUnit=',GetTextureUnit);
 end;
 
 {$endif}

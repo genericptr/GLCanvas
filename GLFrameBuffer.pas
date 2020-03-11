@@ -68,7 +68,6 @@ begin
 
   // TODO: are we overwritting other textures?
   glGenTextures(1, @texture);
-  //writeln('frame buffer texture ', texture);
   glGetIntegerv(GL_TEXTURE_BINDING_2D, @prevTexture);
 
   glBindTexture(GL_TEXTURE_2D, texture);

@@ -143,6 +143,7 @@ var
   padding: integer;
   offset: integer;
   channels: integer;
+  prevTexture: GLint;
 begin
 
   // https://learnopengl.com/In-Practice/Text-Rendering
@@ -193,10 +194,14 @@ begin
     end;
 
   glGenTextures(1, @m_texture);
+  glGetIntegerv(GL_TEXTURE_BINDING_2D, @prevTexture);
+
   glBindTexture(GL_TEXTURE_2D, m_texture);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, magFilter);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, minFilter);
   glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
+
+  glBindTexture(GL_TEXTURE_2D, prevTexture);
 
   FreeMem(data);
 end;

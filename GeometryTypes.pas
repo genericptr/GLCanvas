@@ -117,9 +117,9 @@ function RectMake(origin, size: TVec2): TRect; overload; inline;
 function RectMake(origin: TVec2; width, height: TScalar): TRect; overload; inline;
 function RectMake(x, y: TScalar; size: TVec2): TRect; overload; inline;
 
-function RectCenter (rect: TRect; target: TRect): TRect;
-function RectCenterX (rect: TRect; target: TRect): TRect; inline;
-function RectCenterY (rect: TRect; target: TRect): TRect; inline;
+function RectCenter (sourceRect: TRect; destRect: TRect): TRect;
+function RectCenterX (sourceRect: TRect; destRect: TRect): TRect; inline;
+function RectCenterY (sourceRect: TRect; destRect: TRect): TRect; inline;
 function RectFlip (sourceRect, destRect: TRect): TRect;
 
 function RadiusForRect (rect: TRect): TScalar; inline;
@@ -665,33 +665,33 @@ begin
   result := y;
 end;
 
-function RectCenterX (rect: TRect; target: TRect): TRect;
+function RectCenterX (sourceRect: TRect; destRect: TRect): TRect;
 begin
-  result := rect;
+  result := sourceRect;
   
-  if target.Width >= rect.Width then
-    result.origin.x += (target.Width / 2) - (rect.Width / 2)
+  if destRect.Width >= sourceRect.Width then
+    result.origin.x += (destRect.Width / 2) - (sourceRect.Width / 2)
   else
-    result.origin.x := target.MidX - (rect.Width / 2);
+    result.origin.x := destRect.MidX - (sourceRect.Width / 2);
 end;
 
-function RectCenterY (rect: TRect; target: TRect): TRect;
+function RectCenterY (sourceRect: TRect; destRect: TRect): TRect;
 begin
-  result := rect;
+  result := sourceRect;
   
-  if target.Height >= rect.Height then
-    result.origin.y := target.MinY + ((target.Height / 2) - (rect.Height / 2))
+  if destRect.Height >= sourceRect.Height then
+    result.origin.y := destRect.MinY + ((destRect.Height / 2) - (sourceRect.Height / 2))
   else
-    result.origin.y := target.MidY - (rect.Height / 2);
+    result.origin.y := destRect.MidY - (sourceRect.Height / 2);
 end;
 
-function RectCenter (rect: TRect; target: TRect): TRect;
+function RectCenter (sourceRect: TRect; destRect: TRect): TRect;
 begin
-  result.size := rect.size;
-  result.origin := target.origin;
+  result.size := sourceRect.size;
+  result.origin := destRect.origin;
   
-  result := RectCenterX(result, target);
-  result := RectCenterY(result, target);
+  result := RectCenterX(result, destRect);
+  result := RectCenterY(result, destRect);
 end;
 
 function RectFlip (sourceRect, destRect: TRect): TRect;

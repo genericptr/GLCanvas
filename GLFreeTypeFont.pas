@@ -14,7 +14,7 @@ type
       { ITexture }
       function GetTextureUnit: TGLTextureUnit;
       function GetTexture: TGLTextureID;
-      function GetTextureFrame: TTextureFrame;
+      function GetFrame: TTextureFrame;
       procedure Lock(inUnit: TGLTextureUnit);
       procedure Unlock;
       procedure Load;
@@ -32,7 +32,7 @@ type
 
 implementation
 
-function TGLFreeTypeFont.GetTextureFrame: TTextureFrame;
+function TGLFreeTypeFont.GetFrame: TTextureFrame;
 begin
   result.texture := RectMake(0, 0, 1, 1);
   result.pixel := RectMake(0, 0, TextureWidth, TextureHeight);

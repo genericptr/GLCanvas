@@ -47,7 +47,7 @@ type
 		callbackProcedure: TInvocationCallbackProcedure;
 		callbackNested: TInvocationCallbackNested;
 		params: TInvocationParams;
-		procedure Invoke(_params: TInvocationParams = nil);
+		procedure Invoke(withParams: TInvocationParams = nil);
 		constructor Create(callback: TInvocationCallbackProcedure; _params: TInvocationParams = nil); overload;
 		constructor Create(callback: TInvocationCallbackNested; _params: TInvocationParams = nil); overload;
 		constructor Create(callback: TInvocationCallbackClass; _params: TInvocationParams = nil); overload;
@@ -199,6 +199,8 @@ type
 			procedure SetHeight(newValue: TScalar);
 			procedure SetLocation(x, y: TScalar); overload;
 			procedure SetLocation(where: TPoint); overload;
+			procedure SetRightEdge(offset: TScalar);
+			procedure SetBottomEdge(offset: TScalar);
 			procedure SetBackgroundColor(newValue: TColor);
 			procedure SetAutoresizingOptions(newValue: TAutoresizingOptions);
 			procedure SetCanAcceptFocus(newValue: boolean);
@@ -512,6 +514,8 @@ type
 
 			{ Methods }
 			procedure InvokeAction;
+			procedure SizeToFit; virtual;
+
 		protected
 			procedure Initialize; override;
 			procedure HandleValueChanged; virtual;
@@ -708,12 +712,15 @@ type
 
 			procedure SetCurrentValue(newValue: integer);
 			procedure SetInterval(newValue: integer);
+			procedure SetTickMarks(newValue: integer);
 
 			function GetCurrentValue: integer;
 
 			function IsVertical: boolean;
 			function IsDragging: boolean;
 		protected
+			range: TRangeInt;
+
 			procedure Initialize; override;
 			procedure Draw; override;
 			procedure DrawHandle(rect: TRect); virtual;
@@ -726,14 +733,19 @@ type
 			function GetTrackSize: TVec2;
 			function GetTrackFrame: TRect; virtual;
 			function GetHandleFrame: TRect; virtual;
+
+			function ClosestTickMarkToValue(value: integer): integer;
+			function ValueAtRelativePosition(percent: single): integer;
+			function RectOfTickMarkAtIndex(index: integer): TRect;
 		private
-			range: TRangeInt;
 			currentValue: integer;
 			handleFrame: TRect;
 			dragOrigin: TPoint;
-			percent: TScalar;
 			interval: integer;
 			dragging: boolean;
+			tickMarks: integer;
+			liveUpdate: boolean;
+			tickMarkFrames: array[0..32] of TRect;
 	end;
 
 
@@ -852,7 +864,6 @@ type
 			destructor Destroy; override;
 		protected
 			procedure Initialize; override;
-			procedure SizeToFit; virtual;
 		private
 			selectable: boolean;
 			objectValue: pointer;
@@ -877,13 +888,14 @@ type
 			function GetImageValue: TTexture;
 			function GetStringValue: string;			
 			function GetFont: IFont;
+
+			procedure SizeToFit; override;
 		protected
 			textView: TTextView;
 			imageView: TImageView;
 
 			procedure Initialize; override;
 			procedure LayoutSubviews; override;
-			procedure SizeToFit; override;
 
 			function GetTextView: TTextView;
 			function GetTextFrame: TRect; virtual;
@@ -1047,6 +1059,7 @@ type
 	TBarItem = class (TControl)
 		public
 			constructor Create(_view: TView); overload;
+			constructor Create(width: integer); overload;
 			procedure SetView(newValue: TView);
 	end;
 	TBarItemList = specialize TFPGList<TBarItem>;
@@ -1060,17 +1073,20 @@ type
 			procedure AddItem(item: TBarItem);
 			procedure RemoveAllItems;
 			procedure SetResizeByWidth(newValue: boolean);
+			procedure SetEnableContentClipping(newValue: boolean);
 
+			procedure Draw; override;
 			destructor Destroy; override;
 		protected
 			procedure Initialize; override;
+			procedure LayoutSubviews; override;
+			procedure HandleDidAddItem(item: TBarItem); virtual;
 		private
 			items: TBarItemList;
 			itemOffset: TScalar;
 			itemMargin: TScalar;
 			resizeByWidth: boolean;
-			
-			procedure ArrangeItems;
+			enableContentClipping: boolean;
 	end;
 
 type
@@ -1081,46 +1097,41 @@ type
 type
 	TTabView = class;
 	
-	TTabViewItem = class (TButton)
+	TTabViewItem = class (TBarItem)
 		public
-			
-			{ Class Methods }
-			class function TabItem(title: string; _pane: TView): TTabViewItem;
-			
-			{ Constructors }
 			constructor Create(title: string; _pane: TView);
-			
-			{ Accessors }
 			function GetPane: TView;
 			function IsSelected: boolean;
-			
-			{ Methods }
-			procedure UpdateTabView;
-
 			destructor Destroy; override;
-
 		protected
 			procedure Initialize; override;
-			
 		private
 			pane: TView;
+			button: TButton;
 			tabView: TTabView;
 	end;
 	TTabViewItemClass = class of TTabViewItem;	
 	TTabViewList = specialize TFPGList<TTabViewItem>;
 
-	TTabView = class (TControl, IDelegation)
+	TTabBar = class (TItemBar)			
+	end;
+
+	ITabViewDelegate = interface (IDelegate) ['ITabViewDelegate']
+		function HandleTabViewShouldSelectItem(tabView: TTabView; tabViewItem: TTabViewItem): boolean;
+		procedure HandleTabViewWillSelectItem(tabView: TTabView; tabViewItem: TTabViewItem);
+		procedure HandleTabViewDidSelectItem(tabView: TTabView; tabViewItem: TTabViewItem);
+	end;
+
+	TTabView = class (TView, IDelegation)
 		public
 		
 			{ Accessors }
-			procedure SetItems(newValue: TTabViewList);
-			procedure SetTabHeight(newValue: TScalar);
-			
-			function GetItems: TTabViewList;
+			procedure SetTabHeight(newValue: integer);
 			function GetItem(index: integer): TTabViewItem;
 			function GetSelectedItem: TTabViewItem;
 			
 			{ Methods }
+			procedure AddItem(item: TTabViewItem);
 			procedure SelectItem(params: TInvocationParams); overload;
 			procedure SelectItem(index: integer); overload;
 			
@@ -1132,20 +1143,12 @@ type
 
 		protected
 			procedure Initialize; override;
+			procedure LayoutSubviews; override;
 		private
-			items: TTabViewList;
+			tabBar: TTabBar;
 			selectedItem: TTabViewItem;
-			tabHeight: TScalar;
+			tabHeight: integer;
 			delegate: TObject;
-			
-			procedure ArrangeItems;
-	end;
-
-type
-	ITabViewDelegate = interface (IDelegate) ['ITabViewDelegate']
-		function HandleTabViewShouldSelectItem(tabView: TTabView; tabViewItem: TTabViewItem): boolean;
-		procedure HandleTabViewWillSelectItem(tabView: TTabView; tabViewItem: TTabViewItem);
-		procedure HandleTabViewDidSelectItem(tabView: TTabView; tabViewItem: TTabViewItem);
 	end;
 
 type
@@ -1354,10 +1357,6 @@ type
 			procedure PopPage(page: TView);
 	end;
 
-// TODO: temporary until we have a better solutions
-var
-	MainPlatformWindow: pGLPTwindow = nil;
-
 function PollWindowEvents(constref event: pGLPT_MessageRec): boolean;
 procedure UpdateWindows;
 
@@ -1367,6 +1366,11 @@ procedure Draw9PartImage(parts: TTextureSheet; frame: TRect);
 implementation
 uses
 	StrUtils, Math;
+
+function MainPlatformWindow: pGLPTwindow; inline;
+begin
+	result := GLCanvasState.window;
+end;
 
 type
 	TWindowManifest = class
@@ -1473,6 +1477,8 @@ begin
 		for index := list[level].Count - 1 downto 0 do
 			begin
 				window := self[level, index];
+				if window.IsHidden then
+					continue;
 				window.LayoutRoot;
 				window.Update;
 				// TODO: we can kill this once we make a render backend that doesn't need shaders
@@ -1490,10 +1496,11 @@ begin
 	result := false;
 	for level := kWindowLevels - 1 downto 0 do
 		for window in list[level] do
-			begin
-				if window.PollEvent(event) then
-					exit(true);
-			end;
+			if not window.IsHidden then
+				begin
+					if window.PollEvent(event) then
+						exit(true);
+				end;
 end;
 
 procedure TWindowManifest.Add(window: TWindow);
@@ -1607,12 +1614,12 @@ begin
 	params := _params;
 end;
 
-procedure TInvocation.Invoke(_params: TInvocationParams = nil);
+procedure TInvocation.Invoke(withParams: TInvocationParams = nil);
 var
 	newParams: TInvocationParams;
 begin
-	if _params <> nil then
-		newParams := _params
+	if assigned(withParams) then
+		newParams := withParams
 	else
 		newParams := params;
 
@@ -2049,6 +2056,26 @@ begin
 			newFrame.size := m_frame.size;
 			SetFrame(newFrame);
 		end;
+end;
+
+procedure TView.SetRightEdge(offset: TScalar);
+var
+	newLocation: TPoint;
+begin
+	LayoutIfNeeded;
+	newLocation := GetLocation;
+	newLocation.x := trunc(offset - GetWidth);
+	SetLocation(newLocation);
+end;
+
+procedure TView.SetBottomEdge(offset: TScalar);
+var
+	newLocation: TPoint;
+begin
+	LayoutIfNeeded;
+	newLocation := GetLocation;
+	newLocation.y := trunc(offset - GetHeight);
+	SetLocation(newLocation);
 end;
 
 procedure TView.SetLocation(x, y: TScalar);
@@ -2694,7 +2721,10 @@ begin
 
 	// already ordered front
 	if not IsFloating and IsFront then
-		exit;
+		begin
+			SetHidden(false);
+			exit;
+		end;
 			
 	if not IsFloating then
 		begin
@@ -2702,6 +2732,7 @@ begin
 			if window <> nil then
 				window.HandleWillResignFrontWindow;
 
+			SetHidden(false);
 			HandleWillBecomeFrontWindow;
 			WindowManifest.MoveToFront(self);
 			HandleDidBecomeFrontWindow;
@@ -2889,6 +2920,10 @@ begin
 	
 	if mouseInsideView <> nil then
 		mouseInsideView.HandleMouseMoved(event);
+
+	// consume the mouse moved event if we're inside the window frame
+	if InputHit(event) then
+		event.Accept(self);
 end;
 
 procedure TWindow.HandleKeyDown(event: TEvent);
@@ -3342,17 +3377,9 @@ begin
 	result := pane;
 end;
 
-procedure TTabViewItem.UpdateTabView;
-begin
-	RecalculateText;
-	tabView.ArrangeItems;
-end;
-
 procedure TTabViewItem.Initialize;
 begin
-	inherited Initialize;
-	
-	//SetFont(IFont.SystemFont);
+	inherited;	
 	SetHeight(13);
 end;
 
@@ -3363,16 +3390,16 @@ begin
 	inherited;
 end;
 
-class function TTabViewItem.TabItem(title: string; _pane: TView): TTabViewItem;
-begin
-	result := TTabViewItemClass(ClassType).Create(title, _pane);
-end;
-
 constructor TTabViewItem.Create(title: string; _pane: TView);
 begin
 	pane := _pane;
 	Initialize;
-	SetStringValue(title);
+
+	// TODO: height-only constructor?
+	button := TButton.Create(RectMake(0, 0, 0, 16), title, GetActiveFont);
+	button.SetResizeByWidth(true);
+	button.SizeToFit;
+	SetView(button);
 end;
 
 //#########################################################
@@ -3384,19 +3411,14 @@ begin
 	result := delegate;
 end;
 
+function TTabView.GetItem(index: integer): TTabViewItem;
+begin
+	result := tabBar.items[index] as TTabViewItem;
+end;
+
 function TTabView.GetSelectedItem: TTabViewItem;
 begin
 	result := selectedItem;
-end;
-
-function TTabView.GetItems: TTabViewList;
-begin
-	result := items;
-end;
-
-function TTabView.GetItem(index: integer): TTabViewItem;
-begin
-	result := TTabViewItem(items[index]);
 end;
 
 procedure TTabView.SetDelegate(newValue: TObject);
@@ -3404,20 +3426,15 @@ begin
 	delegate := newValue;
 end;
 
-procedure TTabView.SetTabHeight(newValue: TScalar);
+procedure TTabView.SetTabHeight(newValue: integer);
 begin
 	tabHeight := newValue;
-end;
-
-procedure TTabView.SetItems(newValue: TTabViewList);
-begin
-	items := newValue;
-	ArrangeItems;
+	NeedsLayoutSubviews;
 end;
 
 procedure TTabView.SelectItem(index: integer);
 begin
-	SelectItem(items[index]);
+	SelectItem(GetItem(index));
 end;
 
 procedure TTabView.SelectItem(params: TInvocationParams);
@@ -3425,7 +3442,8 @@ var
 	del: ITabViewDelegate;
 	item: TTabViewItem absolute params;
 begin
-	
+	writeln('select item ', item.classname);
+
 	// the delgete rejected selection
 	if Supports(delegate, ITabViewDelegate, del) then
 		if not del.HandleTabViewShouldSelectItem(self, item) then
@@ -3455,37 +3473,34 @@ begin
 		del.HandleTabViewDidSelectItem(self, item);
 end;
 
-procedure TTabView.ArrangeItems;
-var
-	item: TTabViewItem;
-	location: TScalar = 0;
+procedure TTabView.AddItem(item: TTabViewItem); 
 begin
-	writeln('arrange items');
-	for pointer(item) in items do
-		begin
-			item.tabView := self;
-			
-			item.SetHeight(tabHeight);
-			item.SetLocation(V2(location, 0));
-			item.SetAction(TInvocation.Create(@self.SelectItem, item));
-			
-			AddSubview(item);
-			
-			location += item.GetWidth + 4;
-		end;
+	item.tabView := self;
+	item.button.SetAction(TInvocation.Create(@self.SelectItem, item));
+	tabBar.AddItem(item);
+end;
+
+procedure TTabView.LayoutSubviews;
+var
+	newFrame: TRect;
+begin
+	newFrame.origin := 0;
+	newFrame.size := V2(GetWidth, tabHeight);
+	tabBar.SetFrame(newFrame);
+	inherited;
 end;
 
 procedure TTabView.Initialize;
 begin
-	inherited Initialize;
-	
-	SetTabHeight(13);
-	items := TTabViewList.Create;
+	inherited;
+
+	tabBar := TTabBar.Create;
+	AddSubview(tabBar);
+	SetTabHeight(16);
 end;
 
 destructor TTabView.Destroy;
 begin
-	items.Free;
 	delegate := nil;
 	inherited;
 end;
@@ -3580,10 +3595,8 @@ end;
 
 procedure TMatrixView.ArrangeCells;
 var
-	newFrame: TRect;
 	cellFrame: TRect;
 	cell: TView;
-	lastCell: TView;
 	count: integer = 0;
 	i: integer;
 	boundingRect: TRect;
@@ -3606,7 +3619,7 @@ begin
 					cell := cells[count];
 					if cell = nil then
 						continue;
-					lastCell := cell;
+
 					cell.SetFrame(cellFrame);
 					boundingRect := boundingRect.Union(cellFrame);
 					
@@ -3933,6 +3946,12 @@ begin
 	SetView(_view);
 end;
 
+constructor TBarItem.Create(width: integer);
+begin
+	Initialize;
+	SetFrame(RectMake(0, 0, width, 0));
+end;
+
 //#########################################################
 // ITEM BAR
 //#########################################################
@@ -3945,34 +3964,61 @@ end;
 procedure TItemBar.SetItemMargin(newValue: integer);
 begin
 	itemMargin := newValue;
-	ArrangeItems;
+	NeedsLayoutSubviews;
 end;
 
 procedure TItemBar.SetItems(newValue: TBarItemList);
 begin
 	items := newValue;
-	ArrangeItems;
+	NeedsLayoutSubviews;
 end;
 
 procedure TItemBar.AddItem(item: TBarItem);
 begin
 	items.Add(item);
-	ArrangeItems;
+	NeedsLayoutSubviews;
 end;
 
 procedure TItemBar.RemoveAllItems;
 begin
-	items.Clear;
-	ArrangeItems;
+	// TODO: this doesn't remove from parent also.
+	//items.Clear;
+	NeedsLayoutSubviews;
 end;
 
 procedure TItemBar.SetResizeByWidth(newValue: boolean);
 begin
 	resizeByWidth := newValue;
-	ArrangeItems;
+	NeedsLayoutSubviews;
 end;
 
-procedure TItemBar.ArrangeItems;
+procedure TItemBar.SetEnableContentClipping(newValue: boolean);
+begin
+	enableContentClipping := newValue;
+end;
+
+procedure TItemBar.Draw;
+var
+	child: TView;
+begin
+	FillRect(GetBounds, RGBA(0,0,0,0.25));
+
+	if assigned(subviews) then
+		for child in subviews do
+			begin
+				if enableContentClipping then
+					PushClipRect(GetClipRect);
+				child.DrawInternal(renderOrigin);
+				if enableContentClipping then
+					PopClipRect;
+			end
+end;
+
+procedure TItemBar.HandleDidAddItem(item: TBarItem);
+begin
+end;
+
+procedure TItemBar.LayoutSubviews;
 var
 	item: TBarItem;
 	rect: TRect;
@@ -3983,12 +4029,16 @@ begin
 	rect.size.height := GetHeight;
 	totalWidth := 0;
 	
-	for pointer(item) in items do
+	for item in items do
 		begin
 			if item.GetParent = nil then
-				AddSubview(item);
-			
+				begin
+					AddSubview(item);
+					HandleDidAddItem(item);
+				end;
+
 			rect.size.width := item.GetWidth;
+			writeln('item ', rect.tostr);
 			item.SetFrame(rect);
 			
 			rect.origin.x += rect.Width + itemMargin;
@@ -4047,10 +4097,6 @@ end;
 function TCell.IsSelectable: boolean;
 begin
 	result := selectable;
-end;
-
-procedure TCell.SizeToFit;
-begin
 end;
 
 destructor TCell.Destroy;
@@ -4292,17 +4338,20 @@ end;
 
 procedure TScroller.HandleValueChanged;
 var
-	total: TScalar;
+	total, 
+	percent: float;
 begin
 	if scrollView <> nil then
 		if IsVertical then
 			begin
 				total := scrollView.GetScrollableFrame.Height;
+				percent := currentValue / range.Total;
 				scrollView.SetScrollOrigin(V2(0, total * percent), false, true);
 			end
 		else
 			begin
 				total := scrollView.GetScrollableFrame.Width;
+				percent := currentValue / range.Total;
 				scrollView.SetScrollOrigin(V2(total * percent, 0), true, false);
 			end;
 end;
@@ -4331,12 +4380,18 @@ procedure TSlider.SetCurrentValue(newValue: integer);
 begin
 	currentValue := newValue;
 	currentValue := interval * Ceil(currentValue / interval);
-	percent := currentValue / range.Total;
+	//percent := currentValue / range.Total;
 end;
 
 procedure TSlider.SetInterval(newValue: integer);
 begin
+	Assert(newValue > 0, 'interval must be greater than 0.');
 	interval := newValue;
+end;
+
+procedure TSlider.SetTickMarks(newValue: integer);
+begin
+	tickMarks := newValue;
 end;
 
 function TSlider.GetCurrentValue: integer;
@@ -4383,23 +4438,77 @@ begin
 	FillRect(rect, RGBA(0, 0, 0, 0.3));
 end;
 
-procedure TSlider.Draw;
+function TSlider.ClosestTickMarkToValue(value: integer): integer;
 begin
+	result := Ceil(currentValue / interval);
+end;
+
+function TSlider.RectOfTickMarkAtIndex(index: integer): TRect;
+begin
+	result := tickMarkFrames[index];
+end;
+
+function TSlider.ValueAtRelativePosition(percent: single): integer;
+begin
+	percent := Clamp(percent, 0, 1);
+	result := range.ValueOfPercent(percent);//PercentOfRange(range, percent);
+	result := interval * Ceil(result / interval);
+end;
+
+procedure TSlider.Draw;
+var
+	percent: float;
+	rect: TRect;
+	i: integer;
+begin
+
+	// track
 	DrawTrack(GetTrackFrame);
 
+	// tick marks
+	if tickMarks > 1 then
+		begin
+			if IsVertical then
+				begin
+				end
+			else
+				begin
+					rect := RectMake(0, 0, GetWidth / tickMarks, GetHeight);
+					for i := 0 to tickMarks - 1 do
+						begin
+							FillRect(rect.Inset(8, 0), RGBA(1,0,0,0.2));
+							tickMarkFrames[i] := rect;
+							rect.origin.x += rect.width;
+						end;
+				end;
+		end;
+
+	// handle
+	percent := currentValue / range.Total;
 	if IsVertical then
 		begin
 			handleFrame := RectMake(0, GetTrackFrame.MinY + (percent * GetTrackSize.height), GetHandleFrame.Width, GetHandleFrame.Height);
 			handleFrame := RectCenterX(handleFrame, GetBounds);
-			handleFrame.origin += GetHandleFrame.origin;
+			if tickMarks > 1 then
+				begin
+					handleFrame := RectCenterY(handleFrame, tickMarkFrames[ClosestTickMarkToValue(currentValue)]);
+				end
+			else
+				handleFrame.origin += GetHandleFrame.origin;
 		end
 	else
 		begin
 			handleFrame := RectMake(percent * GetTrackSize.width, 0, GetHandleFrame.Width, GetHandleFrame.Height);
 			handleFrame := RectCenterY(handleFrame, GetBounds);
-			handleFrame.origin += GetHandleFrame.origin;
+			if tickMarks > 1 then
+				begin
+					handleFrame := RectCenterX(handleFrame, tickMarkFrames[ClosestTickMarkToValue(currentValue)]);
+					//handleFrame.origin := tickMarkFrames[ClosestTickMarkToValue(currentValue)].origin;
+					//handleFrame.origin += GetHandleFrame.origin;
+				end
+			else
+				handleFrame.origin += GetHandleFrame.origin;
 		end;
-
 	DrawHandle(handleFrame);
 end;
 
@@ -4412,6 +4521,23 @@ begin
 	if event.IsAccepted then
 		exit;
 
+
+	//if InputHit(event) then
+	//	begin
+	//		where := (event.Location(self) - GetTrackFrame.origin);
+	//		if IsVertical then
+	//			currentValue := ValueAtRelativePosition(where.y / GetTrackSize.height)
+	//		else
+	//			currentValue := ValueAtRelativePosition(where.x / GetTrackSize.width);
+	//		if liveUpdate then
+	//			HandleValueChanged;
+	//		event.Accept;
+	//		dragging :=true;
+
+	//		if handleFrame.ContainsPoint(event.Location(self)) then
+	//			dragOrigin := event.Location(self) - handleFrame.origin;
+	//	end;
+
 	if handleFrame.ContainsPoint(event.Location(self)) then
 		begin
 			dragOrigin := event.Location(self) - handleFrame.origin;
@@ -4422,16 +4548,16 @@ begin
 		begin
 			where := (event.Location(self) - GetTrackFrame.origin);
 			if IsVertical then
-				percent := where.y / GetTrackSize.height
+				currentValue := ValueAtRelativePosition(where.y / GetTrackSize.height)
 			else
-				percent := where.x / GetTrackSize.width;
-			percent := Clamp(percent, 0, 1);
-			currentValue := range.ValueOfPercent(percent);//PercentOfRange(range, percent);
-			currentValue := interval * Ceil(currentValue / interval);
-			HandleValueChanged;
+				currentValue := ValueAtRelativePosition(where.x / GetTrackSize.width);
+			if liveUpdate then
+				HandleValueChanged;
 			event.Accept;
 			dragging := true;
 		end;
+
+	writeln('input started at ', currentValue);
 end;
 
 procedure TSlider.HandleInputDragged(event: TEvent);
@@ -4444,13 +4570,11 @@ begin
 		begin
 			where := (event.Location(self) - GetTrackFrame.origin) - dragOrigin;
 			if IsVertical then
-				percent := where.y / GetTrackSize.height
+				currentValue := ValueAtRelativePosition(where.y / GetTrackSize.height)
 			else
-				percent := where.x / GetTrackSize.width;
-			percent := Clamp(percent, 0, 1);
-			currentValue := range.ValueOfPercent(percent);//PercentOfRange(range, percent);
-			currentValue := interval * Ceil(currentValue / interval);
-			HandleValueChanged;
+				currentValue := ValueAtRelativePosition(where.x / GetTrackSize.width);
+			if liveUpdate then
+				HandleValueChanged;
 			event.Accept;
 		end;
 end;
@@ -4458,6 +4582,14 @@ end;
 procedure TSlider.HandleInputEnded(event: TEvent);
 begin
 	inherited HandleInputEnded(event);
+
+	// snap to interval
+	if interval > 1 then
+		SetCurrentValue(GetCurrentValue);
+
+	writeln('new value: ', GetCurrentValue, ' tick=', ClosestTickMarkToValue(GetCurrentValue)+1);
+	if not liveUpdate then
+		HandleValueChanged;
 
 	InvokeAction;
 	dragging := false;
@@ -4468,6 +4600,7 @@ begin
 	inherited;
 
 	interval := 1;
+	liveUpdate := true;
 end;
 
 //#########################################################
@@ -5971,7 +6104,7 @@ begin
 			else
 				imageFrame := RectMake(0, 0, scaledSize.width, scaledSize.height);
 
-			textureFrame := frontImage.GetTextureFrame.texture;
+			textureFrame := frontImage.TextureFrame;
 			DrawTexture(frontImage, imageFrame, textureFrame);
 		end;
 
@@ -6764,6 +6897,11 @@ begin
 			else
 				action.Invoke;
 		end;
+end;
+
+procedure TControl.SizeToFit;
+begin
+	LayoutSubviews;
 end;
 
 procedure TControl.HandleStateChanged;

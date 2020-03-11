@@ -44,6 +44,7 @@ procedure DrawTexture (texture: ITexture; x, y: single); overload;
 procedure DrawTexture (texture: ITexture; constref rect: TRect); overload; inline;
 procedure DrawTexture (texture: ITexture; constref rect: TRect; constref textureFrame: TRect); overload;
 procedure DrawTexture (texture: ITexture; constref rect: TRect; constref textureFrame: TRect; constref color: TVec4); overload;
+procedure DrawTexture (texture: ITexture; constref rect: TRect; constref color: TVec4); overload; inline;
 
 { Clip Rects }
 procedure PushClipRect (rect: TRect); 
@@ -54,6 +55,8 @@ procedure FlushDrawing;
 procedure ClearBackground;
 procedure SwapBuffers;
 
+procedure SetActiveFont(newValue: IFont);
+function GetActiveFont: IFont;
 procedure SetViewTransform(x, y, scale: single);
 procedure SetViewPort (inWidth, inHeight: integer);
 function GetViewPort: TRect; inline;
@@ -72,8 +75,11 @@ type
     projTransform: TMat4;
     viewTransform: TMat4;
     clipRectStack: TRectList;
+    activeFont: IFont;
+    bindTextureCount: longint;
   end;
 
+// TODO: we work with interfaces now so this doesn't work
 type
   TTextureHelper = class helper for TTextureSource
     procedure Draw(x, y: single); overload;
@@ -121,6 +127,8 @@ function Rand(min, max: longint): longint;
 var
   zero: boolean = false;
 begin
+  Assert(max >= 0, 'Rand max ('+IntToStr(max)+') is negative.');
+
   if min = 0 then 
     begin
       //Fatal('GetRandomNumber 0 min value is invalid.');
@@ -156,7 +164,7 @@ end;
 
 procedure TTextureHelper.Draw(constref rect: TRect; constref color: TVec4);
 begin
-  DrawTexture(self, rect, GetTextureFrame.Texture, color);
+  DrawTexture(self, rect, TextureFrame, color);
 end;
 
 { Types }
@@ -327,6 +335,16 @@ procedure error_callback(error: integer; description: string);
 begin
   writeln(stderr, description);
   halt(-1);
+end;
+
+procedure SetActiveFont(newValue: IFont);
+begin
+  GLCanvasState.activeFont := newValue;
+end;
+
+function GetActiveFont: IFont;
+begin
+  result := GLCanvasState.activeFont;
 end;
 
 procedure SetViewTransform(x, y, scale: single);
@@ -608,6 +626,11 @@ begin
   vertexBuffer.AddQuad(@quad);
 end;
 
+procedure DrawTexture (texture: ITexture; constref rect: TRect; constref color: TVec4);
+begin
+  DrawTexture(texture, rect, texture.GetFrame.Texture, color);
+end;
+
 procedure DrawTexture (texture: ITexture; constref rect: TRect; constref textureFrame: TRect);
 begin
   DrawTexture(texture, rect, textureFrame, RGBA(1, 1, 1, 1));
@@ -615,14 +638,14 @@ end;
 
 procedure DrawTexture (texture: ITexture; constref rect: TRect);
 begin
-  DrawTexture(texture, rect, texture.GetTextureFrame.texture);
+  DrawTexture(texture, rect, texture.GetFrame.Texture);
 end;
 
 procedure DrawTexture (texture: ITexture; x, y: single);
 var
   size: TVec2;
 begin
-  size := texture.GetTextureFrame.pixel.size;
+  size := texture.GetFrame.pixel.size;
   DrawTexture(texture, RectMake(x, y, size.width, size.height));
 end;
 
