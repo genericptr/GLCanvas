@@ -67,7 +67,7 @@ type
 		acceptedObject: TObject;
 		// TODO: use the keycode! this will change with keyboard layouts
 		// https://stackoverflow.com/questions/56915258/dİfference-between-sdl-scancode-and-sdl-keycode
-		function KeyCode: GLPT_Scancode;
+		function KeyCode: GLPT_Keycode;
 		function ScrollWheel: TVec2;
 		function ClickCount: integer;
 		function KeyboardModifiers: TShiftState;
@@ -466,6 +466,7 @@ type
 			procedure HandleDefaultAction(var msg); message 'DefaultAction';
 			procedure FindSubviewForMouseEvent(event: TEvent; parent: TView; var outView: TView);
 			procedure SetFocusedView(newValue: TView);
+			procedure ProcessKeyDown(super: TView; event: TEvent);
 	end;
 
 type
@@ -499,6 +500,10 @@ type
 
 type
 	TControlState = (Off, On, Mixed);
+	TControlKeyEquivalent = record
+		keycode: GLPT_Keycode;
+		modifiers: TShiftState;
+	end;
 	TControl = class (TView)
 		public
 			{ Accessors }
@@ -506,6 +511,7 @@ type
 			procedure SetEnabled(newValue: boolean);
 			procedure SetControlState(newValue: TControlState);
 			procedure SetAction(newValue: TInvocation);
+			procedure SetKeyEquivalent(keycode: GLPT_Keycode; modifiers: TShiftState = []);
 
 			function GetStringValue: string;
 			function GetAction: TInvocation;
@@ -526,6 +532,7 @@ type
 			action: TInvocation;
 			controlFont: IFont;
 			state: TControlState;
+			keyEquivalent: TControlKeyEquivalent;
 
 			procedure SetStringValue(newValue: string; alwaysNotify: boolean); overload;
 	end;
@@ -1542,9 +1549,9 @@ end;
 // EVENT
 //#########################################################
 
-function TEvent.KeyCode: GLPT_Scancode;
+function TEvent.KeyCode: GLPT_Keycode;
 begin
-	result := msg^.params.keyboard.scancode;
+	result := msg^.params.keyboard.keycode;
 end;
 
 function TEvent.KeyboardModifiers: TShiftState;
@@ -2926,17 +2933,47 @@ begin
 		event.Accept(self);
 end;
 
+procedure TWindow.ProcessKeyDown(super: TView; event: TEvent);
+var
+	child: TView;
+	control: TControl;
+begin
+	for child in super.subviews do
+		begin
+			if child.IsMember(TControl) then 
+				begin
+					control := child as TControl;
+					if (control.keyEquivalent.keycode = event.KeyCode) and 
+						(control.keyEquivalent.modifiers = event.KeyboardModifiers) then
+						begin
+							control.InvokeAction;
+							event.Accept(self);
+							break;
+						end;
+				end;
+			ProcessKeyDown(child, event);
+			if event.IsAccepted then
+				break;
+		end;
+end;
+
 procedure TWindow.HandleKeyDown(event: TEvent);
 begin
-
-	if (event.KeyCode = GLPT_SCANCODE_RETURN) and
+	
+	// handle default button action
+	if (event.KeyCode = GLPT_KEY_RETURN) and
 		 (defaultButton <> nil) then
 		begin
 			TButton(defaultButton).InvokeAction;
 			event.Accept(self);
 			exit;
 		end;
-		
+	
+	// process keydown for all children
+	ProcessKeyDown(self, event);
+	if event.IsAccepted then
+		exit;
+
 	// pass on to focused view
 	if focusedView <> nil then
 		focusedView.HandleKeyDown(event);
@@ -5773,7 +5810,7 @@ var
 begin
 	writeln(event.KeyCode);
 	case event.KeyCode of
-		GLPT_SCANCODE_UP:
+		GLPT_KEY_UP:
 			begin
 				//if selection.Count > 0 then
 				//	index := cells.IndexOf(selection[0]) - 1
@@ -5788,7 +5825,7 @@ begin
 				//	end;
 				event.Accept(self);
 			end;
-		GLPT_SCANCODE_DOWN:
+		GLPT_KEY_DOWN:
 			begin
 				//if selection.Count > 0 then
 				//	index := cells.IndexOf(selection[0]) + 1
@@ -5966,15 +6003,15 @@ var
 begin
 	if editable then
 		begin
-			if event.KeyCode = GLPT_SCANCODE_RETURN then
+			if event.KeyCode = GLPT_KEY_RETURN then
 				begin
 					if assigned(action) then
 						InvokeAction
 					else
 						SetStringValue(GetStringValue + LineEnding);
 				end
-			else if(event.KeyCode = GLPT_SCANCODE_BACKSPACE) or 
-						  (event.KeyCode = GLPT_SCANCODE_DELETE) and 
+			else if(event.KeyCode = GLPT_KEY_BACKSPACE) or 
+						  (event.KeyCode = GLPT_KEY_DELETE) and 
 						  HandleWillDelete then
 				begin
 					// TODO: delete entire line
@@ -6879,6 +6916,12 @@ begin
 	state := newValue;
 	HandleStateChanged;
 	NeedsLayoutSubviews;
+end;
+
+procedure TControl.SetKeyEquivalent(keycode: GLPT_Keycode; modifiers: TShiftState = []);
+begin
+	keyEquivalent.keycode := keycode;
+	keyEquivalent.modifiers := modifiers;
 end;
 
 procedure TControl.SetAction(newValue: TInvocation);

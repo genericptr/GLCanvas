@@ -45,7 +45,8 @@ type
 
 			function TextureToPixel (textureRect: TRect): TRect;
 			function PixelToTexture (pixelRect: TRect): TRect;
-			function SubTextureFrame (x, y, w, h: float): TRect;
+			function SubTextureFrame (x, y, w, h: float): TRect; overload;
+			function SubTextureFrame (pixelFrame: TRect): TRect; overload;
 			function PixelAt(x, y: integer): TImagePixel; virtual;
 
 			procedure Lock(inUnit: TGLTextureUnit); virtual;
@@ -642,8 +643,8 @@ begin
 end;
 
 { Returns a sub-frame of the texture frame using AABB
-  0,0,1,1 = entire frame
-	0,0.5,1,1 = 50% split at minY }
+  	0,0,1,1 = entire frame
+		0,0.5,1,1 = 50% split at minY }
 function TTextureSource.SubTextureFrame (x, y, w, h: float): TRect;
 begin
 	result := AABB(TextureFrame.MinX + (TextureFrame.size.Width * x),
@@ -651,6 +652,21 @@ begin
 								 TextureFrame.MinX + (TextureFrame.size.Width * w), 
 								 TextureFrame.MinY + (TextureFrame.size.Height * h)
 								 );
+end;
+
+{ Returns a sub-frame of the texture frame using pixel coordinates 
+		with a texture frame of [100,100,32,32] a  pixel frame of [0,16,32,16]
+		will return a sub texture frame that is [100,116,32,16] (in pixel coordinates) }
+function TTextureSource.SubTextureFrame (pixelFrame: TRect): TRect;
+var
+	relSize, 
+	relPos: TVec2;
+begin
+	relSize := pixelFrame.size / TextureSize;
+	relPos := pixelFrame.origin / TextureSize;
+	result := TextureFrame;
+	result.origin += (result.size * relPos);
+	result.size := result.size * relSize;
 end;
 
 function TTextureSource.GetFrame: TTextureFrame;
@@ -765,7 +781,6 @@ var
 	image: TImage;
 	width, height: integer;
 begin
-	Assert(FileExists(imagePath), imagePath+' for sprite pack doesn'' exist.');
 	image := LoadImageFromFile(imagePath, width, height);
 	if assigned(image) then
 		begin
@@ -828,8 +843,12 @@ begin
 		begin
 			attributes := NodeAttributes(node);			
 
+			// use absolute or relative paths
 			imagePath := ExtractFileDir(path);
-			imagePath := imagePath+'/'+attributes['imagePath'];
+			if imagePath <> '' then
+				imagePath := imagePath+'/'+attributes['imagePath']
+			else
+				imagePath := attributes['imagePath'];
 			LoadImage(imagePath);
 
 			//textureSize := V2(attributes['width'], attributes['height']);

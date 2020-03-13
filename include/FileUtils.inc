@@ -13,7 +13,6 @@ var
   f: File;
   list: TStringList;
 begin
-  Assert(FileExists(path), 'file '+path+' doesnt''t exist');
   try
     list := TStringList.Create;
     list.LoadFromFile(path);

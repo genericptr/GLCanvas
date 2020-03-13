@@ -33,9 +33,9 @@ procedure DrawText (text: ansistring; where: TVec2; color: TColor; scale: single
 procedure DrawText (text: ansistring; where: TVec2; scale: single = 1.0); overload; inline;
 
 function DrawText (font: IFont; text: ansistring; textAlignment: TTextAlignment; bounds: TRect; color: TColor): TVec2; overload;
-function DrawText (font: IFont; text: ansistring; textAlignment: TTextAlignment; bounds: TRect): TVec2; overload; inline;
+function DrawText (font: IFont; text: ansistring; textAlignment: TTextAlignment; bounds: TRect): TVec2; overload;
 procedure DrawText (font: IFont; text: ansistring; where: TVec2; color: TColor; scale: single = 1.0); overload;
-procedure DrawText (font: IFont; text: ansistring; where: TVec2; scale: single = 1.0); overload; inline;
+procedure DrawText (font: IFont; text: ansistring; where: TVec2; scale: single = 1.0); overload;
 
 {$endif}
 

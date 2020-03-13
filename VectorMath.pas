@@ -41,7 +41,7 @@ type
       function Offset (byX, byY: TScalar): TVec2; overload; inline;
       function Offset (by: TVec2): TVec2; overload; inline;
 			procedure Show;
-			function ToStr: string;
+			function ToStr(places: integer = -1): string;
 		private
 			function GetComponent(pIndex:integer):TScalar; inline;
       procedure SetComponent(pIndex:integer;pValue:TScalar); inline;
@@ -84,7 +84,7 @@ type
       function Offset (by: TVec3): TVec3; overload; inline;
 			function XY: TVec2; inline;
 			procedure Show;
-			function ToStr: string;
+			function ToStr(places: integer = -1): string;
 		private
 			function GetComponent(pIndex:integer):TScalar; inline;
       procedure SetComponent(pIndex:integer; pValue:TScalar); inline;
@@ -122,7 +122,7 @@ type
 			function XY: TVec2; inline;
 			function XYZ: TVec3; inline;
 			procedure Show;
-			function ToStr: string;
+			function ToStr(places: integer = -1): string;
 		private
 			function GetComponent(pIndex:integer):TScalar; inline;
       procedure SetComponent(pIndex:integer; pValue:TScalar); inline;
@@ -391,6 +391,26 @@ type
 function TComponentIntegerHelper.ToStr: String;
 begin
 	result := IntToStr(self);
+end;
+
+function FloatToStr (number: single; places: integer): string; overload;
+begin
+  if places = -1 then
+    result := FloatToStr(number)
+  else if places = 0 then
+    result := FloatToStr(Trunc(number))
+  else
+    result := Format('%.'+IntToStr(places)+'f', [number]);
+end;
+
+function FloatToStr (number: double; places: integer): string; overload;
+begin
+  if places = -1 then
+    result := FloatToStr(number)
+  else if places = 0 then
+    result := FloatToStr(Trunc(number))
+  else
+    result := Format('%.'+IntToStr(places)+'f', [number]);
 end;
 
 { Generic Vector Functions }
@@ -993,9 +1013,9 @@ begin
 	writeln(ToStr);
 end;
 
-function TVec2.ToStr: string;
+function TVec2.ToStr(places: integer = -1): string;
 begin
-	result := '{'+FloatToStr(x)+','+FloatToStr(y)+'}';
+	result := '{'+FloatToStr(x, places)+','+FloatToStr(y, places)+'}';
 end;
 
 class operator TVec2.:= (a:TScalar): TVec2;
@@ -1083,9 +1103,9 @@ begin
 	result := V2(x, y);
 end;
 
-function TVec3.ToStr: string;
+function TVec3.ToStr(places: integer = -1): string;
 begin
-	result := '{'+FloatToStr(x)+','+FloatToStr(y)+','+FloatToStr(z)+'}';
+	result := '{'+FloatToStr(x, places)+','+FloatToStr(y, places)+','+FloatToStr(z, places)+'}';
 end;
 
 function TVec3.Length: TScalar;
@@ -1355,9 +1375,9 @@ begin
 	result := V3(x, y, z);
 end;
 
-function TVec4.ToStr: string;
+function TVec4.ToStr(places: integer = -1): string;
 begin
-	result := '{'+FloatToStr(x)+','+FloatToStr(y)+','+FloatToStr(z)+','+FloatToStr(w)+'}';
+	result := '{'+FloatToStr(x, places)+','+FloatToStr(y, places)+','+FloatToStr(z, places)+','+FloatToStr(w, places)+'}';
 end;
 
 class function TVec4.Zero: TVec4;
