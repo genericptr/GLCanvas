@@ -47,7 +47,8 @@ type
 			function PixelToTexture (pixelRect: TRect): TRect;
 			function SubTextureFrame (x, y, w, h: float): TRect; overload;
 			function SubTextureFrame (pixelFrame: TRect): TRect; overload;
-			function PixelAt(x, y: integer): TImagePixel; virtual;
+			function PixelAt(x, y: integer): TImagePixel; virtual; overload;
+			function PixelAt(point: TVec2i): TImagePixel; virtual; overload;
 
 			procedure Lock(inUnit: TGLTextureUnit); virtual;
 			procedure Unlock; virtual;
@@ -169,6 +170,7 @@ type
 
 			property Indexer[name: string]: TTexture read GetTexture; default;
 
+			function PixelAt(x, y: integer): TImagePixel; override;
 			procedure Load; override;
 			destructor Destroy; override;
 		private
@@ -176,6 +178,7 @@ type
 			path: string;
 			textureParams: TTextureParameters;
 			scale: TScalar;
+			sourceImage: TImage;
 
 			procedure LoadImage (imagePath: ansistring);
 			procedure AddTexture (name: string; constref spriteSize: TVec2; constref offset, position, pivot: TVec2); 
@@ -207,6 +210,8 @@ type
 			textureParams: TTextureParameters;
 			imagePaths: TImagePathArray;
 	end;
+
+operator := (right: TImagePixel): TVec4;
 
 procedure SetMaximumTextureUnits(newValue: integer); 
 function PushTexture (texture: ITexture): TGLTextureUnit;
@@ -278,6 +283,13 @@ begin
 	result.dir := ExtractFileDir(path);
 end;
 
+operator := (right: TImagePixel): TVec4;
+begin
+	result.r := right.r/255;
+	result.g := right.g/255;
+	result.b := right.b/255;
+	result.a := right.a/255;
+end;
 
 //#########################################################
 // OPENGL UTILITIES
@@ -676,7 +688,13 @@ end;
 
 function TTextureSource.PixelAt(x, y: integer): TImagePixel;
 begin
+	Assert(false, 'PixelAt must be implemented by texture.');
 	result := Default(TImagePixel);
+end;
+
+function TTextureSource.PixelAt(point: TVec2i): TImagePixel;
+begin
+	result := PixelAt(point.x, point.y);
 end;
 
 procedure TTextureSource.Lock(inUnit: TGLTextureUnit);
@@ -755,6 +773,9 @@ begin
 	FreeAndNil(textures);
 	if IsLoaded then
 		DeleteTexture(textureID);
+	if assigned(sourceImage) then
+		FreeMem(sourceImage);
+	inherited;
 end;
 
 procedure TTexturePack.SetTextureParameters (newValue: TTextureParameters); 
@@ -776,24 +797,28 @@ begin
 	Assert(result <> nil, 'Pack face "'+name+'" is nil.');
 end;
 
+function TTexturePack.PixelAt(x, y: integer): TImagePixel;
+begin
+	Assert(IsLoaded, 'Texture must be loaded before inspecting pixels.');
+	Assert(sourceImage <> nil, 'Texture image data was freed before inspecting pixels.');
+	result := sourceImage[x + y * trunc(textureSize.width)];
+end;
+
 procedure TTexturePack.LoadImage (imagePath: ansistring);
 var
-	image: TImage;
 	width, height: integer;
 begin
-	image := LoadImageFromFile(imagePath, width, height);
-	if assigned(image) then
+	sourceImage := LoadImageFromFile(imagePath, width, height);
+	if assigned(sourceImage) then
 		begin
 			GenerateTexture(m_textureID);
 
 			BindTexture2D(textureID);
-			LoadTexture2D(width, height, image, textureParams);
+			LoadTexture2D(width, height, sourceImage, textureParams);
 			RestoreTextureUnit(0, textureID);
 
 			m_textureFrame.texture := RectMake(0, 0, 1, 1);
 			m_textureFrame.pixel := RectMake(0, 0, width, height);
-
-			//FreeMem(image);
 		end;
 end;
 
@@ -1168,9 +1193,16 @@ end;
 
 function TTexture.PixelAt(x, y: integer): TImagePixel;
 begin
-	Assert(IsLoaded, 'Texture must be loaded before inspecting pixels.');
-	Assert(sourceImage <> nil, 'Texture image data was freed before inspecting pixels.');
-	result := sourceImage[x + y * trunc(textureSize.width)];
+	// if the texture has an owner then offset to the owners
+	// cooridinate space and sample from the owner
+	if owner <> nil then
+		result := owner.PixelAt(PixelFrame.origin + V2(x, y))
+	else
+		begin
+			Assert(IsLoaded, 'Texture must be loaded before inspecting pixels.');
+			Assert(sourceImage <> nil, 'Texture image data was freed before inspecting pixels.');
+			result := sourceImage[x + y * trunc(textureSize.width)];
+		end;
 end;
 
 procedure TTexture.Load;

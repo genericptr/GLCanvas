@@ -59,7 +59,7 @@ type
       function Union (rect: TRect): TRect;
 
       procedure Show;
-      function ToStr: string;
+      function ToStr(places: integer = -1): string;
     public
       class operator := (right: TScalar): TRect;
       class operator := (right: array of TScalar): TRect;
@@ -144,24 +144,6 @@ type
       function ToStr: string;
       procedure Show;
   end;
-
-{ Colors }
-type
-  TColor = TVec4;
-  
-type
-  TColorHelper = record helper for TVec4
-    class function Red(alpha: TScalar = 1.0): TVec4; static;
-    class function Green(alpha: TScalar = 1.0): TVec4; static;
-    class function Blue(alpha: TScalar = 1.0): TVec4; static;
-    class function White(alpha: TScalar = 1.0): TVec4; static;
-    class function Black(alpha: TScalar = 1.0): TVec4; static;
-    class function Clear: TVec4; static;
-  end;
-
-function RGBA(r, g, b, a: TScalar): TColor;
-function RGBA(white: TScalar; alpha: TScalar = 1.0): TColor;
-function HexColorToRGB (hexValue: integer; alpha: TScalar = 1.0): TVec4;
 
 function PolyContainsPoint (const points: TVec2Array; constref point: TVec2): boolean;
 function PolyIntersectsRect(const vertices: TVec2Array; constref rect: TRect): boolean;
@@ -457,24 +439,6 @@ begin
   
 end;
 
-function RGBA(r, g, b, a: TScalar): TColor;
-begin
-  result := V4(r, g, b, a);
-end;
-
-function RGBA(white: TScalar; alpha: TScalar = 1.0): TColor;
-begin
-  result := V4(white, white, white, alpha);
-end;
-
-function HexColorToRGB (hexValue: integer; alpha: TScalar = 1.0): TVec4;
-begin
-  result.r := ((hexValue shr 16) and $FF) / 255.0;  // Extract the RR byte
-  result.g := ((hexValue shr 8) and $FF) / 255.0;   // Extract the GG byte
-  result.b := ((hexValue) and $FF) / 255.0;         // Extract the BB byte
-  result.a := alpha;
-end;
-
 function PolyContainsPoint (const points: TVec2Array; constref point: TVec2): boolean;
 var
   i, j, c: integer;
@@ -589,36 +553,6 @@ begin
   writeln(ToStr);
 end;
 
-class function TColorHelper.Red(alpha: TScalar = 1.0): TVec4;
-begin
-  result := V4(1, 0, 0, alpha);
-end;
-
-class function TColorHelper.Green(alpha: TScalar = 1.0): TVec4;
-begin
-  result := V4(0, 1, 0, alpha);
-end;
-
-class function TColorHelper.Blue(alpha: TScalar = 1.0): TVec4;
-begin
-  result := V4(0, 0, 1, alpha);
-end;
-
-class function TColorHelper.White(alpha: TScalar = 1.0): TVec4;
-begin
-  result := V4(1, 1, 1, alpha);
-end;
-
-class function TColorHelper.Black(alpha: TScalar = 1.0): TVec4;
-begin
-  result := V4(0, 0, 0, alpha);
-end;
-
-class function TColorHelper.Clear: TVec4;
-begin
-  result := V4(0, 0, 0, 0);
-end;
-
 function TSizeHelper.Min: TScalar;
 begin
   if width < height then
@@ -730,9 +664,9 @@ begin
   writeln(ToStr);
 end;
 
-function TRect.ToStr: string;
+function TRect.ToStr(places: integer = -1): string;
 begin
-  result := '{'+origin.ToStr+','+size.ToStr+'}';
+  result := '{'+origin.ToStr(places)+','+size.ToStr(places)+'}';
 end;
 
 function TRect.GetPoint(index: integer): TVec2;

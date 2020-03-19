@@ -2,6 +2,23 @@
 {$ifdef INTERFACE}
 
 type
+  TColor = TVec4;
+  
+type
+  TColorHelper = record helper for TVec4
+    class function Red(alpha: TScalar = 1.0): TVec4; static;
+    class function Green(alpha: TScalar = 1.0): TVec4; static;
+    class function Blue(alpha: TScalar = 1.0): TVec4; static;
+    class function White(alpha: TScalar = 1.0): TVec4; static;
+    class function Black(alpha: TScalar = 1.0): TVec4; static;
+    class function Clear: TVec4; static;
+  end;
+
+function RGBA(r, g, b, a: TScalar): TColor;
+function RGBA(white: TScalar; alpha: TScalar = 1.0): TColor;
+function HexColorToRGB (hexValue: integer; alpha: TScalar = 1.0): TVec4;
+
+type
 	generic TRange<T> = record
 		public
 			min: T;
@@ -24,6 +41,54 @@ type
 {$endif}
 
 {$ifdef IMPLEMENTATION}
+
+function RGBA(r, g, b, a: TScalar): TColor;
+begin
+  result := V4(r, g, b, a);
+end;
+
+function RGBA(white: TScalar; alpha: TScalar = 1.0): TColor;
+begin
+  result := V4(white, white, white, alpha);
+end;
+
+function HexColorToRGB (hexValue: integer; alpha: TScalar = 1.0): TVec4;
+begin
+  result.r := ((hexValue shr 16) and $FF) / 255.0;  // Extract the RR byte
+  result.g := ((hexValue shr 8) and $FF) / 255.0;   // Extract the GG byte
+  result.b := ((hexValue) and $FF) / 255.0;         // Extract the BB byte
+  result.a := alpha;
+end;
+
+class function TColorHelper.Red(alpha: TScalar = 1.0): TVec4;
+begin
+  result := V4(1, 0, 0, alpha);
+end;
+
+class function TColorHelper.Green(alpha: TScalar = 1.0): TVec4;
+begin
+  result := V4(0, 1, 0, alpha);
+end;
+
+class function TColorHelper.Blue(alpha: TScalar = 1.0): TVec4;
+begin
+  result := V4(0, 0, 1, alpha);
+end;
+
+class function TColorHelper.White(alpha: TScalar = 1.0): TVec4;
+begin
+  result := V4(1, 1, 1, alpha);
+end;
+
+class function TColorHelper.Black(alpha: TScalar = 1.0): TVec4;
+begin
+  result := V4(0, 0, 0, alpha);
+end;
+
+class function TColorHelper.Clear: TVec4;
+begin
+  result := V4(0, 0, 0, 0);
+end;
 
 function TRange.Clamp (value: T): T;
 begin
@@ -68,7 +133,11 @@ end;
 
 function TRange.ValueOfPercent (percent: single): T;
 begin
+	{$ifdef CPUAARCH64}
+	Assert(false, 'TRange.ValueOfPercent is broken in CPUAARCH64');
+	{$else}
 	result := min + System.Trunc(Total * percent);
+	{$endif}
 end;
 
 function TRange.ToStr: string;

@@ -1,16 +1,27 @@
 {$mode objfpc}
 {$modeswitch advancedrecords}
+{$include targetos}
 
 unit GLVertexBuffer;
 interface
 uses
-  FGL, GL, GLExt;
+  {$ifdef API_OPENGL}
+  GL, GLext,
+  {$endif}
+  {$ifdef API_OPENGLES}
+  GLES30,
+  {$endif}
+  FGL;
 
 type
   TVertexAttribute = record
-    kind: GLenum;
-    count: integer;
-    constructor Create(_kind: GLenum; _count: integer);
+    public
+      constructor Create(name: string; kind: GLenum; count: integer);
+    public
+      name: string;
+    private
+      kind: GLenum;
+      count: integer;
   end;
   TVertexAttributes = array of TVertexAttribute;
 
@@ -33,7 +44,7 @@ type
       procedure Add(constref vertex: TVertex); inline;
       procedure AddQuad(quad: PVertexArray);
       function Count: integer;
-      procedure Draw(mode: GLenum);
+      procedure Draw(mode: GLenum = GL_TRIANGLES);
       procedure Clear;
       destructor Destroy; override;
   end;
@@ -42,10 +53,11 @@ implementation
 uses
   GLUtils, SysUtils;
 
-constructor TVertexAttribute.Create(_kind: GLenum; _count: integer);
+constructor TVertexAttribute.Create(name: string; kind: GLenum; count: integer);
 begin
-  kind := _kind;
-  count := _count;
+  self.name := name;
+  self.kind := kind;
+  self.count := count;
 end;
 
 function TVertexBuffer.SizeofAttribute(kind: GLuint): integer;
@@ -127,7 +139,7 @@ end;
 destructor TVertexBuffer.Destroy;
 begin
   glDeleteBuffers(1, @bufferID);
-  glDeleteVertexArrays(2, @vertexArrayObject);
+  glDeleteVertexArrays(1, @vertexArrayObject);
   list.Free;
 end;
 

@@ -1,12 +1,18 @@
 
 {$ifdef INTERFACE}
 
+function DirName(path: ansistring): ansistring;
 function ReadFile(path: ansistring): ansistring;
 function Explode(delimiter: char; s: ansistring): TStringList;
 
 {$endif}
 
 {$ifdef IMPLEMENTATION}
+
+function DirName(path: ansistring): ansistring;
+begin
+  result := ExtractFilePath(ExcludeTrailingPathDelimiter(path));
+end;
 
 function ReadFile(path: ansistring): ansistring;
 var

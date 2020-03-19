@@ -1,11 +1,19 @@
 {$mode objfpc}
 {$modeswitch advancedrecords}
 {$assertions on}
+{$include targetos}
 
 unit GLShader;
 interface
 uses
-  FGL, VectorMath, GL, GLExt;
+  {$ifdef API_OPENGL}
+  GL, GLext,
+  {$endif}
+  {$ifdef API_OPENGLES}
+  GLES30,
+  {$endif}
+  GLVertexBuffer, VectorMath,
+  FGL;
 
 type
   TShader = class
@@ -107,6 +115,7 @@ end;
 procedure TShader.Use;
 begin
   glUseProgram(programID);
+	GLAssert('glUseProgram '+IntToStr(programID));
   //writeln('use shader ', programID);
 end;
 
@@ -146,6 +155,7 @@ end;
 function TShader.GetUniformLocation(name: pchar): integer;
 begin
   result := glGetUniformLocation(programID, name);
+  GLAssert('glGetUniformLocation '+name);
 end;
 
 destructor TShader.Destroy;

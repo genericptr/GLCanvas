@@ -1,10 +1,17 @@
 {$mode objfpc}
 {$assertions on}
+{$include targetos}
 
 unit GLFrameBuffer;
 interface
 uses
-  GL, GLExt;
+  {$ifdef API_OPENGL}
+  GL, GLext,
+  {$endif}
+  {$ifdef API_OPENGLES}
+  GLES30,
+  {$endif}
+  SysUtils;
 
 type
   TFrameBuffer = class
@@ -26,7 +33,7 @@ type
 
 implementation
 uses
-  GLUtils, SysUtils;
+  GLUtils;
 
 procedure LoadTexture2D (width, height: GLsizei; format: GLenum; data: pointer = nil);
 begin
@@ -47,7 +54,8 @@ end;
 
 procedure TFrameBuffer.Resize (newWidth, newHeight: integer);
 var
-  prevTexture: GLint;
+  prevTexture,
+  prevFBO: GLint;
 begin
   if (width = newWidth) and (height = newHeight) then
     exit;
@@ -66,13 +74,12 @@ begin
   //    exit;
   //  end;
 
-  // TODO: are we overwritting other textures?
   glGenTextures(1, @texture);
   glGetIntegerv(GL_TEXTURE_BINDING_2D, @prevTexture);
-
   glBindTexture(GL_TEXTURE_2D, texture);
   LoadTexture2D(width, height, pixelFormat);
 
+  glGetIntegerv(GL_FRAMEBUFFER_BINDING, @prevFBO);
   glBindFramebuffer(GL_FRAMEBUFFER, buffer);
   GLAssert('glBindFramebuffer '+IntToStr(buffer));
   glFrameBufferTexture2D(GL_FRAMEBUFFER,
@@ -85,14 +92,16 @@ begin
   glFrameBufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, texture, 0);
   GLAssert('glFrameBufferTexture2D '+IntToStr(buffer));
 
+  // restore previous bindings
   glBindTexture(GL_TEXTURE_2D, prevTexture);
-  glBindFramebuffer(GL_FRAMEBUFFER, 0);
+  glBindFramebuffer(GL_FRAMEBUFFER, prevFBO);
 end;
 
 procedure TFrameBuffer.Bind;
 begin
   glBindFramebuffer(GL_FRAMEBUFFER, buffer);
   GLAssert('glBindFramebuffer '+IntToStr(buffer));
+  // reset viewport to frame buffer size
   glGetIntegerv(GL_VIEWPORT, @previousViewPort);
   glViewPort(0, 0, width, height);
 end;
@@ -101,6 +110,7 @@ procedure TFrameBuffer.Unbind;
 begin
   glBindFramebuffer(GL_FRAMEBUFFER, 0);
   GLAssert('glBindFramebuffer '+IntToStr(buffer));
+  // restore previous viewport
   glViewPort(previousViewPort[0], previousViewPort[1], previousViewPort[2], previousViewPort[3]);
 end;
 

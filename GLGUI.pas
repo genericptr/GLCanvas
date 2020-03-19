@@ -4,10 +4,13 @@
 {$modeswitch nestedprocvars}
 {$modeswitch arrayoperators}
 {$modeswitch autoderef}
+{$include targetos}
 
 {$interfaces corba}
 {$scopedenums on}
 {$assertions on}
+
+{define GLGUI_DEBUG}
 
 // ImGUI
 // https://www.geeks3d.com/hacklab/20170929/how-to-build-user-interfaces-with-imgui/
@@ -18,11 +21,12 @@
 unit GLGUI;
 interface
 uses
-	{$ifdef LIBRARY_OPENGLES}
-	GLES11,
-	{$else}
-	GL,
-	{$endif}
+	{$ifdef API_OPENGL}
+  GL, GLext,
+  {$endif}
+  {$ifdef API_OPENGLES}
+  GLES30,
+  {$endif}
 	SysUtils, FGL,
 	GLPT, GLCanvas,
 	GeometryTypes, VectorMath;
@@ -54,7 +58,6 @@ type
 	end;
 
 {$define INTERFACE}
-{$include include/ExtraTypes.inc}
 {$include include/NotificationCenter.inc}
 {$include include/GUIStyles.inc}
 {$undef INTERFACE}
@@ -342,7 +345,6 @@ type
 			procedure DrawInternal(parentOrigin: TVec2);
 			procedure LayoutRoot;
 			procedure SubviewsAreClipping(var clipping: boolean; deep: boolean = true);
-			function PollEvent(constref raw: pGLPT_MessageRec): boolean;
 			procedure TestMouseTracking(event: TEvent);
 	end;
 
@@ -467,6 +469,7 @@ type
 			procedure FindSubviewForMouseEvent(event: TEvent; parent: TView; var outView: TView);
 			procedure SetFocusedView(newValue: TView);
 			procedure ProcessKeyDown(super: TView; event: TEvent);
+			function PollEvent(constref raw: pGLPT_MessageRec): boolean;
 	end;
 
 type
@@ -514,6 +517,11 @@ type
 			procedure SetKeyEquivalent(keycode: GLPT_Keycode; modifiers: TShiftState = []);
 
 			function GetStringValue: string;
+			function GetFloatValue: single;
+			function GetDoubleValue: double;
+			function GetIntegerValue: integer;
+			function GetLongValue: longint;
+
 			function GetAction: TInvocation;
 			function GetControlState: TControlState;
 			function IsEnabled: boolean;
@@ -527,7 +535,8 @@ type
 			procedure HandleValueChanged; virtual;
 			procedure HandleStateChanged; virtual;
 		private
-			stringValue: string;
+			m_value: variant;
+			//stringValue: string;
 			enabled: boolean;
 			action: TInvocation;
 			controlFont: IFont;
@@ -584,7 +593,6 @@ type
 			function GetFont: IFont;
 			function GetTextSize: TVec2;
 			function IsReadyToLayout: boolean;
-
 		protected
 			procedure Initialize; override;
 			
@@ -596,7 +604,6 @@ type
 
 			procedure Draw; override;
 			procedure LayoutSubviews; override;
-
 		private
 			textFont: IFont;
 			textColor: TColor;
@@ -714,14 +721,18 @@ type
 
 type
 	TSlider = class (TControl)
+		private type
+			TSliderValue = integer;
 		public
-			constructor Create(min, max: integer; _frame: TRect); overload;
+			constructor Create(min, max: TSliderValue; _frame: TRect); overload;
 
-			procedure SetCurrentValue(newValue: integer);
+			procedure SetValue(newValue: TSliderValue);
 			procedure SetInterval(newValue: integer);
 			procedure SetTickMarks(newValue: integer);
 
-			function GetCurrentValue: integer;
+			function GetValue: TSliderValue;
+			function GetMinValue: TSliderValue;
+			function GetMaxValue: TSliderValue;
 
 			function IsVertical: boolean;
 			function IsDragging: boolean;
@@ -741,11 +752,10 @@ type
 			function GetTrackFrame: TRect; virtual;
 			function GetHandleFrame: TRect; virtual;
 
-			function ClosestTickMarkToValue(value: integer): integer;
-			function ValueAtRelativePosition(percent: single): integer;
+			function ClosestTickMarkToValue(value: TSliderValue): integer;
+			function ValueAtRelativePosition(percent: single): TSliderValue;
 			function RectOfTickMarkAtIndex(index: integer): TRect;
 		private
-			currentValue: integer;
 			handleFrame: TRect;
 			dragOrigin: TPoint;
 			interval: integer;
@@ -1408,7 +1418,6 @@ var
 	CurrentEvent: TEvent = nil;
 
 {$define IMPLEMENTATION}
-{$include include/ExtraTypes.inc}
 {$include include/NotificationCenter.inc}
 {$include include/GUIStyles.inc}
 {$undef IMPLEMENTATION}
@@ -2586,6 +2595,9 @@ procedure TView.Draw;
 var
 	child: TView;
 begin
+	{$ifdef GLGUI_DEBUG}
+	StrokeRect(GetBounds, RGBA(0,1));
+	{$endif}
 	if assigned(subviews) then
 		for child in subviews do
 			child.DrawInternal(renderOrigin);
@@ -3108,7 +3120,7 @@ begin
 			end;
 end;
 
-function TView.PollEvent(constref raw: pGLPT_MessageRec): boolean;
+function TWindow.PollEvent(constref raw: pGLPT_MessageRec): boolean;
 var
 	event: TEvent;
 begin
@@ -3189,6 +3201,10 @@ begin
 	    end;
 	 end;
 	
+
+	// if the window is modal then we need to block other events
+	result := IsModal;
+		
 	//event.Free;
 	//CurrentEvent := nil;
 end;
@@ -4382,13 +4398,13 @@ begin
 		if IsVertical then
 			begin
 				total := scrollView.GetScrollableFrame.Height;
-				percent := currentValue / range.Total;
+				percent := GetValue / range.Total;
 				scrollView.SetScrollOrigin(V2(0, total * percent), false, true);
 			end
 		else
 			begin
 				total := scrollView.GetScrollableFrame.Width;
-				percent := currentValue / range.Total;
+				percent := GetValue / range.Total;
 				scrollView.SetScrollOrigin(V2(total * percent, 0), true, false);
 			end;
 end;
@@ -4406,18 +4422,16 @@ end;
 // SLIDER
 //#########################################################
 
-constructor TSlider.Create(min, max: integer; _frame: TRect);
+constructor TSlider.Create(min, max: TSliderValue; _frame: TRect);
 begin
 	range := TRangeInt.Make(min, max);
 	SetFrame(_frame);
 	Initialize;
 end;
 
-procedure TSlider.SetCurrentValue(newValue: integer);
+procedure TSlider.SetValue(newValue: TSliderValue);
 begin
-	currentValue := newValue;
-	currentValue := interval * Ceil(currentValue / interval);
-	//percent := currentValue / range.Total;
+	m_value := interval * Ceil(newValue / interval);
 end;
 
 procedure TSlider.SetInterval(newValue: integer);
@@ -4431,9 +4445,19 @@ begin
 	tickMarks := newValue;
 end;
 
-function TSlider.GetCurrentValue: integer;
+function TSlider.GetValue: TSliderValue;
 begin
-	result := currentValue;
+	result := GetIntegerValue;
+end;
+
+function TSlider.GetMinValue: TSliderValue;
+begin
+	result := range.min;
+end;
+
+function TSlider.GetMaxValue: TSliderValue;
+begin
+	result := range.max;
 end;
 
 function TSlider.IsVertical: boolean;
@@ -4475,9 +4499,9 @@ begin
 	FillRect(rect, RGBA(0, 0, 0, 0.3));
 end;
 
-function TSlider.ClosestTickMarkToValue(value: integer): integer;
+function TSlider.ClosestTickMarkToValue(value: TSliderValue): integer;
 begin
-	result := Ceil(currentValue / interval);
+	result := Ceil(GetValue / interval);
 end;
 
 function TSlider.RectOfTickMarkAtIndex(index: integer): TRect;
@@ -4485,7 +4509,7 @@ begin
 	result := tickMarkFrames[index];
 end;
 
-function TSlider.ValueAtRelativePosition(percent: single): integer;
+function TSlider.ValueAtRelativePosition(percent: single): TSliderValue;
 begin
 	percent := Clamp(percent, 0, 1);
 	result := range.ValueOfPercent(percent);//PercentOfRange(range, percent);
@@ -4498,6 +4522,7 @@ var
 	rect: TRect;
 	i: integer;
 begin
+	inherited;
 
 	// track
 	DrawTrack(GetTrackFrame);
@@ -4521,14 +4546,14 @@ begin
 		end;
 
 	// handle
-	percent := currentValue / range.Total;
+	percent := GetValue / range.Total;
 	if IsVertical then
 		begin
 			handleFrame := RectMake(0, GetTrackFrame.MinY + (percent * GetTrackSize.height), GetHandleFrame.Width, GetHandleFrame.Height);
 			handleFrame := RectCenterX(handleFrame, GetBounds);
 			if tickMarks > 1 then
 				begin
-					handleFrame := RectCenterY(handleFrame, tickMarkFrames[ClosestTickMarkToValue(currentValue)]);
+					handleFrame := RectCenterY(handleFrame, tickMarkFrames[ClosestTickMarkToValue(GetValue)]);
 				end
 			else
 				handleFrame.origin += GetHandleFrame.origin;
@@ -4539,7 +4564,7 @@ begin
 			handleFrame := RectCenterY(handleFrame, GetBounds);
 			if tickMarks > 1 then
 				begin
-					handleFrame := RectCenterX(handleFrame, tickMarkFrames[ClosestTickMarkToValue(currentValue)]);
+					handleFrame := RectCenterX(handleFrame, tickMarkFrames[ClosestTickMarkToValue(GetValue)]);
 					//handleFrame.origin := tickMarkFrames[ClosestTickMarkToValue(currentValue)].origin;
 					//handleFrame.origin += GetHandleFrame.origin;
 				end
@@ -4585,16 +4610,16 @@ begin
 		begin
 			where := (event.Location(self) - GetTrackFrame.origin);
 			if IsVertical then
-				currentValue := ValueAtRelativePosition(where.y / GetTrackSize.height)
+				m_value := ValueAtRelativePosition(where.y / GetTrackSize.height)
 			else
-				currentValue := ValueAtRelativePosition(where.x / GetTrackSize.width);
+				m_value := ValueAtRelativePosition(where.x / GetTrackSize.width);
 			if liveUpdate then
 				HandleValueChanged;
 			event.Accept;
 			dragging := true;
 		end;
 
-	writeln('input started at ', currentValue);
+	writeln('input started at ', GetValue);
 end;
 
 procedure TSlider.HandleInputDragged(event: TEvent);
@@ -4607,9 +4632,9 @@ begin
 		begin
 			where := (event.Location(self) - GetTrackFrame.origin) - dragOrigin;
 			if IsVertical then
-				currentValue := ValueAtRelativePosition(where.y / GetTrackSize.height)
+				m_value := ValueAtRelativePosition(where.y / GetTrackSize.height)
 			else
-				currentValue := ValueAtRelativePosition(where.x / GetTrackSize.width);
+				m_value := ValueAtRelativePosition(where.x / GetTrackSize.width);
 			if liveUpdate then
 				HandleValueChanged;
 			event.Accept;
@@ -4622,9 +4647,9 @@ begin
 
 	// snap to interval
 	if interval > 1 then
-		SetCurrentValue(GetCurrentValue);
+		SetValue(GetValue);
 
-	writeln('new value: ', GetCurrentValue, ' tick=', ClosestTickMarkToValue(GetCurrentValue)+1);
+	writeln('new value: ', GetValue, ' tick=', ClosestTickMarkToValue(GetValue)+1);
 	if not liveUpdate then
 		HandleValueChanged;
 
@@ -4636,6 +4661,7 @@ procedure TSlider.Initialize;
 begin
 	inherited;
 
+	tickMarks := 0;
 	interval := 1;
 	liveUpdate := true;
 end;
@@ -4955,10 +4981,10 @@ begin
 	
 	// update scrollers
 	if assigned(verticalScroller) and axisY then
-		verticalScroller.SetCurrentValue(verticalScroller.range.ValueOfPercent(scrollOrigin.y / GetScrollableFrame.Height));
+		verticalScroller.SetValue(verticalScroller.range.ValueOfPercent(scrollOrigin.y / GetScrollableFrame.Height));
 	
 	if assigned(horizontalScroller) and axisX then
-		horizontalScroller.SetCurrentValue(horizontalScroller.range.ValueOfPercent(scrollOrigin.x / GetScrollableFrame.Width));
+		horizontalScroller.SetValue(horizontalScroller.range.ValueOfPercent(scrollOrigin.x / GetScrollableFrame.Width));
 
 	if Supports(contentView, IScrollingContent, delegate) then
 		delegate.HandleScrollingContentChanged(self);
@@ -5926,7 +5952,7 @@ end;
 procedure TTextView.SetFont(newValue: IFont);
 begin
 	textFont := newValue;
-	if textColor.a = 0 then
+	if assigned(textFont) and (textColor.a = 0) then
 		SetTextColor(textFont.PreferredTextColor);
 	NeedsLayoutSubviews;
 end;
@@ -6047,7 +6073,7 @@ begin
 end;
 
 procedure TTextView.Draw;
-begin		
+begin			
 	inherited;
 
 	if GetStringValue <> '' then
@@ -6882,7 +6908,27 @@ end;
 
 function TControl.GetStringValue: string;
 begin
-	result := stringValue;
+	result := m_value;
+end;
+
+function TControl.GetFloatValue: single;
+begin
+	result := m_value;
+end;
+
+function TControl.GetDoubleValue: double;
+begin
+	result := m_value;
+end;
+
+function TControl.GetIntegerValue: integer;
+begin
+	result := m_value;
+end;
+
+function TControl.GetLongValue: longint;
+begin
+	result := m_value;
 end;
 
 function TControl.IsEnabled: boolean;
@@ -6899,8 +6945,8 @@ procedure TControl.SetStringValue(newValue: string; alwaysNotify: boolean);
 var
 	changed: boolean;
 begin
-	changed := stringValue <> newValue;
-	stringValue := newValue;
+	changed := GetStringValue <> newValue;
+	m_value := newValue;
 	if changed or alwaysNotify then
 		HandleValueChanged;
 	NeedsLayoutSubviews;

@@ -171,6 +171,7 @@ type
 			function Inverse: TMat4; inline;
       function Transpose: TMat4; inline;
      
+      function ToStr: string;
  			procedure Show;
 		private
 			function GetComponent(column, row:integer):TScalar; inline;
@@ -190,6 +191,8 @@ type
       class operator * (constref b,a:TMat4):TMat4;
       class operator * (constref a:TMat4;b:TScalar):TMat4;
       class operator * (a:TScalar;constref b:TMat4):TMat4;
+      class operator * (constref a:TMat4;constref b:TVec2):TVec2;
+      class operator * (constref a:TVec2;constref b:TMat4):TVec2;
       class operator * (constref a:TMat4;constref b:TVec3):TVec3;
       class operator * (constref a:TVec3;constref b:TMat4):TVec3;
       class operator * (constref a:TMat4;constref b:TVec4):TVec4;
@@ -214,6 +217,7 @@ type
   TVec2List = specialize TFPGList<TVec2>;
   TVec3List = specialize TFPGList<TVec3>;
   TVec4List = specialize TFPGList<TVec4>;
+  TMat4List = specialize TFPGList<TMat4>;
 
 { Generic Vectors }
 
@@ -1762,20 +1766,26 @@ begin
 end;
 
 procedure TMat4.Show; 
+begin
+  writeln(Tostr);
+end;
+
+function TMat4.ToStr: string;
 var
 	x, y: integer;
 begin
+  result := '';
 	for y := 0 to 3 do
 		begin
-			write('[');
+			result += '[';
 			for x := 0 to 3 do
 				begin
 					if x < 3 then
-						write(FloatToStr(m[x, y]),',')
+						result += FloatToStr(m[x, y])+','
 					else
-						write(FloatToStr(m[x, y]));
+						result += FloatToStr(m[x, y]);
 				end;
-			writeln(']');
+			result += ']';
 		end;
 end;
 
@@ -2017,6 +2027,18 @@ begin
  result.m[3,1]:=a*b.m[3,1];
  result.m[3,2]:=a*b.m[3,2];
  result.m[3,3]:=a*b.m[3,3];
+end;
+
+class operator TMat4.*(constref a:TMat4;constref b:TVec2):TVec2;
+begin
+ result.x:=(a.m[0,0]*b.x)+(a.m[1,0]*b.y)+a.m[2,0]+a.m[3,0];
+ result.y:=(a.m[0,1]*b.x)+(a.m[1,1]*b.y)+a.m[2,1]+a.m[3,1];
+end;
+
+class operator TMat4.*(constref a:TVec2;constref b:TMat4):TVec2;
+begin
+ result.x:=(a.x*b.m[0,0])+(a.y*b.m[0,1])+b.m[0,2]+b.m[0,3];
+ result.y:=(a.x*b.m[1,0])+(a.y*b.m[1,1])+b.m[1,2]+b.m[1,3];
 end;
 
 class operator TMat4.*(constref a:TMat4;constref b:TVec3):TVec3;

@@ -255,7 +255,7 @@ begin
 	if text = '' then
 		exit;
 		
-	origin := where;
+	origin := where / scale;
 
 	for c in text do
 		begin

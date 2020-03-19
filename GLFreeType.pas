@@ -1,11 +1,18 @@
 {$mode objfpc}
 {$modeswitch advancedrecords}
 {$assertions on}
+{$include targetos}
 
 unit GLFreeType;
 interface
 uses
-  FreeTypeH, FGL, GL;
+  {$ifdef API_OPENGL}
+  GL, GLext,
+  {$endif}
+  {$ifdef API_OPENGLES}
+  GLES30,
+  {$endif}
+  FreeTypeH, FGL;
 
 const
   FREETYPE_ANSI_CHARSET = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ!;%:?*()<>_+-=.,/|"''@#$^&{}[]0123456789';
@@ -174,7 +181,6 @@ begin
         for x := 0 to bitmap.width - 1 do
           begin
             value := PGLubyte(bitmap.buffer)[x + y * bitmap.width];
-
             offset := width * canvasY + (canvasX + x + y * width);
 
             data[channels * offset + 0] := high(GLubyte);
