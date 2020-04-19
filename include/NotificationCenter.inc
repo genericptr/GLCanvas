@@ -2,11 +2,11 @@
 {$ifdef INTERFACE}
 	
 type
-	TNotification = class (TMap)
+	TNotification = class (TVariantMap)
 		public
 			
 			{ Class Methods }
-			class function Notification (name: string; _objct: pointer; userInfo: variant): TNotification; overload;
+			class function Notification(name: string; _objct: pointer; userInfo: variant): TNotification; overload;
 			
 			{ Accessors }
 			function GetName: string;
@@ -27,7 +27,7 @@ type
 			notification: string;
 			property Target: TObject read GetTarget;
 			property Obj: TInvocationParams read params;
-			constructor Create (callback: TNotificationCallback; _notification: string; _object: pointer);
+			constructor Create(callback: TNotificationCallback; _notification: string; _object: pointer);
 	end;
 	TNotificationHandlerList = specialize TFPGList<TNotificationHandler>;
 
@@ -46,18 +46,18 @@ type
 			class function DefaultCenter: TNotificationCenter;
 			
 			{ Posting Notifications }
-			procedure PostNotification (name: string; objct: pointer = nil); overload;
-			procedure PostNotification (name: string; objct: pointer; userInfo: variant); overload;
-			procedure PostNotification (notification: TNotification); overload;
+			procedure PostNotification(name: string; objct: pointer = nil); overload;
+			procedure PostNotification(name: string; objct: pointer; userInfo: variant); overload;
+			procedure PostNotification(notification: TNotification); overload;
 			
 			{ Observing Notifications }
-			procedure ObserveNotification (name: string; action: TNotificationCallback; objct: pointer = nil); overload;
+			procedure ObserveNotification(name: string; action: TNotificationCallback; objct: pointer = nil); overload;
 			
-			procedure RemoveObserver (observer: TObject; notification: string); overload;
-			procedure RemoveEveryObserver (observer: TObject);
+			procedure RemoveObserver(observer: TObject; notification: string); overload;
+			procedure RemoveEveryObserver(observer: TObject);
 				
 			{ Accessors }
-			function IsObserving (observer: TObject; notification: string): boolean;
+			function IsObserving(observer: TObject; notification: string): boolean;
 			
 			procedure AfterConstruction; override;
 			destructor Destroy; override;
@@ -85,14 +85,14 @@ begin
 		result := nil;
 end;
 
-constructor TNotificationHandler.Create (callback: TNotificationCallback; _notification: string; _object: pointer);
+constructor TNotificationHandler.Create(callback: TNotificationCallback; _notification: string; _object: pointer);
 begin
 	callbackClass := TInvocationCallbackClass(callback);
 	notification := _notification;
 	params := _object;
 end;
 
-class function TNotification.Notification (name: string; _objct: pointer; userInfo: variant): TNotification;
+class function TNotification.Notification(name: string; _objct: pointer; userInfo: variant): TNotification;
 begin
 	result := TNotification.Create;
 	result.objct := _objct;
@@ -115,7 +115,7 @@ begin
 	result := objct;
 end;
 
-function TNotificationCenter.IsObserving (observer: TObject; notification: string): boolean;
+function TNotificationCenter.IsObserving(observer: TObject; notification: string): boolean;
 var
 	handler: TNotificationHandler;
 begin
@@ -125,7 +125,7 @@ begin
 			exit(true);
 end;
 
-procedure TNotificationCenter.RemoveObserver (observer: TObject; notification: string);
+procedure TNotificationCenter.RemoveObserver(observer: TObject; notification: string);
 var
 	handler: TNotificationHandler;
 	removedHandlers: TNotificationHandlerList;
@@ -143,7 +143,7 @@ begin
 end;
 
 { Invoked to remove observer from notification centers }
-procedure TNotificationCenter.RemoveEveryObserver (observer: TObject);
+procedure TNotificationCenter.RemoveEveryObserver(observer: TObject);
 var
 	handler: TNotificationHandler;
 	removedHandlers: TNotificationHandlerList;
@@ -160,12 +160,12 @@ begin
 	removedHandlers.Free;
 end;
 
-procedure TNotificationCenter.PostNotification (name: string; objct: pointer = nil); overload;
+procedure TNotificationCenter.PostNotification(name: string; objct: pointer = nil); overload;
 begin
 	PostNotification(name, objct, 0);
 end;
 
-procedure TNotificationCenter.PostNotification (name: string; objct: pointer; userInfo: variant);
+procedure TNotificationCenter.PostNotification(name: string; objct: pointer; userInfo: variant);
 var
 	handler: TNotificationHandler;
 	notification: TNotification;
@@ -176,12 +176,12 @@ begin
 			handler.Invoke(notification);
 end;
 
-procedure TNotificationCenter.PostNotification (notification: TNotification);
+procedure TNotificationCenter.PostNotification(notification: TNotification);
 begin
 	PostNotification(notification.GetName, notification.GetObject, pointer(notification));
 end;
 
-procedure TNotificationCenter.ObserveNotification (name: string; action: TNotificationCallback; objct: pointer = nil);
+procedure TNotificationCenter.ObserveNotification(name: string; action: TNotificationCallback; objct: pointer = nil);
 var
 	handler: TNotificationHandler;
 begin

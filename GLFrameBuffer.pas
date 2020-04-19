@@ -1,6 +1,5 @@
 {$mode objfpc}
-{$assertions on}
-{$include targetos}
+{$include include/targetos}
 
 unit GLFrameBuffer;
 interface
@@ -11,7 +10,7 @@ uses
   {$ifdef API_OPENGLES}
   GLES30,
   {$endif}
-  SysUtils;
+  SysUtils, VectorMath, FGL;
 
 type
   TFrameBuffer = class
@@ -19,23 +18,30 @@ type
       texture: GLuint;
       width, height: integer;
     public
-      constructor Create (_width, _height: integer; format: GLenum);
+      constructor Create(_width, _height: integer; pixelFormat: GLenum = GL_RGB); overload;
+      constructor Create(size: TVec2i; pixelFormat: GLenum = GL_RGB); overload;
+      function IsActive: boolean;
+      procedure Push; virtual;
+      procedure Pop; virtual;
       procedure Bind;
       procedure Unbind;
-      procedure Resize (newWidth, newHeight: integer); overload;
+      procedure Resize(newWidth, newHeight: integer); virtual;
       destructor Destroy; override;
     private
       buffer: GLuint;
       pixelFormat: GLenum;
       previousViewPort: array[0..3] of GLint;
   end;  
+  TFrameBufferList = specialize TFPGList<TFrameBuffer>;
 
+var
+  FrameBufferStack: TFrameBufferList = nil;
 
 implementation
 uses
   GLUtils;
 
-procedure LoadTexture2D (width, height: GLsizei; format: GLenum; data: pointer = nil);
+procedure LoadTexture2D(width, height: GLsizei; format: GLenum; data: pointer = nil);
 begin
   case format of
     GL_RGB:
@@ -48,11 +54,13 @@ begin
 
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+  //glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+  //glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 end;
 
-procedure TFrameBuffer.Resize (newWidth, newHeight: integer);
+procedure TFrameBuffer.Resize(newWidth, newHeight: integer);
 var
   prevTexture,
   prevFBO: GLint;
@@ -114,17 +122,43 @@ begin
   glViewPort(previousViewPort[0], previousViewPort[1], previousViewPort[2], previousViewPort[3]);
 end;
 
+function TFrameBuffer.IsActive: boolean;
+begin
+  Assert(FrameBufferStack <> nil, 'empty frame buffer stack.');
+  result := FrameBufferStack.Last = self;
+end;
+
+procedure TFrameBuffer.Push;
+begin
+  if FrameBufferStack = nil then
+    FrameBufferStack := TFrameBufferList.Create;
+  FrameBufferStack.Add(self);
+  Bind;
+end;
+
+procedure TFrameBuffer.Pop;
+begin
+  Assert((FrameBufferStack <> nil) and (FrameBufferStack.Count > 0), 'empty frame buffer stack.');
+  FrameBufferStack.Last.Unbind;
+  FrameBufferStack.Delete(FrameBufferStack.Count - 1);
+end;
+
 destructor TFrameBuffer.Destroy;
 begin
   glDeleteFramebuffers(1, @buffer);
   glDeleteTextures(1, @texture);
 end;
 
-constructor TFrameBuffer.Create (_width, _height: integer; format: GLenum);
+constructor TFrameBuffer.Create(_width, _height: integer; pixelFormat: GLenum = GL_RGB);
 begin
-  pixelFormat := format;
+  self.pixelFormat := pixelFormat;
   glGenFramebuffers(1, @buffer);
   Resize(_width, _height);
 end;  
+
+constructor TFrameBuffer.Create(size: TVec2i; pixelFormat: GLenum = GL_RGB);
+begin
+  Create(size.width, size.height, pixelFormat);
+end;
 
 end.

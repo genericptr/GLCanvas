@@ -24,24 +24,11 @@ type
 		function PreferredTextColor: TVec4;
 	end;
 
-function MeasureText (font: IFont; text: ansistring; maximumWidth: integer = MaxInt): TVec2;
-function WrapText (font: IFont; text: ansistring; maximumWidth: integer): TStringList;
-
-function DrawText (text: ansistring; textAlignment: TTextAlignment; bounds: TRect; color: TColor): TVec2; overload; inline;
-function DrawText (text: ansistring; textAlignment: TTextAlignment; bounds: TRect): TVec2; overload; inline;
-procedure DrawText (text: ansistring; where: TVec2; color: TColor; scale: single = 1.0); overload; inline;
-procedure DrawText (text: ansistring; where: TVec2; scale: single = 1.0); overload; inline;
-
-function DrawText (font: IFont; text: ansistring; textAlignment: TTextAlignment; bounds: TRect; color: TColor): TVec2; overload;
-function DrawText (font: IFont; text: ansistring; textAlignment: TTextAlignment; bounds: TRect): TVec2; overload;
-procedure DrawText (font: IFont; text: ansistring; where: TVec2; color: TColor; scale: single = 1.0); overload;
-procedure DrawText (font: IFont; text: ansistring; where: TVec2; scale: single = 1.0); overload;
-
 {$endif}
 
 {$ifdef IMPLEMENTATION}
 
-function SplitString (text: ansistring; chars: integer; var count: integer): TStringList;
+function SplitString(text: ansistring; chars: integer; var count: integer): TStringList;
 var
 	p: pchar;
 begin	
@@ -61,7 +48,7 @@ begin
 	StrDispose(p);
 end;
 
-function RestoreText (text: ansistring): ansistring;
+function RestoreText(text: ansistring): ansistring;
 begin
 	text := StringReplace(text, '#39', #39, [rfReplaceAll]);
 	text := StringReplace(text, '#34', #34, [rfReplaceAll]);
@@ -69,7 +56,7 @@ begin
 	result := text;
 end;
 
-function CalculateTextWidth (font: IFont; text: ansistring): integer;
+function CalculateTextWidth(font: IFont; text: ansistring): integer;
 var
 	c: char;
 	renderFrame: TFontRenderFrame;
@@ -92,7 +79,7 @@ begin
 		end;
 end;
 
-function WrapTextInternal (font: IFont; text: ansistring; max: single; var actualSize: TVec2): TStringList;
+function WrapTextInternal(font: IFont; text: ansistring; max: single; var actualSize: TVec2): TStringList;
 var
 	i, s: integer;
 	part: string;
@@ -180,39 +167,39 @@ begin
   end;
 end;
 
-function WrapText (font: IFont; text: ansistring; maximumWidth: integer): TStringList;
+function WrapText(font: IFont; text: ansistring; maximumWidth: integer): TStringList;
 var
 	actualSize: TVec2;
 begin
 	result := WrapTextInternal(font, text, maximumWidth, actualSize);
 end;
 
-function MeasureText (font: IFont; text: ansistring; maximumWidth: integer = MaxInt): TVec2;
+function MeasureText(font: IFont; text: ansistring; maximumWidth: integer = MaxInt): TVec2;
 begin		
 	WrapTextInternal(font, text, maximumWidth, result);
 end;
 
-function DrawText (text: ansistring; textAlignment: TTextAlignment; bounds: TRect; color: TColor): TVec2;
+function DrawText(text: ansistring; textAlignment: TTextAlignment; bounds: TRect; color: TColor): TVec2;
 begin
 	DrawText(GLCanvasState.activeFont, text, textAlignment, bounds, color);
 end;
 
-function DrawText (text: ansistring; textAlignment: TTextAlignment; bounds: TRect): TVec2;
+function DrawText(text: ansistring; textAlignment: TTextAlignment; bounds: TRect): TVec2;
 begin
 	DrawText(GLCanvasState.activeFont, text, textAlignment, bounds, 1);	
 end;
 
-procedure DrawText (text: ansistring; where: TVec2; color: TColor; scale: single = 1.0);
+procedure DrawText(text: ansistring; where: TVec2; color: TColor; scale: single = 1.0);
 begin
 	DrawText(GLCanvasState.activeFont, text, where, color, scale);
 end;
 
-procedure DrawText (text: ansistring; where: TVec2; scale: single = 1.0);
+procedure DrawText(text: ansistring; where: TVec2; scale: single = 1.0);
 begin
-	DrawText(GLCanvasState.activeFont, text, where, 1, scale);
+	DrawText(GLCanvasState.activeFont, text, where, GLCanvasState.activeFont.PreferredTextColor, scale);
 end;
 
-function DrawText (font: IFont; text: ansistring; textAlignment: TTextAlignment; bounds: TRect; color: TColor): TVec2;
+function DrawText(font: IFont; text: ansistring; textAlignment: TTextAlignment; bounds: TRect; color: TColor): TVec2;
 var
 	line: ansistring;
 	lines: TStringList;
@@ -238,12 +225,12 @@ begin
 		end;
 end;
 
-function DrawText (font: IFont; text: ansistring; textAlignment: TTextAlignment; bounds: TRect): TVec2;
+function DrawText(font: IFont; text: ansistring; textAlignment: TTextAlignment; bounds: TRect): TVec2;
 begin
 	result := DrawText(font, text, textAlignment, bounds, 1);
 end;
 
-procedure DrawText (font: IFont; text: ansistring; where: TVec2; color: TColor; scale: single = 1.0);
+procedure DrawText(font: IFont; text: ansistring; where: TVec2; color: TColor; scale: single = 1.0);
 var
 	c: char;
 	renderFrame: TFontRenderFrame;
@@ -282,7 +269,7 @@ begin
 		end;
 end;
 
-procedure DrawText (font: IFont; text: ansistring; where: TVec2; scale: single = 1.0);
+procedure DrawText(font: IFont; text: ansistring; where: TVec2; scale: single = 1.0);
 begin
 	DrawText(font, text, where, 1, scale);
 end;

@@ -1,7 +1,6 @@
 {$mode objfpc}
 {$modeswitch advancedrecords}
-{$assertions on}
-{$include targetos}
+{$include include/targetos}
 
 unit GLFreeType;
 interface
@@ -50,12 +49,17 @@ type
       m_charAdvance: integer;
       m_maxLineHeight: integer;
       function GetFace(c: TAnsiChar): TFreeTypeFace;
-      procedure AddTexture (c: TAnsiChar; posX, posY: integer); 
+      procedure AddTexture(c: TAnsiChar; posX, posY: integer); 
     public
-      constructor Create(lib: PFT_Library; path: ansistring);
-      destructor Destroy; override;
+
+      { Methods }
+      constructor Create(lib: PFT_Library; path: ansistring); overload;
+      constructor Create(path: ansistring); overload;
+      class procedure FreeLibrary;
+
       procedure Render(pixelSize: integer; charset: string = FREETYPE_ANSI_CHARSET; minFilter: GLuint = GL_LINEAR; magFilter: GLuint = GL_LINEAR); 
 
+      { Accessors }
       function HasGlyph(c: char): boolean;
 
       property Face[c: TAnsiChar]: TFreeTypeFace read GetFace; default;
@@ -63,9 +67,14 @@ type
       property TextureHeight: integer read m_textureHeight;
       property TextureID: GLuint read m_texture;
       property MaxLineHeight: integer read m_maxLineHeight;
+    public
+      destructor Destroy; override;
   end;
 
 implementation
+
+var
+  SharedLibrary: PFT_Library = nil;
 
 function Pow2(a: integer): integer; inline;
 var
@@ -102,6 +111,21 @@ begin
   result.y := glyph.bitmap.rows;
 end;
 
+
+class procedure TFreeTypeFont.FreeLibrary;
+begin
+  Assert(SharedLibrary <> nil, 'No shared library was loaded.');
+  FT_Done_FreeType(SharedLibrary);
+  SharedLibrary := nil;
+end;
+
+constructor TFreeTypeFont.Create(path: ansistring);
+begin
+  if SharedLibrary = nil then
+    Assert(FT_Init_FreeType(SharedLibrary) = 0, 'FT_Init_FreeType');
+  Create(SharedLibrary, path);
+end;
+
 constructor TFreeTypeFont.Create(lib: PFT_Library; path: ansistring);
 var
   err: integer;
@@ -122,7 +146,7 @@ begin
   result := m_faces.IndexOf(c) > -1;
 end;
 
-procedure TFreeTypeFont.AddTexture (c: TAnsiChar; posX, posY: integer); 
+procedure TFreeTypeFont.AddTexture(c: TAnsiChar; posX, posY: integer); 
 var
   f: TFreeTypeFace;
 begin
@@ -152,6 +176,7 @@ var
   channels: integer;
   prevTexture: GLint;
 begin
+  Assert(m_face <> nil, 'freetype face is nil.');
 
   // https://learnopengl.com/In-Practice/Text-Rendering
   // https://stackoverflow.com/questions/24799090/opengl-freetype-weird-texture

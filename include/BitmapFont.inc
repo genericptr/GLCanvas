@@ -48,16 +48,16 @@ type
 			m_charAdvance: integer;
 			m_name: string;	
 
-			function GetTexture (index: integer): TTexture; overload;
+			function GetTexture(index: integer): TTexture; overload;
 		public		
 
 			{ Constructors }
-			constructor Create (path: ansistring);
+			constructor Create(path: ansistring);
 			destructor Destroy; override;
 
 			{ Accessors }
-			procedure SetCharAdvance (newValue: integer);
-			function TextureForCharacter (c: char): TTexture; inline;
+			procedure SetCharAdvance(newValue: integer);
+			function TextureForCharacter(c: char): TTexture; inline;
 			function GetTexture: TGLTextureID;
 			function GetFrame: TTextureFrame;
 			property Name: string read m_name;
@@ -130,12 +130,12 @@ begin
 	result := texturePack.GetFrame;
 end;
 
-procedure TBitmapFont.SetCharAdvance (newValue: integer);
+procedure TBitmapFont.SetCharAdvance(newValue: integer);
 begin
 	m_charAdvance := newValue;
 end;
 
-function TBitmapFont.GetTexture (index: integer): TTexture;
+function TBitmapFont.GetTexture(index: integer): TTexture;
 begin
 	result := fontInfo.chars[index].texture;
 end;
@@ -145,7 +145,7 @@ begin
 	result := fontInfo.chars[ord(c)];
 end;
 
-function TBitmapFont.TextureForCharacter (c: char): TTexture;
+function TBitmapFont.TextureForCharacter(c: char): TTexture;
 begin
 	if (c = ' ') or (c = '	') then
 		exit(nil);
@@ -158,7 +158,7 @@ type
 var
 	memoryPool: TObjectList;
 
-	function NodeAttributes (node: TDOMNode): TStringMap;
+	function NodeAttributes(node: TDOMNode): TStringMap;
 	var
 		i: integer;
 	begin
@@ -254,7 +254,7 @@ begin
 	texturePack.Free;
 end;
 
-constructor TBitmapFont.Create (path: ansistring);
+constructor TBitmapFont.Create(path: ansistring);
 begin
 	// TODO: should implement Loading!
 	texturePack := TTexturePack.Create;

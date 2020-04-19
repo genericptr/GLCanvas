@@ -1,6 +1,6 @@
 {$mode objfpc}
 {$modeswitch advancedrecords}
-{$include targetos}
+{$include include/targetos}
 
 unit GLVertexBuffer;
 interface
@@ -11,7 +11,9 @@ uses
   {$ifdef API_OPENGLES}
   GLES30,
   {$endif}
-  FGL;
+  FastList, FGL;
+
+{$define FAST_LIST}
 
 type
   TVertexAttribute = record
@@ -31,7 +33,11 @@ type
       PVertex = ^TVertex;
       TVertexArray = array[0..0] of TVertex;
       PVertexArray = ^TVertexArray;
+      {$ifdef FAST_LIST}
+      TVertexList = specialize TFastList<TVertex>;
+      {$else}
       TVertexList = specialize TFPGList<TVertex>;
+      {$endif}
     private
       list: TVertexList;
       bufferID: GLuint;
@@ -79,12 +85,23 @@ end;
 
 procedure TVertexBuffer.AddQuad(quad: PVertexArray);
 begin
+  {$ifdef FAST_LIST}
+  // todo: crashes and causes memory bugs
+  //list.Add(PVertex(quad), 6);
   list.Add(quad^[0]);
   list.Add(quad^[1]);
   list.Add(quad^[2]);
   list.Add(quad^[3]);
   list.Add(quad^[4]);
   list.Add(quad^[5]);
+  {$else}
+  list.Add(quad^[0]);
+  list.Add(quad^[1]);
+  list.Add(quad^[2]);
+  list.Add(quad^[3]);
+  list.Add(quad^[4]);
+  list.Add(quad^[5]);
+  {$endif}
 end;
 
 function TVertexBuffer.Count: integer;
@@ -132,8 +149,7 @@ end;
 
 procedure TVertexBuffer.Clear;
 begin
-  // TODO: clear shrinks capacity! make our own arrays?
-  list.Clear;
+  list.Count := 0;
 end;
 
 destructor TVertexBuffer.Destroy;

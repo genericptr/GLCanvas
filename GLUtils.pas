@@ -1,6 +1,6 @@
 {$mode objfpc}
 {$assertions on}
-{$include targetos}
+{$include include/targetos}
 
 unit GLUtils;
 interface
@@ -13,7 +13,7 @@ uses
   {$endif}
   SysUtils;
 
-procedure GLAssert (messageString: string = 'OpenGL error'); inline; 
+procedure GLAssert(messageString: string = 'OpenGL error'); inline; 
 function GLEnumToStr(enum: GLenum): string;
 
 implementation
@@ -633,7 +633,7 @@ begin
   result += ' ($'+HexStr(enum, 4)+')';
 end;
 
-procedure GLAssert (messageString: string = 'OpenGL error');
+procedure GLAssert(messageString: string = 'OpenGL error');
 var
   error: GLenum;
 begin

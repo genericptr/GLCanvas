@@ -1,7 +1,6 @@
 {$mode objfpc}
 {$modeswitch advancedrecords}
-{$assertions on}
-{$include targetos}
+{$include include/targetos}
 
 unit GLShader;
 interface
@@ -21,7 +20,7 @@ type
       programID: GLuint;
       procedure Use;
     public
-      constructor Create (vertexShaderSource, fragmentShaderSource: pchar);
+      constructor Create(vertexShaderSource, fragmentShaderSource: pchar);
       procedure Push;
       procedure Pop;
       function IsActive: boolean;
@@ -30,6 +29,7 @@ type
       procedure SetUniformInts(name: pchar; count: integer; ints: PInteger);
       procedure SetUniformInt(name: pchar; value: integer);
       procedure SetUniformFloat(name: pchar; value: float);
+      
       destructor Destroy; override;
   end;
   TShaderObjectList = specialize TFPGObjectList<TShader>;
@@ -41,7 +41,7 @@ implementation
 uses
   GLUtils, SysUtils;
 
-constructor TShader.Create (vertexShaderSource, fragmentShaderSource: pchar);
+constructor TShader.Create(vertexShaderSource, fragmentShaderSource: pchar);
 var
   vertexShaderID: GLuint;
   fragmentShaderID: GLuint;

@@ -7,24 +7,25 @@
 
 program Test4;
 uses
-  CThreads, FreeTypeH, 
+  CThreads, 
   VectorMath, GLFreeTypeFont, GLCanvas, GLPT;
 
 const
   window_size_width = 600;
   window_size_height = 600;
 
-var
-  font: TGLFreeTypeFont;
 
 procedure LoadFreeType;
 var
-  lib: PFT_Library;
+  font: TGLFreeTypeFont;
 begin
-  Assert(FT_Init_FreeType(lib) = 0, 'FT_Init_FreeType');
-  font := TGLFreeTypeFont.Create(lib, 'Avenir.ttc');
+  Chdir(GLPT_GetBasePath+'/tests');
+  font := TGLFreeTypeFont.Create('Avenir.ttc');
   font.Render(trunc(36 / 0.5));
-  FT_Done_FreeType(lib);
+  { make this the system font }
+  SetActiveFont(font);
+  { call this once we're done using loading fonts }
+  TGLFreeTypeFont.FreeLibrary;
 end;
 
 begin
@@ -34,7 +35,7 @@ begin
   while IsRunning do
     begin
       ClearBackground;
-      DrawText(font, 'Hello World', V2(50, 50), RGBA(0.1, 0.1, 1, 1), 0.5);
+      DrawText('Hello World', V2(50, 50), RGBA(0.1, 0.1, 1, 1), 0.5);
       SwapBuffers;
     end;
 

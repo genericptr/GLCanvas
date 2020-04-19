@@ -5,9 +5,8 @@
 {$modeswitch autoderef}
 {$modeswitch multihelpers}
 
-{$interfaces CORBA}
-{$assertions on}
-{$include targetos}
+{$interfaces corba}
+{$include include/targetos}
 
 unit GLCanvas;
 interface
@@ -18,9 +17,9 @@ uses
   {$ifdef API_OPENGLES}
   GLES30,
   {$endif}
-  FGL, Classes,
+  Contnrs, FGL, Classes,
   BeRoPNG, VectorMath, GeometryTypes,
-  GLVertexBuffer, GLPT;
+  GLVertexBuffer, GLShader, GLPT;
 
 {$define INTERFACE}
 {$include include/ExtraTypes.inc}
@@ -28,14 +27,24 @@ uses
 {$include include/Text.inc}
 {$include include/BitmapFont.inc}
 {$include include/FileUtils.inc}
+{$include include/Input.inc}
 {$undef INTERFACE}
 
 type
   TVec2Array = array[0..0] of TVec2;
   PVec2Array = ^TVec2Array;
 
+{$scopedenums on}
+type
+  TCanvasOption = (VSync);
+  TCanvasOptions = set of TCanvasOption;
+{$scopedenums off}
+
+const
+  DefaultCanvasOptions = [TCanvasOption.VSync];
+
 { Window }
-procedure SetupCanvas(inWidth, inHeight: integer; eventCallback: GLPT_EventCallback = nil); 
+procedure SetupCanvas(inWidth, inHeight: integer; eventCallback: GLPT_EventCallback = nil; options: TCanvasOptions = DefaultCanvasOptions); 
 function IsRunning: boolean;
 procedure QuitApp;
 
@@ -51,15 +60,39 @@ procedure DrawLine(points: PVec2Array; count: integer; constref color: TColor; t
 procedure DrawPoint(constref point: TVec2; constref color: TColor);
 
 { Textures }
-procedure DrawTexture(texture: ITexture; x, y: single); overload;
+function CreateTexture(path: ansistring): TTexture;
+function CreateTextureSheet(path: ansistring; cellSize: TVec2i): TTextureSheet;
+function CreateTexturePack(path: ansistring): TTexturePack;
+
+procedure DrawTexture(texture: ITexture; x, y: single); overload; inline;
+procedure DrawTexture(texture: ITexture; point: TVec2); overload; inline;
+procedure DrawTexture(texture: ITexture; point: TVec2; constref color: TVec4); overload; inline;
+
 procedure DrawTexture(texture: ITexture; constref rect: TRect); overload; inline;
 procedure DrawTexture(texture: ITexture; constref rect: TRect; constref textureFrame: TRect); overload;
 procedure DrawTexture(texture: ITexture; constref rect: TRect; constref textureFrame: TRect; constref color: TVec4); overload;
 procedure DrawTexture(texture: ITexture; constref rect: TRect; constref color: TVec4); overload; inline;
 
+{ Text }
+function MeasureText(font: IFont; text: ansistring; maximumWidth: integer = MaxInt): TVec2;
+function WrapText(font: IFont; text: ansistring; maximumWidth: integer): TStringList;
+
+function DrawText(text: ansistring; textAlignment: TTextAlignment; bounds: TRect; color: TColor): TVec2; overload; inline;
+function DrawText(text: ansistring; textAlignment: TTextAlignment; bounds: TRect): TVec2; overload; inline;
+procedure DrawText(text: ansistring; where: TVec2; color: TColor; scale: single = 1.0); overload; inline;
+procedure DrawText(text: ansistring; where: TVec2; scale: single = 1.0); overload; inline;
+
+function DrawText(font: IFont; text: ansistring; textAlignment: TTextAlignment; bounds: TRect; color: TColor): TVec2; overload;
+function DrawText(font: IFont; text: ansistring; textAlignment: TTextAlignment; bounds: TRect): TVec2; overload;
+procedure DrawText(font: IFont; text: ansistring; where: TVec2; color: TColor; scale: single = 1.0); overload;
+procedure DrawText(font: IFont; text: ansistring; where: TVec2; scale: single = 1.0); overload;
+
 { Clip Rects }
 procedure PushClipRect(rect: TRect); 
 procedure PopClipRect; 
+
+{ Shaders }
+function CreateShader(vertexSource, fragmentSource: pchar): TShader;
 
 { Buffers }
 procedure FlushDrawing;
@@ -71,9 +104,13 @@ procedure SetActiveFont(newValue: IFont);
 function GetActiveFont: IFont;
 
 { Transforms }
-procedure PushViewTransform(constref mat: TMat4); 
-procedure PopViewTransform; 
+procedure SetProjectionTransform(constref mat: TMat4);
+procedure SetProjectionTransform(x, y, width, height: integer);
+
 procedure SetViewTransform(x, y, scale: single);
+procedure PushViewTransform(constref mat: TMat4);
+procedure PushViewTransform(x, y, scale: single);  
+procedure PopViewTransform; 
 
 procedure PushModelTransform(constref mat: TMat4); 
 procedure PopModelTransform; 
@@ -81,7 +118,13 @@ procedure PopModelTransform;
 { Viewport }
 procedure SetViewPort(inWidth, inHeight: integer);
 function GetViewPort: TRect; inline;
+function GetWindowSize: TVec2i;
 
+{ Canvas State }
+procedure SetClearColor(color: TColor);
+
+function GetFPS: longint; inline;
+function GetDeltaTime: double; inline;
 function GetDefaultShaderAttributes: TVertexAttributes;
 
 { Utilities }
@@ -91,25 +134,26 @@ function Rand(min, max: longint): longint;
 function TimeSinceNow: longint;
 
 type
-  TRectList = specialize TFPGList<TRect>;
   TGLCanvasState = record
-    width, height: integer;
-    window: PGLPTWindow;
-    projTransform,
-    viewTransform: TMat4;
-    clipRectStack: TRectList;
-    viewTransformStack,
-    modelTransformStack: TMat4List;
-    activeFont: IFont;
-    bindTextureCount: longint;
-  end;
-
-// TODO: we work with interfaces now so this doesn't work
-type
-  TTextureHelper = class helper for TTextureSource
-    procedure Draw(x, y: single); overload;
-    procedure Draw(constref rect: TRect); overload;
-    procedure Draw(constref rect: TRect; constref color: TVec4); overload;
+    public
+      width: integer;         // width of the viewport
+      height: integer;        // height of the viewport
+      window: PGLPTWindow;    // reference to the GLPT window
+      activeFont: IFont;
+      bindTextureCount: longint;
+      drawCalls: longint;
+      deltaTime: double;      // elapsed time since last SwapBuffers
+      lastFrameTime: double;  // absolute time of last SwapBuffers
+      clearColor: TColor;
+      projTransform: TMat4;   // orthographic transform
+      viewTransform: TMat4;
+    private
+      viewTransformStack: TMat4List;
+      modelTransformStack: TMat4List;
+      clipRectStack: TRectList;
+      frameCount: longint;
+      sampleTime: double;
+      fps: longint;
   end;
 
 var
@@ -117,8 +161,8 @@ var
 
 implementation
 uses
-  GLShader, GLUtils,
-  Contnrs, Variants, CTypes,
+  GLUtils,
+  Variants, CTypes,
   SysUtils, DOM, XMLRead, Strings;
 
 {$define IMPLEMENTATION}
@@ -127,16 +171,19 @@ uses
 {$include include/Text.inc}
 {$include include/BitmapFont.inc}
 {$include include/FileUtils.inc}
+{$include include/Input.inc}
 {$undef IMPLEMENTATION}
 
 const
   TWOPI = 3.14159 * 2;
+  
+var
+  DefaultTextureColor: TColor;
 
 { Utils }
 function TimeSinceNow: longint;
 begin
-  // TODO: replace with GLPT_Time
-  result := round(TimeStampToMSecs(DateTimeToTimeStamp(Now)));
+  result := round(GLPT_GetTime * 1000);
 end;    
 
 function FRand(min, max: single): single;
@@ -174,23 +221,6 @@ begin
   if zero then
     min -= 1;
   result += min;
-end;
-
-{ Texture Helper }
-
-procedure TTextureHelper.Draw(x, y: single);
-begin
-  DrawTexture(self, x, y);
-end;
-
-procedure TTextureHelper.Draw(constref rect: TRect);
-begin
-  DrawTexture(self, rect);
-end;
-
-procedure TTextureHelper.Draw(constref rect: TRect; constref color: TVec4);
-begin
-  DrawTexture(self, rect, TextureFrame, color);
 end;
 
 { Types }
@@ -239,7 +269,7 @@ begin
   v[5].pos := mat * v[5].pos;
 end;
 
-procedure TTexturedQuad.SetPosition (constref rect: TRect);
+procedure TTexturedQuad.SetPosition(constref rect: TRect);
 begin
   v[0].pos.x := rect.MinX;
   v[0].pos.y := rect.MinY;
@@ -255,7 +285,7 @@ begin
   v[5].pos.y := rect.MinY; 
 end;
 
-procedure TTexturedQuad.SetPosition (minX, minY, maxX, maxY: single);
+procedure TTexturedQuad.SetPosition(minX, minY, maxX, maxY: single);
 begin
   v[0].pos.x := minX;
   v[0].pos.y := minY;
@@ -271,7 +301,7 @@ begin
   v[5].pos.y := minY;
 end;
 
-procedure TTexturedQuad.SetColor (r, g, b, a: single);
+procedure TTexturedQuad.SetColor(r, g, b, a: single);
 begin
   v[0].color := RGBA(r, g, b, a);
   v[1].color := RGBA(r, g, b, a);
@@ -281,7 +311,7 @@ begin
   v[5].color := RGBA(r, g, b, a);
 end;
 
-procedure TTexturedQuad.SetTexture (rect: TRect);
+procedure TTexturedQuad.SetTexture(rect: TRect);
 begin
   v[0].texCoord.x := rect.MinX;
   v[0].texCoord.y := rect.MinY;
@@ -297,7 +327,7 @@ begin
   v[5].texCoord.y := rect.MinY; 
 end;
 
-procedure TTexturedQuad.SetUV (id: byte);
+procedure TTexturedQuad.SetUV(id: byte);
 begin
   v[0].uv := id;
   v[1].uv := id;
@@ -312,7 +342,7 @@ type
   TDefaultVertexList = specialize TFPGList<TDefaultVertex>;
   TDefaultVertexBuffer = specialize TVertexBuffer<TDefaultVertex>;
 
-{$include Shaders}
+{$include include/Shaders}
 
 { Globals }
 type
@@ -349,6 +379,18 @@ begin
   result := GLCanvasState.activeFont;
 end;
 
+procedure SetProjectionTransform(constref mat: TMat4);
+begin
+  GLCanvasState.projTransform := mat;
+  Assert(ShaderStack.Last = defaultShader, 'active shader must be default.');
+  glUniformMatrix4fv(defaultShader.GetUniformLocation('projTransform'), 1, GL_FALSE, GLCanvasState.projTransform.Ptr);
+end;
+
+procedure SetProjectionTransform(x, y, width, height: integer);
+begin
+  SetProjectionTransform(TMat4.Ortho(x, width, height, y, -MaxInt, MaxInt));
+end;
+
 procedure SetViewTransform(constref mat: TMat4);
 begin
   GLCanvasState.viewTransform := mat;
@@ -357,12 +399,17 @@ begin
 end;
 
 procedure SetViewTransform(x, y, scale: single);
-var
-  mat: TMat4;
 begin
-  mat := TMat4.Translate(x, y, 1) *
-         TMat4.Scale(scale, scale, 1);
-  SetViewTransform(mat)
+  SetViewTransform( TMat4.Translate(x, y, 1) *
+                    TMat4.Scale(scale, scale, 1)
+                    );
+end;
+
+procedure PushViewTransform(x, y, scale: single); 
+begin
+  PushViewTransform( TMat4.Translate(x, y, 1) *
+                     TMat4.Scale(scale, scale, 1)
+                     );
 end;
 
 procedure PushViewTransform(constref mat: TMat4); 
@@ -424,9 +471,30 @@ begin
   result := RectMake(0, 0, GLCanvasState.width, GLCanvasState.height);
 end;
 
+function GetWindowSize: TVec2i;
+begin
+  GLPT_GetFrameBufferSize(GLCanvasState.window, result.x, result.y);
+end;
+
 function GetDefaultShaderAttributes: TVertexAttributes;
 begin
   result := vertexBuffer.attributes;
+end;
+
+procedure SetClearColor(color: TColor); 
+begin
+  GLCanvasState.clearColor := color;
+  glClearColor(color.r, color.b, color.g, color.a);
+end;
+
+function GetFPS: longint;
+begin
+  result := GLCanvasState.fps;
+end;
+
+function GetDeltaTime: double;
+begin
+  result := GLCanvasState.deltaTime;
 end;
 
 procedure QuitApp;
@@ -437,7 +505,7 @@ end;
 
 procedure ChangePrimitiveType(typ: GLint); 
 begin
-  if vertexBuffer.Count > 0 then
+  if (vertexBuffer.Count > 0) and (drawState.bufferPrimitiveType <> typ) then
     FlushDrawing;
   drawState.bufferPrimitiveType := typ;
 end;
@@ -504,13 +572,49 @@ begin
 end;
 
 procedure FillPolygon(points: array of TVec2; constref color: TColor);
+  
+  type
+    TSquarePolygonPoints = array[0..3] of TVec2;
+
+  procedure FillSquare(points: TSquarePolygonPoints; constref color: TColor);
+  var
+    quad: TDefaultVertexQuad;
+  begin
+    ChangePrimitiveType(GL_TRIANGLES);
+
+    quad.v[0].pos := points[0];
+    quad.v[1].pos := points[1];
+    quad.v[2].pos := points[3];
+    quad.v[3].pos := points[3];
+    quad.v[4].pos := points[2];
+    quad.v[5].pos := points[1];
+
+    quad.SetColor(color.r, color.g, color.b, color.a);
+    quad.SetUV(255);
+
+    if GLCanvasState.modelTransformStack.Count > 0 then
+      quad.Transform(GLCanvasState.modelTransformStack.Last);
+
+    vertexBuffer.AddQuad(@quad);
+  end;
+
 var
   i: integer;
 begin
+  Assert(length(points) > 2, 'FillPolygon request at least 3 points');
+
+  if length(points) = 4 then
+    begin
+      FillSquare(points, color);
+      exit;
+    end;
   ChangePrimitiveType(GL_TRIANGLE_FAN);
+
   for i := 0 to high(points) do
-    vertexBuffer.Add(TDefaultVertex.Create(points[i], V2(0, 0), color, 255));
+    vertexBuffer.Add(TDefaultVertex.Create(points[i], 0, color, 255));
+
   // TODO: we don't need to flush each time
+  // https://stackoverflow.com/questions/31723405/line-graph-with-gldrawarrays-and-gl-line-strip-from-vector
   FlushDrawing;
 end;
 
@@ -605,20 +709,6 @@ begin
 
           i += 2;
         end;
-
-      //v[0] := TDefaultVertex.Create(points[0] + n.Rotate(a + PI * 0.25) * r, V2(0, 0), V4(0, 0, 0, 1), 255);
-      //v[1] := TDefaultVertex.Create(points[0] + n.Rotate(a + PI * 1.25) * r, V2(0, 0), V4(0, 0, 0, 1), 255);
-      
-      //v[2] := TDefaultVertex.Create(points[1] + n.Rotate(a + PI * 0.25) * r, V2(0, 0), V4(0, 0, 0, 1), 255);
-      //v[3] := TDefaultVertex.Create(points[1] + n.Rotate(a + PI * 1.25) * r, V2(0, 0), V4(0, 0, 0, 1), 255);
-
-      //vertexBuffer.Add(v[0]);
-      //vertexBuffer.Add(v[1]);
-      //vertexBuffer.Add(v[3]);
-
-      //vertexBuffer.Add(v[3]);
-      //vertexBuffer.Add(v[2]);
-      //vertexBuffer.Add(v[0]);
     end;
 end;
 
@@ -665,6 +755,21 @@ begin
   FlushDrawing;
 end;
 
+function CreateTexture(path: ansistring): TTexture;
+begin
+  result := TTexture.Create(path);
+end;
+
+function CreateTextureSheet(path: ansistring; cellSize: TVec2i): TTextureSheet;
+begin
+  result := TTextureSheet.Create(path, cellSize);
+end;
+
+function CreateTexturePack(path: ansistring): TTexturePack;
+begin
+  result := TTexturePack.Create(path);
+end;
+
 procedure DrawTexture(texture: ITexture; constref rect: TRect; constref textureFrame: TRect; constref color: TVec4);
 var
   quad: TDefaultVertexQuad;
@@ -693,7 +798,7 @@ end;
 
 procedure DrawTexture(texture: ITexture; constref rect: TRect; constref textureFrame: TRect);
 begin
-  DrawTexture(texture, rect, textureFrame, RGBA(1, 1, 1, 1));
+  DrawTexture(texture, rect, textureFrame, DefaultTextureColor);
 end;
 
 procedure DrawTexture(texture: ITexture; constref rect: TRect);
@@ -702,11 +807,18 @@ begin
 end;
 
 procedure DrawTexture(texture: ITexture; x, y: single);
-var
-  size: TVec2;
 begin
-  size := texture.GetFrame.pixel.size;
-  DrawTexture(texture, RectMake(x, y, size.width, size.height));
+  DrawTexture(texture, RectMake(x, y, texture.GetFrame.Size));
+end;
+
+procedure DrawTexture(texture: ITexture; point: TVec2);
+begin
+  DrawTexture(texture, RectMake(point, texture.GetFrame.Size));
+end;
+
+procedure DrawTexture(texture: ITexture; point: TVec2; constref color: TVec4);
+begin
+  DrawTexture(texture, RectMake(point, texture.GetFrame.Size), color);
 end;
 
 procedure ClearBackground;
@@ -724,7 +836,7 @@ begin
       // TODO: if the new rect is outside of the previous than don't clip
       if clipRectStack.Count > 0 then
         begin
-          if clipRectStack.Last.ContainsRect(rect) then
+          if clipRectStack.Last.Contains(rect) then
             glScissor(Trunc(rect.MinX), Trunc(rect.MinY), Trunc(rect.Width), Trunc(rect.Height));
         end
       else
@@ -756,51 +868,50 @@ begin
     exit;
 
   //Assert(ShaderStack.Last = defaultShader, 'active shader must be default.');
-
+  GLCanvasState.drawCalls += 1;
   vertexBuffer.Draw(drawState.bufferPrimitiveType);
   vertexBuffer.Clear;
 end;
 
 procedure SwapBuffers;
+var
+  now: double;
 begin
   FlushDrawing;
   GLPT_SwapBuffers(GLCanvasState.window);
   GLPT_PollEvents;
-end;
-
-procedure Prepare;
-const
-  kFarNearPlane = 100000;
-begin
-  glClearColor(1, 1, 1, 1);
-  glEnable(GL_BLEND); 
-  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-  //glDisable(GL_MULTISAMPLE);
-  //glEnable(GL_MULTISAMPLE_ARB);
-  //glEnable(GL_MULTISAMPLE);
-  glDisable(GL_DEPTH_TEST);
 
   with GLCanvasState do
     begin
-      projTransform := TMat4.Ortho(0, width, height, 0, -kFarNearPlane, kFarNearPlane);
-      viewTransform := TMat4.Identity;
+      now := GLPT_GetTime;
+      deltaTime := now - lastFrameTime;
+      lastFrameTime := now;
+      drawCalls := 0;
 
-      vertexBuffer := TDefaultVertexBuffer.Create([TVertexAttribute.Create('position', GL_FLOAT, 2),
-                                                   TVertexAttribute.Create('inTexCoord', GL_FLOAT, 2),
-                                                   TVertexAttribute.Create('inColor', GL_FLOAT, 4),
-                                                   TVertexAttribute.Create('inUV', GL_UNSIGNED_BYTE, 1)
-                                                   ]);
-      
-      defaultShader := TShader.Create(DefaultVertexShader, DefaultFragmentShader);
-
-      defaultShader.Push;
-      defaultShader.SetUniformMat4('projTransform', projTransform);
-      defaultShader.SetUniformMat4('viewTransform', viewTransform);
-      defaultShader.SetUniformInts('textures', 8, @textureUnits);
+      frameCount += 1;
+      if now - sampleTime > 1.0 then
+        begin
+          fps := frameCount;
+          sampleTime := now;
+          frameCount := 0;
+        end;
     end;
 end;
 
-procedure SetupCanvas(inWidth, inHeight: integer; eventCallback: GLPT_EventCallback = nil); 
+function CreateShader(vertexSource, fragmentSource: pchar): TShader;
+begin
+  result := TShader.Create(vertexSource, fragmentSource);
+  result.Push;
+  result.SetUniformMat4('projTransform', GLCanvasState.projTransform);
+  result.SetUniformMat4('viewTransform', GLCanvasState.viewTransform);
+  result.SetUniformInts('textures', 8, @textureUnits);
+
+  // don't pop the default shader
+  if defaultShader <> nil then
+    result.Pop;
+end;
+
+procedure SetupCanvas(inWidth, inHeight: integer; eventCallback: GLPT_EventCallback = nil; options: TCanvasOptions = DefaultCanvasOptions); 
 begin
   GLPT_SetErrorCallback(@error_callback);
 
@@ -825,7 +936,8 @@ begin
       {$ifdef API_OPENGLES}
       context.glesVersion := 3;
       {$endif}
-      context.vsync := true;
+
+      context.vsync := TCanvasOption.VSync in options;
 
       window := GLPT_CreateWindow(GLPT_WINDOW_POS_CENTER, GLPT_WINDOW_POS_CENTER, width, height, '', context);
       if window = nil then
@@ -843,7 +955,9 @@ begin
 
       writeln('OpenGL version: ', glGetString(GL_VERSION));
       writeln('GLPT version: ', GLPT_GetVersionString);
-      writeln('Texture Units: ', GetMaximumTextureUnits);
+      writeln('Maximum Texture Units: ', GetMaximumTextureUnits);
+      writeln('Maximum Texture Size: ', GetMaximumTextureSize);
+      writeln('Maximum Verticies: ', GetMaximumVerticies);
 
       // note: clear an opengl error
       glGetError();
@@ -852,13 +966,32 @@ begin
       GLPT_GetFrameBufferSize(window, width, height);
       SetViewPort(width, height);
 
-      Prepare;
+      glClearColor(1, 1, 1, 1);
+      glEnable(GL_BLEND); 
+      glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+      glDisable(GL_DEPTH_TEST);
+
+      with GLCanvasState do
+        begin
+          projTransform := TMat4.Ortho(0, width, height, 0, -MaxInt, MaxInt);
+          viewTransform := TMat4.Identity;
+
+          vertexBuffer := TDefaultVertexBuffer.Create([TVertexAttribute.Create('position', GL_FLOAT, 2),
+                                                       TVertexAttribute.Create('inTexCoord', GL_FLOAT, 2),
+                                                       TVertexAttribute.Create('inColor', GL_FLOAT, 4),
+                                                       TVertexAttribute.Create('inUV', GL_UNSIGNED_BYTE, 1)
+                                                       ]);
+          
+          defaultShader := CreateShader(DefaultVertexShader, DefaultFragmentShader);
+        end;
     end;
 end;
 
 
 begin
+  DefaultTextureColor := RGBA(1, 1, 1, 1);
   FillChar(TextureSlots, sizeof(TextureSlots), 0);
   System.Randomize;
   ChDir(GLPT_GetBasePath);
+  InputManager := TInputManager.Create;
 end.

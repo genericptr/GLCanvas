@@ -5,7 +5,7 @@
 unit GeometryTypes;
 interface
 uses
-  VectorMath;
+  VectorMath, FGL;
 
 type
   TRectEdge = ( TRectEdgeMinX, 
@@ -50,13 +50,16 @@ type
       property H: TScalar read size.y write size.y;
       property Points[index: integer]: TVec2 read GetPoint;
 
-      function IsEmpty: boolean;
-      function ContainsPoint (point: TVec2): boolean;
-      function ContainsRect (rect: TRect): boolean;
-      function IntersectsRect (rect: TRect): boolean;
-      function Inset (byX, byY: TScalar): TRect; overload; inline;
-      function Inset (amount: TScalar): TRect; overload; inline;
-      function Union (rect: TRect): TRect;
+      function IsEmpty: boolean; inline;
+      function Contains(point: TVec2): boolean; overload; inline;
+      function Contains(rect: TRect): boolean; overload; inline;
+      function Intersects(rect: TRect): boolean; inline;
+      function Inset(byX, byY: TScalar): TRect; overload; inline;
+      function Inset(amount: TScalar): TRect; overload; inline;
+      function Inset(by: TVec2): TRect; overload; inline;
+      function Offset(by: TVec2): TRect; overload; inline;
+      function Offset(byX, byY: TScalar): TRect; overload; inline;
+      function Union(rect: TRect): TRect;
 
       procedure Show;
       function ToStr(places: integer = -1): string;
@@ -73,6 +76,8 @@ type
       class operator / (left: TRect; right: TScalar): TRect; overload;
       class operator = (left, right: TRect): boolean; 
   end;
+  PRect = ^TRect;
+  TRectList = specialize TFPGList<TRect>;
 
 type
   TAABB = record
@@ -117,14 +122,16 @@ function RectMake(origin, size: TVec2): TRect; overload; inline;
 function RectMake(origin: TVec2; width, height: TScalar): TRect; overload; inline;
 function RectMake(x, y: TScalar; size: TVec2): TRect; overload; inline;
 
-function RectCenter (sourceRect: TRect; destRect: TRect): TRect;
-function RectCenterX (sourceRect: TRect; destRect: TRect): TRect; inline;
-function RectCenterY (sourceRect: TRect; destRect: TRect): TRect; inline;
-function RectFlip (sourceRect, destRect: TRect): TRect;
+function RectCenter(sourceRect: TRect; destRect: TRect): TRect;
+function RectCenterX(sourceRect: TRect; destRect: TRect): TRect; inline;
+function RectCenterY(sourceRect: TRect; destRect: TRect): TRect; inline;
+function RectFlipX(rect: TRect): TRect;
+function RectFlipY(rect: TRect): TRect;
+function RectFlipY(sourceRect, destRect: TRect): TRect;
 
-function RadiusForRect (rect: TRect): TScalar; inline;
+function RadiusForRect(rect: TRect): TScalar; inline;
 
-function Trunc (rect: TRect): TRect; overload;
+function Trunc(rect: TRect): TRect; overload;
 
 type
   TCircle = record
@@ -132,26 +139,29 @@ type
       origin: TVec2;
       radius: TScalar;
     public
-      class function Make (_origin: TVec2; _radius: TScalar): TCircle; static;
-      class function Make (x, y: TScalar; _radius: TScalar): TCircle; static;
-      class function Make (rect: TRect): TCircle; static;
+      class function Make(_origin: TVec2; _radius: TScalar): TCircle; static;
+      class function Make(x, y: TScalar; _radius: TScalar): TCircle; static;
+      class function Make(rect: TRect): TCircle; static;
     
-      function Intersects (const circle: TCircle): boolean; overload;
-      function Intersects (const circle: TCircle; out hitPoint: TVec2): boolean; overload; 
-      function Intersects (const rect: TRect): boolean; overload;
-      function Distance (const circle: TCircle; fromDiameter: boolean = true): TScalar;
+      function Intersects(const circle: TCircle): boolean; overload;
+      function Intersects(const circle: TCircle; out hitPoint: TVec2): boolean; overload; 
+      function Intersects(const rect: TRect): boolean; overload;
+      function Distance(const circle: TCircle; fromDiameter: boolean = true): TScalar;
       
       function ToStr: string;
       procedure Show;
   end;
 
-function PolyContainsPoint (const points: TVec2Array; constref point: TVec2): boolean;
+function CircleIntersectsRect(origin: TVec2; radius: TScalar; constref rect: TRect): boolean; 
+function CircleIntersectsCircle(originA: TVec2; radiusA: TScalar; originB: TVec2; radiusB: TScalar): boolean;
+
+function PolyContainsPoint(const points: TVec2Array; constref point: TVec2): boolean;
 function PolyIntersectsRect(const vertices: TVec2Array; constref rect: TRect): boolean;
 function PolyIntersectsPoly(const p1, p2: TVec2Array): boolean;
 
-function PointOnSide (p, a, b: TVec2): integer;
-function LineIntersectsRect (p1, p2: TVec2; rect: TRect): boolean;
-function LineIntersectsCircle (p1, p2: TVec2; origin: TVec2; radius: single): boolean; 
+function PointOnSide(p, a, b: TVec2): integer;
+function LineIntersectsRect(p1, p2: TVec2; rect: TRect): boolean;
+function LineIntersectsCircle(p1, p2: TVec2; origin: TVec2; radius: single): boolean; 
 
 implementation
 uses
@@ -159,7 +169,7 @@ uses
 
 //https://stackoverflow.com/questions/1560492/how-to-tell-whether-a-point-is-to-the-right-or-left-side-of-a-line
 //It is 0 on the line, and +1 on one side, -1 on the other side.
-function PointOnSide (p, a, b: TVec2): integer;
+function PointOnSide(p, a, b: TVec2): integer;
 begin
   result := Sign(((b.x - a.x) * (p.y - a.y)) - ((b.y - a.y) * (p.x - a.x)));
 end;
@@ -180,7 +190,7 @@ begin
   result := (uA >= 0) and (uA <= 1) and (uB >= 0) and (uB <= 1);
 end;
 
-function LineRect (x1, y1, x2, y2, rx, ry, rw, rh: TScalar): boolean;
+function LineRect(x1, y1, x2, y2, rx, ry, rw, rh: TScalar): boolean;
 var
   left,
   right,
@@ -321,7 +331,7 @@ end;
 
 
 // http://stackoverflow.com/questions/99353/how-to-test-if-a-line-segment-intersects-an-axis-aligned-rectange-in-2d
-function LineIntersectsRect (p1, p2: TVec2; rect: TRect): boolean;
+function LineIntersectsRect(p1, p2: TVec2; rect: TRect): boolean;
 var
   minX, maxY, minY, maxX: single;
   dx: single;
@@ -381,7 +391,7 @@ begin
 end;
 
 //https://stackoverflow.com/questions/1073336/circle-line-segment-collision-detection-algorithm
-function LineIntersectsCircle (p1, p2: TVec2; origin: TVec2; radius: single): boolean; 
+function LineIntersectsCircle(p1, p2: TVec2; origin: TVec2; radius: single): boolean; 
 var
   d, f: TVec2;
   a, b, c: single;
@@ -439,7 +449,7 @@ begin
   
 end;
 
-function PolyContainsPoint (const points: TVec2Array; constref point: TVec2): boolean;
+function PolyContainsPoint(const points: TVec2Array; constref point: TVec2): boolean;
 var
   i, j, c: integer;
 begin
@@ -457,28 +467,7 @@ begin
   result := c <> 0;
 end;
 
-class function TCircle.Make (_origin: TVec2; _radius: TScalar): TCircle;
-begin
-  result.origin := _origin;
-  result.radius := _radius;
-end;
-
-class function TCircle.Make (x, y: TScalar; _radius: TScalar): TCircle;
-begin
-  result.origin.x := x;
-  result.origin.y := y;
-  result.radius := _radius;
-end;
-
-class function TCircle.Make (rect: TRect): TCircle;
-begin
-  result.origin := rect.Center;
-  result.radius := rect.Min.Distance(rect.Max) / 2;
-end;
-
-
-// http://stackoverflow.com/questions/21089959/detecting-collision-of-rectangle-with-circle
-function TCircle.Intersects (const rect: TRect): boolean; 
+function CircleIntersectsRect(origin: TVec2; radius: TScalar; constref rect: TRect): boolean; 
 var
   distX, distY: TScalar;
   dx, dy: TScalar;
@@ -503,7 +492,64 @@ begin
   result := (dx * dx + dy * dy <= (radius * radius));
 end;
 
-function TCircle.Intersects (const circle: TCircle): boolean; 
+function CircleIntersectsCircle(originA: TVec2; radiusA: TScalar; originB: TVec2; radiusB: TScalar): boolean;
+var
+  dx, dy: TScalar;
+  radii: TScalar;
+begin
+  dx := originB.x - originA.x;
+  dy := originB.y - originA.y;
+  radii := radiusB + radiusA;
+  result := (dx * dx) + (dy * dy) <= (radii * radii);
+end;
+
+class function TCircle.Make(_origin: TVec2; _radius: TScalar): TCircle;
+begin
+  result.origin := _origin;
+  result.radius := _radius;
+end;
+
+class function TCircle.Make(x, y: TScalar; _radius: TScalar): TCircle;
+begin
+  result.origin.x := x;
+  result.origin.y := y;
+  result.radius := _radius;
+end;
+
+class function TCircle.Make(rect: TRect): TCircle;
+begin
+  result.origin := rect.Center;
+  result.radius := rect.Min.Distance(rect.Max) / 2;
+end;
+
+
+// http://stackoverflow.com/questions/21089959/detecting-collision-of-rectangle-with-circle
+function TCircle.Intersects(const rect: TRect): boolean; 
+var
+  distX, distY: TScalar;
+  dx, dy: TScalar;
+begin
+  distX := Abs(origin.x - rect.origin.x - rect.size.width / 2);
+  distY := Abs(origin.y - rect.origin.y - rect.size.height / 2);
+  
+  if (distX > (rect.size.width / 2 + radius)) then
+    exit(false);
+  
+  if (distY > (rect.size.height / 2 + radius)) then
+    exit(false);
+    
+  if (distX <= (rect.size.width / 2)) then
+    exit(true);
+  
+  if (distY <= (rect.size.height / 2)) then
+    exit(true); 
+  
+  dx := distX - rect.size.width / 2;
+  dy := distY - rect.size.height / 2;
+  result := (dx * dx + dy * dy <= (radius * radius));
+end;
+
+function TCircle.Intersects(const circle: TCircle): boolean; 
 var
   dx, dy: TScalar;
   radii: TScalar;
@@ -514,7 +560,7 @@ begin
   result := (dx * dx) + (dy * dy) <= (radii * radii);
 end;
 
-function TCircle.Intersects (const circle: TCircle; out hitPoint: TVec2): boolean; 
+function TCircle.Intersects(const circle: TCircle; out hitPoint: TVec2): boolean; 
 begin 
   result := Intersects(circle);
     
@@ -535,7 +581,7 @@ begin
 end;
 
 // distance from diameter
-function TCircle.Distance (const circle: TCircle; fromDiameter: boolean = true): TScalar; 
+function TCircle.Distance(const circle: TCircle; fromDiameter: boolean = true): TScalar; 
 begin 
   if fromDiameter then
     result := origin.Distance(circle.origin) - (radius + circle.radius)
@@ -599,7 +645,7 @@ begin
   result := y;
 end;
 
-function RectCenterX (sourceRect: TRect; destRect: TRect): TRect;
+function RectCenterX(sourceRect: TRect; destRect: TRect): TRect;
 begin
   result := sourceRect;
   
@@ -609,7 +655,7 @@ begin
     result.origin.x := destRect.MidX - (sourceRect.Width / 2);
 end;
 
-function RectCenterY (sourceRect: TRect; destRect: TRect): TRect;
+function RectCenterY(sourceRect: TRect; destRect: TRect): TRect;
 begin
   result := sourceRect;
   
@@ -619,7 +665,7 @@ begin
     result.origin.y := destRect.MidY - (sourceRect.Height / 2);
 end;
 
-function RectCenter (sourceRect: TRect; destRect: TRect): TRect;
+function RectCenter(sourceRect: TRect; destRect: TRect): TRect;
 begin
   result.size := sourceRect.size;
   result.origin := destRect.origin;
@@ -628,7 +674,23 @@ begin
   result := RectCenterY(result, destRect);
 end;
 
-function RectFlip (sourceRect, destRect: TRect): TRect;
+function RectFlipX(rect: TRect): TRect;
+begin
+  result.origin.x := rect.origin.x + rect.size.x;
+  result.origin.y := rect.origin.y;
+  result.size.x := -rect.size.x;
+  result.size.y := rect.size.y;
+end;
+
+function RectFlipY(rect: TRect): TRect;
+begin
+  result.origin.x := rect.origin.x;
+  result.origin.y := rect.origin.y + rect.size.y;
+  result.size.x := rect.size.x;
+  result.size.y := -rect.size.y;
+end;
+
+function RectFlipY(sourceRect, destRect: TRect): TRect;
 begin
   result := sourceRect;
   result.origin.y := destRect.MaxY - (result.MinY + result.Height);
@@ -691,17 +753,17 @@ begin
   self.size.height := inHeight;
 end;
 
-function TRect.ContainsPoint (point: TVec2): boolean;
+function TRect.Contains(point: TVec2): boolean;
 begin
   result := (point.x >= MinX) and (point.y >= MinY) and (point.x <= MaxX) and (point.y <= MaxY);
 end;
 
-function TRect.ContainsRect (rect: TRect): boolean;
+function TRect.Contains(rect: TRect): boolean;
 begin
   result := (rect.MinX >= MinX) and (rect.MinY >= MinY) and (rect.MaxX <= MaxX) and (rect.MaxY <= MaxY);
 end;
 
-function TRect.Union (rect: TRect): TRect;
+function TRect.Union(rect: TRect): TRect;
 var
   aabb: TAABB;
 begin
@@ -730,17 +792,34 @@ begin
   result := aabb;
 end;
 
-function TRect.Inset (byX, byY: TScalar): TRect;
+function TRect.Offset(by: TVec2): TRect;
+begin
+  result := Offset(by.x, by.y);
+end;
+
+function TRect.Offset(byX, byY: TScalar): TRect;
+begin
+  result.origin.x := origin.x + byX;
+  result.origin.y := origin.y + byY;
+  result.size := size;
+end;
+
+function TRect.Inset(byX, byY: TScalar): TRect;
 begin
   result := RectMake(origin.x + byX, origin.y + byY, size.width - (byX * 2), size.height - (byY * 2));
 end;
 
-function TRect.Inset (amount: TScalar): TRect;
+function TRect.Inset(amount: TScalar): TRect;
 begin
   result := Inset(amount, amount);
 end;
 
-function TRect.IntersectsRect (rect: TRect): boolean;
+function TRect.Inset(by: TVec2): TRect;
+begin
+  result := Inset(by.x, by.y);
+end;
+
+function TRect.Intersects(rect: TRect): boolean;
 begin
   result := (MinX < rect.MaxX) and 
             (MaxX > rect.MinX) and 
@@ -863,12 +942,12 @@ begin
   result := RectMake(left.origin.x / right, left.origin.y / right, left.size.width / right, left.size.height / right);
 end;
 
-function RadiusForRect (rect: TRect): TScalar;
+function RadiusForRect(rect: TRect): TScalar;
 begin
   result := rect.Min.Distance(rect.Max) / 2;
 end;
 
-function Trunc (rect: TRect): TRect;
+function Trunc(rect: TRect): TRect;
 begin
   result := RectMake(trunc(rect.origin.x), trunc(rect.origin.y), trunc(rect.size.x), trunc(rect.size.y));
 end;

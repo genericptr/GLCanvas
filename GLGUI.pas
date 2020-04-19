@@ -4,11 +4,10 @@
 {$modeswitch nestedprocvars}
 {$modeswitch arrayoperators}
 {$modeswitch autoderef}
-{$include targetos}
+{$include include/targetos}
 
 {$interfaces corba}
 {$scopedenums on}
-{$assertions on}
 
 {define GLGUI_DEBUG}
 
@@ -32,7 +31,7 @@ uses
 	GeometryTypes, VectorMath;
 
 type
-	TMap = specialize TFPGMap<String, Variant>;
+	TVariantMap = specialize TFPGMap<String, Variant>;
 	TObjectList = specialize TFPGObjectList<TObject>;
 	TPoint = TVec2i;
 
@@ -225,7 +224,7 @@ type
 			procedure ChangeAutoresizingOptions(newValue: TAutoresizingOptions; add: boolean);
 
 			{ Methods }
-			procedure AddSubview(view: TView);
+			procedure AddSubview(view: TView); virtual;
 			procedure InsertSubview(view: TView; index: integer);
 			procedure RemoveSubview(view: TView);
 			procedure RemoveSubviews;
@@ -310,7 +309,7 @@ type
 			function AcceptsMouseMovedEvents: boolean; virtual;
 						
 			{ Dragging }
-			function StartDrag(face: TTexture; event: TEvent; offset: TVec2; data: TMap): TDraggingSession;
+			function StartDrag(face: TTexture; event: TEvent; offset: TVec2; data: TVariantMap): TDraggingSession;
 			
 		private
 			parentWindow: TWindow;
@@ -355,11 +354,16 @@ type
 	TWindowCursor = record
 		mouseDown: boolean;		
 		hover: TView;			
-		//focus: TView;			
-		//dropTarget: TView;
-		//dragTarget: TView;
-		//inputTarget: TView;
 	end; 
+
+	TLayoutTable = record
+		origin: TVec2;
+		rowHeight: integer;
+		totalHeight: integer;
+		class operator = (left: TLayoutTable; right: TLayoutTable): boolean;
+	end;
+	PLayoutTable = ^TLayoutTable;
+	TLayoutTableList = specialize TFPGList<TLayoutTable>;
 
 	IWindowDelegate = interface (IDelegate) ['IWindowDelegate']
 		procedure HandleWindowWillClose(window: TWindow);
@@ -402,7 +406,12 @@ type
 			procedure SetDelegate(newValue: TObject);
 			function GetDelegate: TObject;
 			
+			{ Layout Tables }
+			procedure OpenTable(position: TVec2; rowHeight: integer);
+			procedure CloseTable;
+
 			{ Methods }
+			procedure AddSubview(view: TView); override;
 			procedure MakeKey; 
 			procedure MakeKeyAndOrderFront;
 			procedure Close;
@@ -463,6 +472,7 @@ type
 			focusedView: TView;
 			mouseInsideView: TView;
 			defaultButton: TView;
+			layoutTableStack: TLayoutTableList;
 
 			function GetWindowLevel: integer;
 			procedure HandleDefaultAction(var msg); message 'DefaultAction';
@@ -729,6 +739,9 @@ type
 			procedure SetValue(newValue: TSliderValue);
 			procedure SetInterval(newValue: integer);
 			procedure SetTickMarks(newValue: integer);
+			procedure SetTitle(newValue: string);
+			procedure SetTitleFont(newValue: IFont);
+			procedure SetShowValueWhileDragging(newValue: boolean);
 
 			function GetValue: TSliderValue;
 			function GetMinValue: TSliderValue;
@@ -738,9 +751,11 @@ type
 			function IsDragging: boolean;
 		protected
 			range: TRangeInt;
+			labelFont: IFont;
 
 			procedure Initialize; override;
 			procedure Draw; override;
+			procedure LayoutSubviews; override;
 			procedure DrawHandle(rect: TRect); virtual;
 			procedure DrawTrack(rect: TRect); virtual;
 
@@ -751,6 +766,7 @@ type
 			function GetTrackSize: TVec2;
 			function GetTrackFrame: TRect; virtual;
 			function GetHandleFrame: TRect; virtual;
+			function GetTitleFrame: TRect; virtual;
 
 			function ClosestTickMarkToValue(value: TSliderValue): integer;
 			function ValueAtRelativePosition(percent: single): TSliderValue;
@@ -763,6 +779,8 @@ type
 			tickMarks: integer;
 			liveUpdate: boolean;
 			tickMarkFrames: array[0..32] of TRect;
+			textView: TTextView;
+			showValueWhileDragging: boolean;
 	end;
 
 
@@ -1654,7 +1672,7 @@ end;
 // VIEW
 //#########################################################
 
-function TView.StartDrag(face: TTexture; event: TEvent; offset: TVec2; data: TMap): TDraggingSession;
+function TView.StartDrag(face: TTexture; event: TEvent; offset: TVec2; data: TVariantMap): TDraggingSession;
 begin
 	// TODO: drag and drop needs to be implemented in GLPT
 	//result := TDraggingSession.StartDrag(self, face, event, offset, data);
@@ -1662,22 +1680,22 @@ end;
 
 function TView.InputHit(event: TEvent): boolean;
 begin
-	result := GetBounds.ContainsPoint(event.Location(self));
+	result := GetBounds.Contains(event.Location(self));
 end;
 
 function TView.ContainsPoint(point: TPoint): boolean;
 begin
-	result := GetBounds.ContainsPoint(point);
+	result := GetBounds.Contains(point);
 end;
 
 function TView.ContainsRect(rect: TRect): boolean;
 begin
-	result := GetBounds.ContainsRect(rect);
+	result := GetBounds.Contains(rect);
 end;
 
 function TView.IntersectsRect(rect: TRect): boolean;
 begin
-	result := GetBounds.IntersectsRect(rect);
+	result := GetBounds.Intersects(rect);
 end;
 
 function TView.GetParentCoordinateSystem: TObject;
@@ -2521,44 +2539,8 @@ end;
 procedure TView.PushClipRect(rect: TRect);
 begin
 	rect := ConvertRectTo(rect, RootWindow);
-	rect := RectFlip(rect, GetViewPort);
+	rect := RectFlipY(rect, GetViewPort);
 	GLCanvas.PushClipRect(rect);
-end;
-
-procedure TView.DrawInternal(parentOrigin: TVec2);
-
-	function ShouldDraw: boolean; inline;
-	begin
-		if assigned(GetParent) then
-			result := GetParent.ShouldDrawSubview(self)
-		else
-			result := true;
-	end;
-
-var
-	child: TView;
-begin
-	// TODO: we need to flush for SetViewTransform since it's a shader property
-	// once we have a render backend for GUI's we can add the view transform into the root functions
-	renderOrigin := GetFrame.origin + parentOrigin;
-	FlushDrawing;
-	if not IsHidden then
-		begin
-			if enableClipping then
-				PushClipRect(GetClipRect);
-			SetViewTransform(renderOrigin.x, renderOrigin.y, 1);
-			if ShouldDraw then
-				Draw;
-			FlushDrawing;
-			if enableClipping then
-				PopClipRect;
-		end
-	else
-		begin
-			if assigned(subviews) then
-				for child in subviews do
-					child.DrawInternal(renderOrigin);
-		end;
 end;
 
 procedure TView.SubviewsAreClipping(var clipping: boolean; deep: boolean = true);
@@ -2583,12 +2565,51 @@ end;
 
 function TView.IsSubviewClipping(view: TView): boolean;
 begin
-	result := not GetBounds.ContainsRect(view.GetFrame);
+	result := not GetBounds.Contains(view.GetFrame);
 end;
 
 function TView.ShouldDrawSubview(view: TView): boolean;
 begin
 	result := true;
+end;
+
+procedure TView.DrawInternal(parentOrigin: TVec2);
+
+	function ShouldDraw: boolean; inline;
+	begin
+		if assigned(GetParent) then
+			result := GetParent.ShouldDrawSubview(self)
+		else
+			result := true;
+	end;
+
+var
+	child: TView;
+	savedOrigin: TVec2;
+begin
+	// TODO: we need to flush for SetViewTransform since it's a shader property
+	// once we have a render backend for GUI's we can add the view transform into the root functions
+	savedOrigin := parentOrigin;
+	renderOrigin := GetFrame.origin + parentOrigin;
+	FlushDrawing;
+	if not IsHidden then
+		begin
+			if enableClipping then
+				PushClipRect(GetClipRect);
+			SetViewTransform(renderOrigin.x, renderOrigin.y, 1);
+			if ShouldDraw then
+				Draw;
+			FlushDrawing;
+			SetViewTransform(savedOrigin.x, savedOrigin.y, 1);
+			if enableClipping then
+				PopClipRect;
+		end
+	else
+		begin
+			if assigned(subviews) then
+				for child in subviews do
+					child.DrawInternal(renderOrigin);
+		end;
 end;
 
 procedure TView.Draw;
@@ -2706,6 +2727,49 @@ procedure TWindow.PerformClose(params: TInvocationParams);
 begin
 	// TODO: ask delegate to close
 	Close;
+end;
+
+class operator TLayoutTable.= (left: TLayoutTable; right: TLayoutTable): boolean;
+begin
+	result := @left = @right;
+end;
+
+procedure TWindow.OpenTable(position: TVec2; rowHeight: integer);
+var
+	table: TLayoutTable;
+begin
+	if layoutTableStack = nil then
+		layoutTableStack := TLayoutTableList.Create;
+
+	table.origin := position;
+	table.rowHeight := rowHeight;
+	table.totalHeight := 0;
+	layoutTableStack.Add(table);
+end;
+
+procedure TWindow.AddSubview(view: TView);
+var
+	table: PLayoutTable;
+	newFrame: TRect;
+begin
+	if (layoutTableStack <> nil) and (layoutTableStack.Count > 0) then
+		begin
+			table := TFPSList(layoutTableStack).Last;
+			newFrame := view.GetFrame;
+			newFrame.origin := V2(table.origin.x, table.origin.y + table.totalHeight);
+			view.SetFrame(newFrame);
+			inherited AddSubview(view);
+			table.totalHeight += table.rowHeight;
+		end
+	else
+		inherited AddSubview(view);
+end;
+
+procedure TWindow.CloseTable;
+begin
+	Assert(layoutTableStack <> nil, 'no layout table stack');
+	Assert(layoutTableStack.Count > 0, 'trying to close empty layout table stack');
+	layoutTableStack.Delete(layoutTableStack.Count - 1);
 end;
 
 procedure TWindow.Center;
@@ -3098,6 +3162,7 @@ end;
 
 destructor TWindow.Destroy;
 begin
+	FreeAndNil(layoutTableStack);
 	delegate := nil;
 	inherited;
 end;
@@ -3235,7 +3300,7 @@ var
 begin
 	result := nil;
 	for window in AvailableWindows do
-		if window.GetFrame.ContainsPoint(TWindow.MouseLocation) then
+		if window.GetFrame.Contains(TWindow.MouseLocation) then
 			exit(window);
 end;
 
@@ -4445,6 +4510,33 @@ begin
 	tickMarks := newValue;
 end;
 
+procedure TSlider.SetShowValueWhileDragging(newValue: boolean);
+begin
+	showValueWhileDragging := newValue;
+end;
+
+procedure TSlider.SetTitleFont(newValue: IFont);
+begin
+	labelFont := newValue;
+	if textView <> nil then
+		textView.SetFont(labelFont);
+end;
+
+procedure TSlider.SetTitle(newValue: string);
+begin
+	if textView = nil then
+		begin
+			textView := TTextView.Create;
+			textView.SetWidthTracksContainer(true);
+			textView.SetFont(labelFont);
+			textView.SetAutoresizingOptions([]);
+			AddSubview(textView);
+		end;
+
+	textView.SetStringValue(newValue);
+	NeedsLayoutSubviews;
+end;
+
 function TSlider.GetValue: TSliderValue;
 begin
 	result := GetIntegerValue;
@@ -4516,6 +4608,24 @@ begin
 	result := interval * Ceil(result / interval);
 end;
 
+function TSlider.GetTitleFrame: TRect;
+begin
+	result := textView.GetBounds;
+	result.origin.y -= textView.GetHeight + 2;
+end;
+
+procedure TSlider.LayoutSubviews; 
+begin
+
+	if textView <> nil then
+		begin
+			textView.LayoutSubviews;
+			textView.SetFrame(GetTitleFrame);
+		end;
+
+	inherited;
+end;
+
 procedure TSlider.Draw;
 var
 	percent: float;
@@ -4572,6 +4682,17 @@ begin
 				handleFrame.origin += GetHandleFrame.origin;
 		end;
 	DrawHandle(handleFrame);
+
+
+	// show value label
+	if IsDragging and showValueWhileDragging then
+		begin
+			rect := handleFrame.Inset(-4, 0);
+			rect.origin.y -= rect.size.height;
+			FillRect(rect, RGBA(244/255,240/255,156/255,0.90));
+
+			DrawText(labelFont, GetStringValue, kAlignmentCenter, rect, RGBA(0, 1));
+		end;
 end;
 
 procedure TSlider.HandleInputStarted(event: TEvent);
@@ -4600,7 +4721,7 @@ begin
 	//			dragOrigin := event.Location(self) - handleFrame.origin;
 	//	end;
 
-	if handleFrame.ContainsPoint(event.Location(self)) then
+	if handleFrame.Contains(event.Location(self)) then
 		begin
 			dragOrigin := event.Location(self) - handleFrame.origin;
 			event.Accept;
@@ -4619,7 +4740,7 @@ begin
 			dragging := true;
 		end;
 
-	writeln('input started at ', GetValue);
+	//writeln('input started at ', GetValue);
 end;
 
 procedure TSlider.HandleInputDragged(event: TEvent);
@@ -4645,16 +4766,20 @@ procedure TSlider.HandleInputEnded(event: TEvent);
 begin
 	inherited HandleInputEnded(event);
 
-	// snap to interval
-	if interval > 1 then
-		SetValue(GetValue);
+	if dragging then
+		begin
 
-	writeln('new value: ', GetValue, ' tick=', ClosestTickMarkToValue(GetValue)+1);
-	if not liveUpdate then
-		HandleValueChanged;
+			// snap to interval
+			if interval > 1 then
+				SetValue(GetValue);
 
-	InvokeAction;
-	dragging := false;
+			//writeln('new value: ', GetValue, ' tick=', ClosestTickMarkToValue(GetValue)+1);
+			if not liveUpdate then
+				HandleValueChanged;
+
+			InvokeAction;
+			dragging := false;
+		end;
 end;
 
 procedure TSlider.Initialize; 
@@ -5797,7 +5922,7 @@ begin
 	if assigned(scrollView) then
 		begin
 			rect := view.ConvertRectTo(view.GetBounds, scrollView);
-			result := scrollView.GetBounds.IntersectsRect(rect);
+			result := scrollView.GetBounds.Intersects(rect);
 		end;
 end;
 
@@ -5999,7 +6124,6 @@ begin
 	maximumWidth := newValue;
 	NeedsLayoutSubviews;
 end;
-
 
 function TTextView.GetTextSize: TVec2;
 begin
