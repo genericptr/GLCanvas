@@ -1,5 +1,7 @@
 {$mode objfpc}
 {$modeswitch advancedrecords}
+{$implicitexceptions off}
+
 {$include include/targetos}
 
 unit GLShader;

@@ -1,4 +1,6 @@
 {$mode objfpc}
+{$implicitexceptions off}
+
 {$include include/targetos}
 
 unit GLFrameBuffer;

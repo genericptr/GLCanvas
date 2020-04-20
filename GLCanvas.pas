@@ -6,6 +6,8 @@
 {$modeswitch multihelpers}
 
 {$interfaces corba}
+{$implicitexceptions off}
+
 {$include include/targetos}
 
 unit GLCanvas;

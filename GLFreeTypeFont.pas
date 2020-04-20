@@ -1,4 +1,5 @@
 {$mode objfpc}
+{$implicitexceptions off}
 
 unit GLFreeTypeFont;
 interface

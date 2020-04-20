@@ -7,15 +7,17 @@
 {$include include/targetos}
 
 {$interfaces corba}
+{$implicitexceptions off}
+
 {$scopedenums on}
 
 {define GLGUI_DEBUG}
 
-// ImGUI
+// imgui
 // https://www.geeks3d.com/hacklab/20170929/how-to-build-user-interfaces-with-imgui/
 
-// NanoVG
-// https://www.geeks3d.com/hacklab/20160205/how-to-build-user-interfaces-and-2d-shapes-with-nanovg/
+// controls to implement
+// https://github.com/HankiDesign/awesome-dear-imgui
 
 unit GLGUI;
 interface
