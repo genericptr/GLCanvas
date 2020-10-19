@@ -123,45 +123,9 @@ type
       property Size: TVec2i read m_size;
   end;
 
-type
-  TMemoryPool = class
-    public
-      class procedure Push;
-      class procedure Pop;
-      class procedure Add(obj: TObject);
-      class function Stack: TObjectList; inline;
-    private
-      class var m_stack: TObjectList;
-  end;
-
 {$endif}
 
 {$ifdef IMPLEMENTATION}
-
-{ TMemoryPool }
-
-class function TMemoryPool.Stack: TObjectList;
-begin
-  if m_stack = nil then
-    m_stack := TObjectList.Create(true);
-  result := m_stack;
-end;  
-  
-class procedure TMemoryPool.Push;
-begin
-  stack.Add(TObjectList.Create(true));
-end;
-
-class procedure TMemoryPool.Pop;
-begin
-  stack.Delete(stack.Count - 1);
-end;
-
-class procedure TMemoryPool.Add(obj: TObject);  
-begin
-  if stack.Count > 0 then
-    TObjectList(stack.Last).Add(obj); 
-end;
 
 { Color Helpers }
 

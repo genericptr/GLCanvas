@@ -13,7 +13,7 @@ type
 type
   TImage = class
     kind: TImageKind;
-    parts: array[0..32] of {TTexture}pointer;
+    parts: array[0..32] of pointer; {TTexture}
   end;
 
 {
