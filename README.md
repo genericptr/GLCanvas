@@ -28,7 +28,7 @@ end.
 
 ### Features:
 
- - Flat procedural API like
+ - Flat procedural API
  - Standard vector types and matrix math
  - Texture loading
  - Bitmap and Freetype fonts
