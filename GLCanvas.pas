@@ -4,11 +4,12 @@
 {$modeswitch typehelpers}
 {$modeswitch autoderef}
 {$modeswitch multihelpers}
+{$modeswitch nestedprocvars}
 
 {$interfaces corba}
 {$implicitexceptions off}
 
-{$include include/targetos}
+{$include include/targetos.inc}
 
 unit GLCanvas;
 interface
@@ -19,9 +20,10 @@ uses
   {$ifdef API_OPENGLES}
   GLES30,
   {$endif}
-  Contnrs, FGL, Classes,
+  Contnrs, FGL, Classes, Math,
   BeRoPNG, VectorMath, GeometryTypes,
-  GLVertexBuffer, GLShader, GLPT;
+  GLVertexBuffer, GLFrameBuffer, GLShader, GLPT, GLPT_Threads;
+
 
 {$define INTERFACE}
 {$include include/ExtraTypes.inc}
@@ -32,13 +34,11 @@ uses
 {$include include/Input.inc}
 {$undef INTERFACE}
 
-type
-  TVec2Array = array[0..0] of TVec2;
-  PVec2Array = ^TVec2Array;
-
 {$scopedenums on}
 type
-  TCanvasOption = (VSync);
+  TCanvasOption = (VSync,
+                   FullScreen
+    );
   TCanvasOptions = set of TCanvasOption;
 {$scopedenums off}
 
@@ -46,9 +46,11 @@ const
   DefaultCanvasOptions = [TCanvasOption.VSync];
 
 { Window }
-procedure SetupCanvas(inWidth, inHeight: integer; eventCallback: GLPT_EventCallback = nil; options: TCanvasOptions = DefaultCanvasOptions); 
+procedure SetupCanvas(width, height: integer; eventCallback: GLPT_EventCallback = nil; options: TCanvasOptions = DefaultCanvasOptions); 
 function IsRunning: boolean;
 procedure QuitApp;
+
+function CanvasMousePosition(event: pGLPT_MessageRec): TVec2i;
 
 { Shapes }
 procedure FillRect(constref rect: TRect; constref color: TColor);
@@ -56,14 +58,15 @@ procedure StrokeRect(constref rect: TRect; constref color: TColor; lineWidth: si
 procedure FillOval(constref rect: TRect; constref color: TColor; segments: single = 32); 
 procedure StrokeOval(constref rect: TRect; constref color: TColor; segments: single = 32; lineWidth: single = 1.0); 
 procedure FillPolygon(points: array of TVec2; constref color: TColor);
-procedure StrokePolygon(points: array of TVec2; constref color: TColor; lineWidth: single = 1.0);
+procedure StrokePolygon(points: array of TVec2; constref color: TColor; connectPoints: boolean = true);
 procedure DrawLine(p1, p2: TVec2; constref color: TColor; thickness: single = 1); inline;
-procedure DrawLine(points: PVec2Array; count: integer; constref color: TColor; thickness: single = 1);
+procedure DrawLine(points: array of TVec2; count: integer; constref color: TColor; thickness: single = 1);
 procedure DrawPoint(constref point: TVec2; constref color: TColor);
 
 { Textures }
 function CreateTexture(path: ansistring): TTexture;
 function CreateTextureSheet(path: ansistring; cellSize: TVec2i): TTextureSheet;
+function CreateTextureSheet(path: ansistring; cellSize, tableSize: TVec2i): TTextureSheet;
 function CreateTexturePack(path: ansistring): TTexturePack;
 
 procedure DrawTexture(texture: ITexture; x, y: single); overload; inline;
@@ -86,7 +89,7 @@ procedure DrawText(text: ansistring; where: TVec2; scale: single = 1.0); overloa
 
 function DrawText(font: IFont; text: ansistring; textAlignment: TTextAlignment; bounds: TRect; color: TColor): TVec2; overload;
 function DrawText(font: IFont; text: ansistring; textAlignment: TTextAlignment; bounds: TRect): TVec2; overload;
-procedure DrawText(font: IFont; text: ansistring; where: TVec2; color: TColor; scale: single = 1.0); overload;
+procedure DrawText(font: IFont; text: ansistring; where: TVec2; color: TColor; scale: single = 1.0; textAlignment: TTextAlignment = TTextAlignment.Left); overload;
 procedure DrawText(font: IFont; text: ansistring; where: TVec2; scale: single = 1.0); overload;
 
 { Clip Rects }
@@ -97,9 +100,9 @@ procedure PopClipRect;
 function CreateShader(vertexSource, fragmentSource: pchar): TShader;
 
 { Buffers }
-procedure FlushDrawing;
+procedure FlushDrawing; inline;
+procedure SwapBuffers; inline;
 procedure ClearBackground;
-procedure SwapBuffers;
 
 { Fonts }
 procedure SetActiveFont(newValue: IFont);
@@ -118,7 +121,9 @@ procedure PushModelTransform(constref mat: TMat4);
 procedure PopModelTransform; 
 
 { Viewport }
-procedure SetViewPort(inWidth, inHeight: integer);
+procedure SetViewPort(rect: TRect); overload;
+procedure SetViewPort(offsetX, offsetY, inWidth, inHeight: integer); overload;
+procedure SetViewPort(inWidth, inHeight: integer); overload;
 function GetViewPort: TRect; inline;
 function GetWindowSize: TVec2i;
 
@@ -128,44 +133,61 @@ procedure SetClearColor(color: TColor);
 function GetFPS: longint; inline;
 function GetDeltaTime: double; inline;
 function GetDefaultShaderAttributes: TVertexAttributes;
+function IsVertexBufferEmpty: boolean; inline;
 
 { Utilities }
+function FRand: single;
 function FRand(min, max: single): single;
 function FRand(min, max: single; decimal: integer): single;
 function Rand(min, max: longint): longint;
+function Rand(max: longint): longint;
+function RandBool(probability: single = 0.5): boolean;
 function TimeSinceNow: longint;
 
 type
-  TGLCanvasState = record
+  TCanvasState = class
     public
-      width: integer;         // width of the viewport
-      height: integer;        // height of the viewport
-      window: PGLPTWindow;    // reference to the GLPT window
-      activeFont: IFont;
-      bindTextureCount: longint;
-      drawCalls: longint;
-      deltaTime: double;      // elapsed time since last SwapBuffers
-      lastFrameTime: double;  // absolute time of last SwapBuffers
-      clearColor: TColor;
-      projTransform: TMat4;   // orthographic transform
-      viewTransform: TMat4;
+      window: PGLPTWindow;          // reference to the GLPT window
+      activeFont: IFont;            // default font for DrawText(...) if no font is specified
+      clearColor: TColor;           // color used for ClearBackground 
+      bindTextureCount: longint;    // count of bind texture calls for each SwapBuffers call
+      drawCalls: longint;           // count of FlushDrawing calls for each SwapBuffers call
+      deltaTime: double;            // elapsed time since last SwapBuffers
+      lastFrameTime: double;        // absolute time of last SwapBuffers
+      projTransform: TMat4;         // orthographic transform set with SetProjectionTransform
+      viewTransform: TMat4;         // view transform set with SetViewTransform
+      viewPortRatio: TVec2;         // if the viewport/transform is not 1:1 this is the ratio
+      viewPort: TRect;              // rect set by SetViewPort
+      fullScreen: boolean;          // the window was created in fullscreen mode
+      totalFrameCount: longint;     // frame count for each SwapBuffers call 
     private
       viewTransformStack: TMat4List;
       modelTransformStack: TMat4List;
       clipRectStack: TRectList;
-      frameCount: longint;
       sampleTime: double;
+      frameCount: longint;
       fps: longint;
+    public
+      procedure FlushDrawing; virtual;
+      procedure SwapBuffers; virtual;
+      procedure ClearBackground; virtual;
   end;
 
 var
-  GLCanvasState: TGLCanvasState;
+  CanvasState: TCanvasState = nil;
 
 implementation
 uses
   GLUtils,
   Variants, CTypes,
   SysUtils, DOM, XMLRead, Strings;
+
+const
+  DEFAULT_SHADER_TEXTURE_UNITS = 8;
+
+var
+  DefaultTextureColor: TColor;
+  DefaultTextureUnits: array[0..DEFAULT_SHADER_TEXTURE_UNITS - 1] of GLint = (0, 1, 2, 3, 4, 5, 6, 7);
 
 {$define IMPLEMENTATION}
 {$include include/ExtraTypes.inc}
@@ -179,14 +201,13 @@ uses
 const
   TWOPI = 3.14159 * 2;
   
-var
-  DefaultTextureColor: TColor;
-
 { Utils }
 function TimeSinceNow: longint;
 begin
   result := round(GLPT_GetTime * 1000);
 end;    
+
+{ Returns a number larger or equal to 'min' and less than or equal to 'max'. }
 
 function FRand(min, max: single): single;
 begin
@@ -198,6 +219,19 @@ begin
   result := Rand(trunc(min * decimal), trunc(max * decimal)) / decimal;
 end;
 
+{ Returns a real number between 0 and 1 is returned (0 included, 1 excluded). }
+function FRand: single;
+begin
+  result := System.Random;
+end;
+
+{ Returns a random number larger or equal to 0 and strictly less than 'max'.  }
+function Rand(max: longint): longint;
+begin
+  result := System.Random(max);
+end;
+
+{ Returns a number larger or equal to 'min' and less than or equal to 'max'. }
 function Rand(min, max: longint): longint;
 var
   zero: boolean = false;
@@ -223,6 +257,11 @@ begin
   if zero then
     min -= 1;
   result += min;
+end;
+
+function RandBool(probability: single = 0.5): boolean;
+begin
+  result := System.Random >= probability;
 end;
 
 { Types }
@@ -344,7 +383,7 @@ type
   TDefaultVertexList = specialize TFPGList<TDefaultVertex>;
   TDefaultVertexBuffer = specialize TVertexBuffer<TDefaultVertex>;
 
-{$include include/Shaders}
+{$include include/Shaders.inc}
 
 { Globals }
 type
@@ -357,35 +396,35 @@ var
   context: GLPT_Context;
   defaultShader: TShader = nil;
   vertexBuffer: TDefaultVertexBuffer = nil;
-  textureUnits: array[0..7] of GLint = (0, 1, 2, 3, 4, 5, 6, 7);
   drawState: TGLDrawState;
 
 function IsRunning: boolean;
 begin
-  result := not GLPT_WindowShouldClose(GLCanvasState.window);
+  result := not GLPT_WindowShouldClose(CanvasState.window);
 end;
 
 procedure error_callback(error: integer; description: string);
 begin
   writeln(stderr, description);
-  halt(-1);
+  raise Exception.Create(description);
+  //halt(-1);
 end;
 
 procedure SetActiveFont(newValue: IFont);
 begin
-  GLCanvasState.activeFont := newValue;
+  CanvasState.activeFont := newValue;
 end;
 
 function GetActiveFont: IFont;
 begin
-  result := GLCanvasState.activeFont;
+  result := CanvasState.activeFont;
 end;
 
 procedure SetProjectionTransform(constref mat: TMat4);
 begin
-  GLCanvasState.projTransform := mat;
+  CanvasState.projTransform := mat;
   Assert(ShaderStack.Last = defaultShader, 'active shader must be default.');
-  glUniformMatrix4fv(defaultShader.GetUniformLocation('projTransform'), 1, GL_FALSE, GLCanvasState.projTransform.Ptr);
+  glUniformMatrix4fv(defaultShader.GetUniformLocation('projTransform'), 1, GL_FALSE, CanvasState.projTransform.Ptr);
 end;
 
 procedure SetProjectionTransform(x, y, width, height: integer);
@@ -395,9 +434,9 @@ end;
 
 procedure SetViewTransform(constref mat: TMat4);
 begin
-  GLCanvasState.viewTransform := mat;
+  CanvasState.viewTransform := mat;
   Assert(ShaderStack.Last = defaultShader, 'active shader must be default.');
-  glUniformMatrix4fv(defaultShader.GetUniformLocation('viewTransform'), 1, GL_FALSE, GLCanvasState.viewTransform.Ptr);
+  glUniformMatrix4fv(defaultShader.GetUniformLocation('viewTransform'), 1, GL_FALSE, CanvasState.viewTransform.Ptr);
 end;
 
 procedure SetViewTransform(x, y, scale: single);
@@ -416,7 +455,7 @@ end;
 
 procedure PushViewTransform(constref mat: TMat4); 
 begin
-  with GLCanvasState do
+  with CanvasState do
     begin
       SetViewTransform(mat);
       viewTransformStack.Add(mat);
@@ -427,7 +466,7 @@ procedure PopViewTransform;
 var
   mat: TMat4;
 begin
-  with GLCanvasState do
+  with CanvasState do
     begin
       viewTransformStack.Delete(viewTransformStack.Count - 1);
       if viewTransformStack.Count > 0 then
@@ -440,7 +479,7 @@ end;
 
 procedure PushModelTransform(constref mat: TMat4); 
 begin
-  with GLCanvasState do
+  with CanvasState do
     begin
       modelTransformStack.Add(mat);
     end;
@@ -448,20 +487,29 @@ end;
 
 procedure PopModelTransform; 
 begin
-  with GLCanvasState do
+  with CanvasState do
     begin
       modelTransformStack.Delete(modelTransformStack.Count - 1);
     end;
 end;
 
+procedure SetViewPort(rect: TRect);
+begin
+  SetViewPort(trunc(rect.minX), trunc(rect.minY), trunc(rect.width), trunc(rect.height));
+end;
+
+procedure SetViewPort(offsetX, offsetY, inWidth, inHeight: integer);
+begin
+  with CanvasState do
+    begin
+      viewPort := RectMake(offsetX, offsetY, inWidth, inHeight);
+      glViewPort(offsetX, offsetY, inWidth, inHeight);
+    end;
+end;
+
 procedure SetViewPort(inWidth, inHeight: integer);
 begin
-  with GLCanvasState do
-    begin
-      width := inWidth;
-      height := inHeight;
-      glViewPort(0, 0, width, height);
-    end;
+  SetViewPort(0, 0, inWidth, inHeight);
 end;
 
 function GetViewPort: TRect;
@@ -470,12 +518,12 @@ function GetViewPort: TRect;
 begin
   //glGetIntegerv(GL_VIEWPORT, @viewPort);
   //result := RectMake(viewPort[0], viewPort[1], viewPort[2], viewPort[3]);
-  result := RectMake(0, 0, GLCanvasState.width, GLCanvasState.height);
+  result := CanvasState.viewPort;
 end;
 
 function GetWindowSize: TVec2i;
 begin
-  GLPT_GetFrameBufferSize(GLCanvasState.window, result.x, result.y);
+  GLPT_GetFrameBufferSize(CanvasState.window, result.x, result.y);
 end;
 
 function GetDefaultShaderAttributes: TVertexAttributes;
@@ -483,25 +531,30 @@ begin
   result := vertexBuffer.attributes;
 end;
 
+function IsVertexBufferEmpty: boolean;
+begin
+  result := vertexBuffer.Count = 0;
+end;
+
 procedure SetClearColor(color: TColor); 
 begin
-  GLCanvasState.clearColor := color;
+  CanvasState.clearColor := color;
   glClearColor(color.r, color.b, color.g, color.a);
 end;
 
 function GetFPS: longint;
 begin
-  result := GLCanvasState.fps;
+  result := CanvasState.fps;
 end;
 
 function GetDeltaTime: double;
 begin
-  result := GLCanvasState.deltaTime;
+  result := CanvasState.deltaTime;
 end;
 
 procedure QuitApp;
 begin
-  GLPT_DestroyWindow(GLCanvasState.window);
+  GLPT_DestroyWindow(CanvasState.window);
   GLPT_Terminate;
 end;
 
@@ -594,10 +647,10 @@ procedure FillPolygon(points: array of TVec2; constref color: TColor);
     quad.SetColor(color.r, color.g, color.b, color.a);
     quad.SetUV(255);
 
-    if GLCanvasState.modelTransformStack.Count > 0 then
-      quad.Transform(GLCanvasState.modelTransformStack.Last);
+    if CanvasState.modelTransformStack.Count > 0 then
+      quad.Transform(CanvasState.modelTransformStack.Last);
 
-    vertexBuffer.AddQuad(@quad);
+    vertexBuffer.Add(quad.v);
   end;
 
 var
@@ -620,11 +673,14 @@ begin
   FlushDrawing;
 end;
 
-procedure StrokePolygon(points: array of TVec2; constref color: TColor; lineWidth: single = 1.0);
+procedure StrokePolygon(points: array of TVec2; constref color: TColor; connectPoints: boolean = true);
 var
   i: integer;
 begin
-  ChangePrimitiveType(GL_LINE_LOOP);
+  if connectPoints then
+    ChangePrimitiveType(GL_LINE_LOOP)
+  else  
+    ChangePrimitiveType(GL_LINES);
   for i := 0 to high(points) do
     vertexBuffer.Add(TDefaultVertex.Create(points[i], V2(0, 0), color, 255));
   // TODO: we don't need to flush each time
@@ -645,10 +701,10 @@ var
 begin
   points[0] := p1;
   points[1] := p2;
-  DrawLine(@points[0], 2, color, thickness);
+  DrawLine(points, 2, color, thickness);
 end;
 
-procedure DrawLine(points: PVec2Array; count: integer; constref color: TColor; thickness: single = 1);
+procedure DrawLine(points: array of TVec2; count: integer; constref color: TColor; thickness: single = 1);
 var
   v: array[0..3] of TDefaultVertex;
   n: TVec2;
@@ -724,10 +780,10 @@ begin
   quad.SetColor(color.r, color.g, color.b, color.a);
   quad.SetUV(255);
 
-  if GLCanvasState.modelTransformStack.Count > 0 then
-    quad.Transform(GLCanvasState.modelTransformStack.Last);
+  if CanvasState.modelTransformStack.Count > 0 then
+    quad.Transform(CanvasState.modelTransformStack.Last);
 
-  vertexBuffer.AddQuad(@quad);
+  vertexBuffer.Add(quad.v);
 end;
 
 procedure StrokeRect(constref rect: TRect; constref color: TColor; lineWidth: single = 1.0);
@@ -767,6 +823,11 @@ begin
   result := TTextureSheet.Create(path, cellSize);
 end;
 
+function CreateTextureSheet(path: ansistring; cellSize, tableSize: TVec2i): TTextureSheet;
+begin
+  result := TTextureSheet.Create(path, cellSize, tableSize);
+end;
+
 function CreateTexturePack(path: ansistring): TTexturePack;
 begin
   result := TTexturePack.Create(path);
@@ -775,7 +836,7 @@ end;
 procedure DrawTexture(texture: ITexture; constref rect: TRect; constref textureFrame: TRect; constref color: TVec4);
 var
   quad: TDefaultVertexQuad;
-  textureUnit: TGLTextureUnit;
+  textureUnit: integer;
 begin
   Assert(texture <> nil, 'texture must not be nil');
   textureUnit := PushTexture(texture);
@@ -787,10 +848,10 @@ begin
   quad.SetTexture(textureFrame);
   quad.SetUV(textureUnit);
 
-  if GLCanvasState.modelTransformStack.Count > 0 then
-    quad.Transform(GLCanvasState.modelTransformStack.Last);
+  if CanvasState.modelTransformStack.Count > 0 then
+    quad.Transform(CanvasState.modelTransformStack.Last);
 
-  vertexBuffer.AddQuad(@quad);
+  vertexBuffer.Add(quad.v);
 end;
 
 procedure DrawTexture(texture: ITexture; constref rect: TRect; constref color: TVec4);
@@ -823,14 +884,9 @@ begin
   DrawTexture(texture, RectMake(point, texture.GetFrame.Size), color);
 end;
 
-procedure ClearBackground;
-begin
-  glClear(GL_COLOR_BUFFER_BIT);
-end;
-
 procedure PushClipRect(rect: TRect); 
 begin
-  with GLCanvasState do
+  with CanvasState do
     begin
       if clipRectStack.Count = 0 then
         glEnable(GL_SCISSOR_TEST);
@@ -851,7 +907,7 @@ procedure PopClipRect;
 var
   rect: TRect;
 begin
-  with GLCanvasState do
+  with CanvasState do
     begin
       clipRectStack.Delete(clipRectStack.Count - 1);
       if clipRectStack.Count > 0 then
@@ -864,67 +920,98 @@ begin
     end;
 end;
 
-procedure FlushDrawing;
+
+procedure TCanvasState.FlushDrawing;
 begin
   if not assigned(vertexBuffer) or (vertexBuffer.Count = 0) then
     exit;
-
   //Assert(ShaderStack.Last = defaultShader, 'active shader must be default.');
-  GLCanvasState.drawCalls += 1;
+  drawCalls += 1;
   vertexBuffer.Draw(drawState.bufferPrimitiveType);
   vertexBuffer.Clear;
 end;
 
-procedure SwapBuffers;
+procedure TCanvasState.SwapBuffers;
 var
   now: double;
 begin
-  FlushDrawing;
-  GLPT_SwapBuffers(GLCanvasState.window);
+  self.FlushDrawing;
+  GLPT_SwapBuffers(window);
   GLPT_PollEvents;
 
-  with GLCanvasState do
-    begin
-      now := GLPT_GetTime;
-      deltaTime := now - lastFrameTime;
-      lastFrameTime := now;
-      drawCalls := 0;
+  now := GLPT_GetTime;
+  deltaTime := now - lastFrameTime;
+  lastFrameTime := now;
+  drawCalls := 0;
+  bindTextureCount := 0;
 
-      frameCount += 1;
-      if now - sampleTime > 1.0 then
-        begin
-          fps := frameCount;
-          sampleTime := now;
-          frameCount := 0;
-        end;
+  inc(totalFrameCount);
+  inc(frameCount);
+
+  if now - sampleTime > 1.0 then
+    begin
+      fps := frameCount;
+      sampleTime := now;
+      frameCount := 0;
     end;
+end;
+
+procedure TCanvasState.ClearBackground;
+begin
+  glClear(GL_COLOR_BUFFER_BIT);
+end;
+
+procedure ClearBackground;
+begin
+  CanvasState.ClearBackground;
+end;
+
+procedure FlushDrawing;
+begin
+  CanvasState.FlushDrawing;
+end;
+
+procedure SwapBuffers;
+begin
+  CanvasState.SwapBuffers;
 end;
 
 function CreateShader(vertexSource, fragmentSource: pchar): TShader;
 begin
   result := TShader.Create(vertexSource, fragmentSource);
   result.Push;
-  result.SetUniformMat4('projTransform', GLCanvasState.projTransform);
-  result.SetUniformMat4('viewTransform', GLCanvasState.viewTransform);
-  result.SetUniformInts('textures', 8, @textureUnits);
+  result.SetUniformMat4('projTransform', CanvasState.projTransform);
+  result.SetUniformMat4('viewTransform', CanvasState.viewTransform);
+  result.SetUniformInts('textures', DefaultTextureUnits);
 
   // don't pop the default shader
   if defaultShader <> nil then
     result.Pop;
 end;
 
-procedure SetupCanvas(inWidth, inHeight: integer; eventCallback: GLPT_EventCallback = nil; options: TCanvasOptions = DefaultCanvasOptions); 
+function CanvasMousePosition(event: pGLPT_MessageRec): TVec2i;
+begin
+  result := V2i(event^.params.mouse.x, event^.params.mouse.y);
+  result -= CanvasState.viewport.origin;
+  result /= CanvasState.viewPortRatio;
+end;
+
+procedure SetupCanvas(width, height: integer; eventCallback: GLPT_EventCallback = nil; options: TCanvasOptions = DefaultCanvasOptions); 
+var
+  flags: longint;
+  displayCoords: GLPTRect;
 begin
   GLPT_SetErrorCallback(@error_callback);
 
   if not GLPT_Init then
     halt(-1);
 
-  with GLCanvasState do
-    begin
-      width := inWidth;
-      height := inHeight;
-      
+  // allocate the default canvas
+  if CanvasState = nil then
+    CanvasState := TCanvasState.Create;
+
+  with CanvasState do
+    begin      
       clipRectStack := TRectList.Create;
       viewTransformStack := TMat4List.Create;
       modelTransformStack := TMat4List.Create;
@@ -941,7 +1028,18 @@ begin
 
       context.vsync := TCanvasOption.VSync in options;
 
-      window := GLPT_CreateWindow(GLPT_WINDOW_POS_CENTER, GLPT_WINDOW_POS_CENTER, width, height, '', context);
+      flags := GLPT_WINDOW_TITLED + GLPT_WINDOW_CLOSABLE + GLPT_WINDOW_RESIZABLE;
+
+      if TCanvasOption.FullScreen in options then
+        begin
+          fullScreen := true;
+          flags += GLPT_WINDOW_FULLSCREEN;
+          GLPT_GetDisplayCoords(displayCoords);
+          width := displayCoords.right - displayCoords.left;
+          height := displayCoords.bottom - displayCoords.top;
+        end;
+
+      window := GLPT_CreateWindow(GLPT_WINDOW_POS_CENTER, GLPT_WINDOW_POS_CENTER, width, height, '', context, flags);
       if window = nil then
         begin
           GLPT_Terminate;
@@ -961,20 +1059,24 @@ begin
       writeln('Maximum Texture Size: ', GetMaximumTextureSize);
       writeln('Maximum Verticies: ', GetMaximumVerticies);
 
+      // the default shader imposes a texture limit we must follow
+      SetMaximumTextureUnits(DEFAULT_SHADER_TEXTURE_UNITS);
+
       // note: clear an opengl error
       glGetError();
 
       // set the view port to the actual size of the window
       GLPT_GetFrameBufferSize(window, width, height);
-      SetViewPort(width, height);
+      SetViewPort(0, 0, width, height);
 
       glClearColor(1, 1, 1, 1);
-      glEnable(GL_BLEND); 
+      glEnable(GL_BLEND);
       glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
       glDisable(GL_DEPTH_TEST);
 
-      with GLCanvasState do
+      with CanvasState do
         begin
+          viewPortRatio := V2(1, 1);
           projTransform := TMat4.Ortho(0, width, height, 0, -MaxInt, MaxInt);
           viewTransform := TMat4.Identity;
 

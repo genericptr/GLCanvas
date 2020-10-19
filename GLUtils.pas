@@ -1,6 +1,6 @@
 {$mode objfpc}
 {$assertions on}
-{$include include/targetos}
+{$include include/targetos.inc}
 
 unit GLUtils;
 interface

@@ -9,14 +9,16 @@ uses
 type
   TGLFreeTypeFont = class (TFreeTypeFont, IFont, ITexture)
     private
-      m_textureUnit: TGLTextureUnit;
+      m_textureUnit: integer;
       m_locked: boolean;
+    protected
+      procedure GenerateTexture(data: pointer; width, height: integer; minFilter, magFilter: integer); override;
     public
       { ITexture }
-      function GetTextureUnit: TGLTextureUnit;
-      function GetTexture: TGLTextureID;
+      function GetTextureUnit: integer;
+      function GetTexture: integer;
       function GetFrame: TTextureFrame;
-      procedure Lock(inUnit: TGLTextureUnit);
+      procedure Lock(inUnit: integer);
       procedure Unlock;
       procedure Load;
       procedure Unload;
@@ -33,18 +35,32 @@ type
 
 implementation
 
+const
+  TextureOptions = [TTextureImage.RGBA,  
+                    TTextureImage.UnsignedByte,
+                    TTextureImage.NearestNeighbor
+                    ];
+
+procedure TGLFreeTypeFont.GenerateTexture(data: pointer; width, height: integer; minFilter, magFilter: integer); 
+begin
+  GLCanvas.GenerateTexture(Longint(m_texture));
+  BindTexture2D(textureID);
+  LoadTexture2D(width, height, data, TextureOptions);
+  RestoreLastBoundTexture;
+end;
+
 function TGLFreeTypeFont.GetFrame: TTextureFrame;
 begin
   result.texture := RectMake(0, 0, 1, 1);
   result.pixel := RectMake(0, 0, TextureWidth, TextureHeight);
 end;
 
-function TGLFreeTypeFont.GetTexture: TGLTextureID;
+function TGLFreeTypeFont.GetTexture: integer;
 begin
   result := TextureID;
 end;
 
-function TGLFreeTypeFont.GetTextureUnit: TGLTextureUnit;
+function TGLFreeTypeFont.GetTextureUnit: integer;
 begin
   result := m_textureUnit;
 end;
@@ -54,7 +70,7 @@ begin
   result := TextureID > 0;
 end;
 
-procedure TGLFreeTypeFont.Lock(inUnit: TGLTextureUnit);
+procedure TGLFreeTypeFont.Lock(inUnit: integer);
 begin
   Assert(not IsLocked, 'Texture is already locked');
   if not IsLoaded then

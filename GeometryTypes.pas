@@ -1,19 +1,21 @@
 {$mode objfpc}
 {$modeswitch advancedrecords}
 {$modeswitch multihelpers}
+{$scopedenums on}
 
 unit GeometryTypes;
 interface
 uses
-  VectorMath, FGL;
+  Math, SysUtils, VectorMath, FGL;
 
 type
-  TRectEdge = ( TRectEdgeMinX, 
-                TRectEdgeMinY,
-                TRectEdgeMaxX,
-                TRectEdgeMaxY,
-                TRectEdgeAny
+  TRectEdge = ( MinX, 
+                MinY,
+                MaxX,
+                MaxY,
+                Any
                 );
+  TAxis = ( Both, X, Y );
 
 type
   TRect = record
@@ -25,8 +27,13 @@ type
     public
       constructor Create(inX, inY: TScalar; inWidth, inHeight: TScalar);
 
-      property Width: TScalar read size.x;
-      property Height: TScalar read size.y;
+      property X: TScalar read origin.x write origin.x;
+      property Y: TScalar read origin.y write origin.y;
+      property Width: TScalar read size.x write size.x;
+      property Height: TScalar read size.y write size.y;
+      property W: TScalar read size.x write size.x;
+      property H: TScalar read size.y write size.y;
+      
       property MinX: TScalar read origin.x;
       property MinY: TScalar read origin.y;
 
@@ -44,10 +51,6 @@ type
       function Min: TVec2; inline;
       function Max: TVec2; inline;
 
-      property X: TScalar read origin.x write origin.x;
-      property Y: TScalar read origin.y write origin.y;
-      property W: TScalar read size.x write size.x;
-      property H: TScalar read size.y write size.y;
       property Points[index: integer]: TVec2 read GetPoint;
 
       function IsEmpty: boolean; inline;
@@ -117,6 +120,19 @@ type
     property Height: TScalar read GetHeight write SetHeight;
   end;
 
+type
+  TSize3Helper = record helper for TVec3
+    procedure SetWidth(newValue: TScalar); inline;
+    procedure SetHeight(newValue: TScalar); inline;
+    procedure SetDepth(newValue: TScalar); inline;
+    function GetWidth: TScalar; inline;
+    function GetHeight: TScalar; inline;
+    function GetDepth: TScalar; inline;
+    property Width: TScalar read GetWidth write SetWidth;
+    property Height: TScalar read GetHeight write SetHeight;
+    property Depth: TScalar read GetDepth write SetDepth;
+  end;
+
 function RectMake(x, y: TScalar; width, height: TScalar): TRect; overload; inline;
 function RectMake(origin, size: TVec2): TRect; overload; inline;
 function RectMake(origin: TVec2; width, height: TScalar): TRect; overload; inline;
@@ -128,6 +144,8 @@ function RectCenterY(sourceRect: TRect; destRect: TRect): TRect; inline;
 function RectFlipX(rect: TRect): TRect;
 function RectFlipY(rect: TRect): TRect;
 function RectFlipY(sourceRect, destRect: TRect): TRect;
+function RectScaleToFit(source, dest: TVec2): TRect;
+function RectUnion(p1, p2: TVec2): TRect;
 
 function RadiusForRect(rect: TRect): TScalar; inline;
 
@@ -139,33 +157,272 @@ type
       origin: TVec2;
       radius: TScalar;
     public
-      class function Make(_origin: TVec2; _radius: TScalar): TCircle; static;
-      class function Make(x, y: TScalar; _radius: TScalar): TCircle; static;
-      class function Make(rect: TRect): TCircle; static;
+      class function Create(_origin: TVec2; _radius: TScalar): TCircle; static; inline;
+      class function Create(x, y: TScalar; _radius: TScalar): TCircle; static; inline;
+      class function Create(rect: TRect): TCircle; static; inline;
     
-      function Intersects(const circle: TCircle): boolean; overload;
-      function Intersects(const circle: TCircle; out hitPoint: TVec2): boolean; overload; 
-      function Intersects(const rect: TRect): boolean; overload;
-      function Distance(const circle: TCircle; fromDiameter: boolean = true): TScalar;
+      function Intersects(constref circle: TCircle): boolean; overload;
+      function Intersects(constref circle: TCircle; out hitPoint: TVec2): boolean; overload; 
+      function Intersects(constref rect: TRect): boolean; overload;
+      function Distance(constref circle: TCircle; fromDiameter: boolean = true): TScalar;
       
       function ToStr: string;
       procedure Show;
   end;
 
+type
+  TCube = record
+    public
+      origin: TVec3;
+      size: TVec3;
+    public
+      { Constructor }
+      class function Create(x, y, z, width, height, depth: TScalar): TCube; overload; static;
+      class function Create(_origin, _size: TVec3): TCube; overload; static;
+      class function Create(rect: TRect): TCube; overload; static;
+        
+      { Accessors }
+      function Min: TVec3; inline;
+      function Mid: TVec3; inline;
+      function Max: TVec3; inline;
+    
+      function MinX: TScalar; inline;
+      function MidX: TScalar; inline;
+      function MaxX: TScalar; inline;
+    
+      function MinY: TScalar; inline;
+      function MidY: TScalar; inline;
+      function MaxY: TScalar; inline;
+    
+      function MinZ: TScalar; inline;
+      function MidZ: TScalar; inline;
+      function MaxZ: TScalar; inline;
+    
+      function Width: TScalar; inline;
+      function Height: TScalar; inline;
+      function Depth: TScalar; inline;
+    
+      function Center: TVec3; inline;
+        
+      { Methods }
+      procedure Show;
+      function Str: string; 
+      function Rect2D: TRect; 
+      function IsEmpty: boolean;
+      function Inset(x, y, z: TScalar): TCube;
+      function IntersectsRect(rect: TCube): boolean;
+      function ContainsPoint(point: TVec3): boolean;
+  end;
+
+function CubeMake(x, y, z, width, height, depth: TScalar): TCube; overload; inline;
+function CubeMake(origin, size: TVec3): TCube; overload; inline;
+
+operator explicit (right: TRect): TCircle; inline;
+
 function CircleIntersectsRect(origin: TVec2; radius: TScalar; constref rect: TRect): boolean; 
-function CircleIntersectsCircle(originA: TVec2; radiusA: TScalar; originB: TVec2; radiusB: TScalar): boolean;
+function CircleIntersectsCircle(originA: TVec2; radiusA: TScalar; originB: TVec2; radiusB: TScalar): boolean; overload;
+function CircleIntersectsCircle(rectA, rectB: TRect): boolean; overload; inline;
 
 function PolyContainsPoint(const points: TVec2Array; constref point: TVec2): boolean;
 function PolyIntersectsRect(const vertices: TVec2Array; constref rect: TRect): boolean;
 function PolyIntersectsPoly(const p1, p2: TVec2Array): boolean;
 
 function PointOnSide(p, a, b: TVec2): integer;
-function LineIntersectsRect(p1, p2: TVec2; rect: TRect): boolean;
-function LineIntersectsCircle(p1, p2: TVec2; origin: TVec2; radius: single): boolean; 
+function LineIntersectsRect(p1, p2: TVec2; rect: TRect): boolean; overload; inline;
+function LineIntersectsRect(p1, p2: TVec2; bmin, bmax: TVec2): boolean; overload;
+function LineIntersectsCircle(p1, p2: TVec2; origin: TVec2; radius: single): boolean;
+function LineIntersectsCube(p1, p2: TVec3; cube: TCube): boolean; inline;
+function LineIntersectsBox(b1, b2, l1, l2: TVec3; out hit: TVec3): boolean; inline;
+function RectIntersection(src, dest: TRect; axis: TAxis = TAxis.Both): TRect;
+
+{ Triangle interpolation }
+function InterpolateTriangle(p1, p2, p3: TVec3; pos: TVec2): float; 
+function Barycentric(a, b, c, p: TVec3): float; 
 
 implementation
-uses
-  Math, SysUtils;
+
+function InterpolateTriangle(p1, p2, p3: TVec3; pos: TVec2): float; 
+var
+  det, l1, l2, l3: float;
+begin
+  det := (p2.z - p3.z) * (p1.x - p3.x) + (p3.x - p2.x) * (p1.z - p3.z);
+  l1 := ((p2.z - p3.z) * (pos.x - p3.x) + (p3.x - p2.x) * (pos.y - p3.z)) / det;
+  l2 := ((p3.z - p1.z) * (pos.x - p3.x) + (p1.x - p3.x) * (pos.y - p3.z)) / det;
+  l3 := 1.0 - l1 - l2;
+  result := l1 * p1.y + l2 * p2.y + l3 * p3.y;
+end;
+
+function Barycentric(a, b, c, p: TVec3): float; 
+var
+  d00, d01, d11, d20, d21, denom: float;
+  v0,v1,v2: TVec3;
+  v, w, u: float;
+begin
+  v0 := b - a;
+  v1 := c - a;
+  v2 := p - a;
+  d00 := v0.Dot(v0);
+  d01 := v0.Dot(v1);
+  d11 := v1.Dot(v1);
+  d20 := v2.Dot(v0);
+  d21 := v2.Dot(v1);
+  denom := d00 * d11 - d01 * d01;
+  v := (d11 * d20 - d01 * d21) / denom;
+  w := (d00 * d21 - d01 * d20) / denom;
+  u := 1.0 - v - w;
+  result :=  u;
+end;
+
+{ returns true if line (L1, L2) intersects with the box (B1, B2)
+  returns intersection point in Hit
+  http://www.3dkingdoms.com/weekly/weekly.php?a=3 }
+
+function LineIntersectsBox(B1, B2, L1, L2: TVec3; out hit: TVec3): boolean;
+
+  function GetIntersection(fDst1, fDst2: float; P1, P2: TVec3; out hit: TVec3): boolean; inline;
+  begin
+    if ( (fDst1 * fDst2) >= 0.0) then exit(false);
+    if ( fDst1 = fDst2) then exit(false); 
+    Hit := P1 + (P2-P1) * ( -fDst1/(fDst2-fDst1) );
+    result := true;
+  end;
+
+  function InBox(Hit, B1, B2: TVec3; const axis: integer): boolean; inline;
+  begin
+    if ( (Axis=1) and (Hit.z > B1.z) and (Hit.z < B2.z) and (Hit.y > B1.y) and (Hit.y < B2.y)) then exit(true);
+    if ( (Axis=2) and (Hit.z > B1.z) and (Hit.z < B2.z) and (Hit.x > B1.x) and (Hit.x < B2.x)) then exit(true);
+    if ( (Axis=3) and (Hit.x > B1.x) and (Hit.x < B2.x) and (Hit.y > B1.y) and (Hit.y < B2.y)) then exit(true);
+    result := false;
+  end;
+
+begin
+  if ((L2.x < B1.x) and (L1.x < B1.x)) then exit(false);
+  if ((L2.x > B2.x) and (L1.x > B2.x)) then exit(false);
+  if ((L2.y < B1.y) and (L1.y < B1.y)) then exit(false);
+  if ((L2.y > B2.y) and (L1.y > B2.y)) then exit(false);
+  if ((L2.z < B1.z) and (L1.z < B1.z)) then exit(false);
+  if ((L2.z > B2.z) and (L1.z > B2.z)) then exit(false);
+  if ((L1.x > B1.x) and (L1.x < B2.x) and
+      (L1.y > B1.y) and (L1.y < B2.y) and
+      (L1.z > B1.z) and (L1.z < B2.z)) then
+      begin
+        Hit := L1; 
+        exit(true);
+      end;
+  if ( (GetIntersection( L1.x-B1.x, L2.x-B1.x, L1, L2, Hit) and InBox( Hit, B1, B2, 1))
+    or (GetIntersection( L1.y-B1.y, L2.y-B1.y, L1, L2, Hit) and InBox( Hit, B1, B2, 2)) 
+    or (GetIntersection( L1.z-B1.z, L2.z-B1.z, L1, L2, Hit) and InBox( Hit, B1, B2, 3)) 
+    or (GetIntersection( L1.x-B2.x, L2.x-B2.x, L1, L2, Hit) and InBox( Hit, B1, B2, 1)) 
+    or (GetIntersection( L1.y-B2.y, L2.y-B2.y, L1, L2, Hit) and InBox( Hit, B1, B2, 2)) 
+    or (GetIntersection( L1.z-B2.z, L2.z-B2.z, L1, L2, Hit) and InBox( Hit, B1, B2, 3))) then
+    exit(true);
+
+  result := false;
+end;
+
+function LineIntersectsCube(p1, p2: TVec3; cube: TCube): boolean;
+var
+  hit: TVec3;
+begin
+  result := LineIntersectsBox(cube.min, cube.max, p1, p2, hit);
+end;
+
+{ Returns an intersection (inclusion/inner) between the two rects. }
+function RectIntersection(src, dest: TRect; axis: TAxis = TAxis.Both): TRect;
+var
+  box: TAABB;
+begin
+
+  case axis of
+    TAxis.Both:
+      begin
+        // test if we're outside on either axis
+        if ((src.minY > dest.maxY) or (src.maxY < dest.minY)) or
+          ((src.minX > dest.maxX) or (src.maxX < dest.minX)) then
+         begin
+           exit(0);
+         end;
+
+        // top
+        if src.y < dest.y then
+          box.top := dest.y
+        else
+          box.top := src.y;
+          
+        // left
+        if src.x < dest.x then
+          box.left := dest.x
+        else
+          box.left := src.x;
+
+        // bottom
+        if src.maxY > dest.maxY then
+          box.bottom := dest.maxY
+        else
+          box.bottom := src.maxY;
+
+        // right
+        if src.maxX > dest.maxX then
+          box.right := dest.maxX
+        else
+          box.right := src.maxX;
+      end;
+    TAxis.X:
+      begin
+        // test if we're outside on either axis
+        if (src.minX > dest.maxX) or (src.maxX < dest.minX) then
+         begin
+           exit(0);
+         end;
+
+        // top
+        box.top := src.y;
+          
+        // left
+        if src.x < dest.x then
+          box.left := dest.x
+        else
+          box.left := src.x;
+
+        // bottom
+        box.bottom := src.maxY;
+
+        // right
+        if src.maxX > dest.maxX then
+          box.right := dest.maxX
+        else
+          box.right := src.maxX;
+      end;
+    TAxis.Y:
+      begin
+        // test if we're outside on either axis
+        if (src.minY > dest.maxY) or (src.maxY < dest.minY) then
+         begin
+           exit(0);
+         end;
+
+        // top
+        if src.y < dest.y then
+          box.top := dest.y
+        else
+          box.top := src.y;
+          
+        // left
+        box.left := src.x;
+
+        // bottom
+        if src.maxY > dest.maxY then
+          box.bottom := dest.maxY
+        else
+          box.bottom := src.maxY;
+
+        // right
+        box.right := src.maxX;
+      end;
+  end;
+
+  result := box;
+end;
 
 //https://stackoverflow.com/questions/1560492/how-to-tell-whether-a-point-is-to-the-right-or-left-side-of-a-line
 //It is 0 on the line, and +1 on one side, -1 on the other side.
@@ -331,7 +588,14 @@ end;
 
 
 // http://stackoverflow.com/questions/99353/how-to-test-if-a-line-segment-intersects-an-axis-aligned-rectange-in-2d
+
+
 function LineIntersectsRect(p1, p2: TVec2; rect: TRect): boolean;
+begin
+  result := LineIntersectsRect(p1, p2, rect.min, rect.max);
+end;
+
+function LineIntersectsRect(p1, p2: TVec2; bmin, bmax: TVec2): boolean;
 var
   minX, maxY, minY, maxX: single;
   dx: single;
@@ -348,13 +612,13 @@ begin
     end;  
 
   // Find the intersection of the segment's and rectangle's x-projections
-  if (maxX > rect.MaxX) then
-    maxX := rect.MaxX;
+  if (maxX > bmax.x) then
+    maxX := bmax.x;
 
-  if (minX < rect.MinX) then
-    minX := rect.MinX;
+  if (minX < bmin.x) then
+    minX := bmin.x;
 
-  if (minX > maxX) then // If their projections do not intersect return false
+  if minX > maxX then // If their projections do not intersect return false
     exit(false);
 
   // Find corresponding min and max Y for min and max X we found before
@@ -378,11 +642,11 @@ begin
     end;
 
   // Find the intersection of the segment's and rectangle's y-projections
-  if (maxY > rect.MaxY) then
-    maxY := rect.MaxY;
+  if (maxY > bmax.y) then
+    maxY := bmax.y;
 
-  if (minY < rect.MinY) then
-    minY := rect.MinY;
+  if (minY < bmin.y) then
+    minY := bmin.y;
 
   if (minY > maxY) then // If Y-projections do not intersect return false
     exit(false);
@@ -467,6 +731,182 @@ begin
   result := c <> 0;
 end;
 
+//#########################################################
+// CUBE
+//#########################################################
+
+function CubeMake(x, y, z, width, height, depth: TScalar): TCube;
+begin
+  result.origin := V3(x, y, z);
+  result.size := V3(width, height, depth);
+end;
+
+function CubeMake(origin, size: TVec3): TCube;
+begin
+  result.origin := origin;
+  result.size := size;
+end;
+
+class function TCube.Create(rect: TRect): TCube;
+begin
+  result.origin.x := rect.origin.x;
+  result.origin.y := rect.origin.y;
+  result.origin.z := 0;
+  result.size.width := rect.size.width;
+  result.size.height := rect.size.height;
+  result.size.depth := 0;
+end;
+
+class function TCube.Create(x, y, z, width, height, depth: TScalar): TCube;
+begin
+  result.origin.x := x;
+  result.origin.y := y;
+  result.origin.z := z;
+  result.size.width := width;
+  result.size.height := height;
+  result.size.depth := depth;
+end;
+
+class function TCube.Create(_origin, _size: TVec3): TCube;
+begin
+  result.origin := _origin;
+  result.size := _size;
+end;
+
+function TCube.Min: TVec3;
+begin
+  result := origin;
+end;
+
+function TCube.Max: TVec3;
+begin
+  result := V3(MaxX, MaxY, MaxZ);
+end;
+
+function TCube.Mid: TVec3;
+begin
+  result := V3(MidX, MidY, MidZ);
+end;
+
+function TCube.MinX: TScalar;
+begin
+  result := origin.x;
+end;
+
+function TCube.MidX: TScalar;
+begin
+  result := origin.x + (size.width / 2);
+end;
+
+function TCube.MaxX: TScalar;
+begin
+  result := origin.x + size.width;
+end;
+
+function TCube.MinY: TScalar;
+begin
+  result := origin.y;
+end;
+
+function TCube.MidY: TScalar;
+begin
+  result := origin.y + (size.height / 2);
+end;
+
+function TCube.MaxY: TScalar;
+begin
+  result := origin.y + size.height;
+end;
+
+function TCube.MinZ: TScalar;
+begin
+  result := origin.z;
+end;
+
+function TCube.MidZ: TScalar;
+begin
+  result := origin.z + (size.depth / 2);
+end;
+
+function TCube.MaxZ: TScalar;
+begin
+  result := origin.z + size.depth;
+end;
+
+function TCube.Width: TScalar;
+begin
+  result := size.width;
+end;
+
+function TCube.Height: TScalar;
+begin
+  result := size.height;
+end;
+
+function TCube.Depth: TScalar;
+begin
+  result := size.depth;
+end;
+
+function TCube.Center: TVec3;
+begin
+  result := V3(origin.x + (size.width / 2), origin.y + (size.height / 2), origin.z + (size.depth / 2));
+end;
+
+procedure TCube.Show;
+begin
+  writeln(Str);
+end;
+
+function TCube.Str: string;
+begin
+  result := '{'+origin.ToStr+', '+size.ToStr+'}';
+end;
+
+function TCube.Inset(x, y, z: TScalar): TCube;
+begin
+  result := CubeMake(origin.x + x, origin.y + y, origin.z + z, size.width - (x * 2), size.height - (y * 2), size.depth - (z * 2));
+end;
+
+function TCube.IntersectsRect(rect: TCube): boolean;
+begin
+  result := (rect.MinX < MaxX) and 
+            (rect.MaxX > MinX) and 
+            (rect.MinY < MaxY) and 
+            (rect.MaxY > MinY) and
+            (rect.MinZ < MaxZ) and 
+            (rect.MaxZ > MinZ);
+end;
+
+function TCube.ContainsPoint(point: TVec3): boolean;
+begin
+  result := (point.x >= MinX) and 
+            (point.y >= MinY) and 
+            (point.z >= MinZ) and 
+            (point.x <= MaxX) and 
+            (point.y <= MaxY) and
+            (point.z <= MaxZ);
+end;
+
+function TCube.IsEmpty: boolean;
+begin
+  result := size.IsZero;
+end;
+
+function TCube.Rect2D: TRect;
+begin
+  result := RectMake(origin.x, origin.y, size.width, size.height);
+end;
+
+//#########################################################
+// CIRICLE
+//#########################################################
+
+operator explicit(right: TRect): TCircle;
+begin
+  result := TCircle.Create(right);
+end;
+
 function CircleIntersectsRect(origin: TVec2; radius: TScalar; constref rect: TRect): boolean; 
 var
   distX, distY: TScalar;
@@ -492,6 +932,11 @@ begin
   result := (dx * dx + dy * dy <= (radius * radius));
 end;
 
+function CircleIntersectsCircle(rectA, rectB: TRect): boolean;
+begin
+  result := TCircle(rectA).Intersects(TCircle(rectB));
+end;
+
 function CircleIntersectsCircle(originA: TVec2; radiusA: TScalar; originB: TVec2; radiusB: TScalar): boolean;
 var
   dx, dy: TScalar;
@@ -503,20 +948,20 @@ begin
   result := (dx * dx) + (dy * dy) <= (radii * radii);
 end;
 
-class function TCircle.Make(_origin: TVec2; _radius: TScalar): TCircle;
+class function TCircle.Create(_origin: TVec2; _radius: TScalar): TCircle;
 begin
   result.origin := _origin;
   result.radius := _radius;
 end;
 
-class function TCircle.Make(x, y: TScalar; _radius: TScalar): TCircle;
+class function TCircle.Create(x, y: TScalar; _radius: TScalar): TCircle;
 begin
   result.origin.x := x;
   result.origin.y := y;
   result.radius := _radius;
 end;
 
-class function TCircle.Make(rect: TRect): TCircle;
+class function TCircle.Create(rect: TRect): TCircle;
 begin
   result.origin := rect.Center;
   result.radius := rect.Min.Distance(rect.Max) / 2;
@@ -524,18 +969,18 @@ end;
 
 
 // http://stackoverflow.com/questions/21089959/detecting-collision-of-rectangle-with-circle
-function TCircle.Intersects(const rect: TRect): boolean; 
+function TCircle.Intersects(constref rect: TRect): boolean; 
 var
   distX, distY: TScalar;
   dx, dy: TScalar;
 begin
-  distX := Abs(origin.x - rect.origin.x - rect.size.width / 2);
-  distY := Abs(origin.y - rect.origin.y - rect.size.height / 2);
+  distX := Abs(origin.x - rect.origin.x - (rect.size.width / 2));
+  distY := Abs(origin.y - rect.origin.y - (rect.size.height / 2));
   
-  if (distX > (rect.size.width / 2 + radius)) then
+  if (distX > ((rect.size.width / 2) + radius)) then
     exit(false);
   
-  if (distY > (rect.size.height / 2 + radius)) then
+  if (distY > ((rect.size.height / 2) + radius)) then
     exit(false);
     
   if (distX <= (rect.size.width / 2)) then
@@ -544,12 +989,12 @@ begin
   if (distY <= (rect.size.height / 2)) then
     exit(true); 
   
-  dx := distX - rect.size.width / 2;
-  dy := distY - rect.size.height / 2;
+  dx := distX - (rect.size.width / 2);
+  dy := distY - (rect.size.height / 2);
   result := (dx * dx + dy * dy <= (radius * radius));
 end;
 
-function TCircle.Intersects(const circle: TCircle): boolean; 
+function TCircle.Intersects(constref circle: TCircle): boolean; 
 var
   dx, dy: TScalar;
   radii: TScalar;
@@ -560,7 +1005,7 @@ begin
   result := (dx * dx) + (dy * dy) <= (radii * radii);
 end;
 
-function TCircle.Intersects(const circle: TCircle; out hitPoint: TVec2): boolean; 
+function TCircle.Intersects(constref circle: TCircle; out hitPoint: TVec2): boolean; 
 begin 
   result := Intersects(circle);
     
@@ -581,7 +1026,7 @@ begin
 end;
 
 // distance from diameter
-function TCircle.Distance(const circle: TCircle; fromDiameter: boolean = true): TScalar; 
+function TCircle.Distance(constref circle: TCircle; fromDiameter: boolean = true): TScalar; 
 begin 
   if fromDiameter then
     result := origin.Distance(circle.origin) - (radius + circle.radius)
@@ -645,6 +1090,36 @@ begin
   result := y;
 end;
 
+procedure TSize3Helper.SetWidth(newValue: TScalar);
+begin
+  x := newValue;
+end;
+
+procedure TSize3Helper.SetHeight(newValue: TScalar);
+begin
+  y := newValue;  
+end;
+
+procedure TSize3Helper.SetDepth(newValue: TScalar);
+begin
+  z := newValue;  
+end;
+
+function TSize3Helper.GetWidth: TScalar;
+begin
+  result := x;
+end;
+
+function TSize3Helper.GetHeight: TScalar;
+begin
+  result := y;
+end;
+
+function TSize3Helper.GetDepth: TScalar;
+begin
+  result := z;
+end;
+
 function RectCenterX(sourceRect: TRect; destRect: TRect): TRect;
 begin
   result := sourceRect;
@@ -694,6 +1169,52 @@ function RectFlipY(sourceRect, destRect: TRect): TRect;
 begin
   result := sourceRect;
   result.origin.y := destRect.MaxY - (result.MinY + result.Height);
+end;
+
+function RectScaleToFit(source, dest: TVec2): TRect;
+var
+  aspectRatio: float;
+  newSize,
+  newOrigin: TVec2;
+begin
+  aspectRatio := dest.min / source.min;
+
+  newOrigin := 0;
+  newSize := source * aspectRatio;
+  if dest.width > newSize.width then
+    newOrigin.x := (dest.width / 2) - (newSize.width / 2);
+  if dest.height > newSize.height then
+    newOrigin.y := (dest.height / 2) - (newSize.height / 2);
+
+  result := RectMake(newOrigin, newSize);
+end;
+
+{ Returns a rect union of the two points }
+function RectUnion(p1, p2: TVec2): TRect;
+var
+  box: TAABB;
+begin
+  if p1.x < p2.x then
+    box.left := p1.x
+  else
+    box.left := p2.x;
+    
+  if p1.y < p2.y then
+    box.top := p1.y
+  else
+    box.top := p2.y;
+
+  if p1.x > p2.x then
+    box.right := p1.x
+  else
+    box.right := p2.x;
+    
+  if p1.y > p2.y then
+    box.bottom := p1.y
+  else
+    box.bottom := p2.y;
+
+  result := box;
 end;
 
 function RectMake(origin, size: TVec2): TRect;

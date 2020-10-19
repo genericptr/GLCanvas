@@ -41,7 +41,7 @@ type
 
 {$ifdef IMPLEMENTATION}
 
-procedure Draw3PartImage (parts: TTextureArray; frame: TRect; vertical: boolean = false); 
+procedure Draw3PartImage(parts: TTextureArray; frame: TRect; vertical: boolean = false); 
 var
   rect: TRect;
 begin
@@ -73,7 +73,7 @@ begin
     end;
 end;
 
-procedure Draw9PartImage (parts: TTextureSheet; frame: TRect); 
+procedure Draw9PartImage(parts: TTextureSheet; frame: TRect); 
 var
   texture: TTexture;
   rect: TRect;

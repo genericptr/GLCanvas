@@ -58,11 +58,11 @@ type
 			{ Accessors }
 			procedure SetCharAdvance(newValue: integer);
 			function TextureForCharacter(c: char): TTexture; inline;
-			function GetTexture: TGLTextureID;
+			function GetTexture: integer;
 			function GetFrame: TTextureFrame;
 			property Name: string read m_name;
 			
-			procedure Lock(inUnit: TGLTextureUnit); override;
+			procedure Lock(inUnit: integer); override;
 			function IsLocked: boolean; override;
 
 			{ IFont }
@@ -120,7 +120,7 @@ begin
 	result := RGBA(1, 1, 1, 1);
 end;
 
-function TBitmapFont.GetTexture: TGLTextureID;
+function TBitmapFont.GetTexture: integer;
 begin
 	result := texturePack.GetTexture;
 end;
@@ -223,10 +223,8 @@ begin
 
 			texturePack.AddTexture(chr(charDesc.id), 
 					V2(charDesc.width, charDesc.height), 
-					V2(charDesc.xoffset, charDesc.yoffset),
-					V2(charDesc.x, charDesc.y),
-					V2(0, 0)
-				);
+					V2(charDesc.x, charDesc.y));
+			
 			charDesc.texture := texturePack[chr(charDesc.id)];
 
 			font.chars[charDesc.id] := charDesc;
@@ -239,7 +237,7 @@ begin
 	fontInfo := font;
 end;
 
-procedure TBitmapFont.Lock(inUnit: TGLTextureUnit);
+procedure TBitmapFont.Lock(inUnit: integer);
 begin
 	texturePack.Lock(inUnit);
 end;
@@ -258,7 +256,10 @@ constructor TBitmapFont.Create(path: ansistring);
 begin
 	// TODO: should implement Loading!
 	texturePack := TTexturePack.Create;
-	texturePack.SetTextureParameters([kTextureNearestFilter, kTextureClampToEdge]);
+	texturePack.SetTextureOptions([TTextureImage.RGBA, 
+																 TTextureImage.UnsignedByte, 
+																 TTextureImage.NearestNeighbor
+																 ]);
 	texturePack.LoadImage(path+'/font.png');
 
 	m_textureID := texturePack.textureID;

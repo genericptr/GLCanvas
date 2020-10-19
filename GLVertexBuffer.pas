@@ -1,6 +1,6 @@
 {$mode objfpc}
 {$modeswitch advancedrecords}
-{$include include/targetos}
+{$include include/targetos.inc}
 
 unit GLVertexBuffer;
 interface
@@ -11,9 +11,10 @@ uses
   {$ifdef API_OPENGLES}
   GLES30,
   {$endif}
-  FastList, FGL;
-
-{$define FAST_LIST}
+  {$ifdef FAST_LIST}
+  UFastList, 
+  {$endif}
+  FGL;
 
 type
   TVertexAttribute = record
@@ -31,6 +32,8 @@ type
   generic TVertexBuffer<TVertex> = class
     private type
       PVertex = ^TVertex;
+      PQuad = ^TQuad;
+      TQuad = array[0..5] of TVertex;
       TVertexArray = array[0..0] of TVertex;
       PVertexArray = ^TVertexArray;
       {$ifdef FAST_LIST}
@@ -47,11 +50,12 @@ type
       procedure EnableVertexAttributes; 
     public
       constructor Create(_attributes: TVertexAttributes);
-      procedure Add(constref vertex: TVertex); inline;
-      procedure AddQuad(quad: PVertexArray);
+      procedure Add(constref vertex: TVertex); overload; inline;
+      procedure Add(constref quad: TQuad); overload; inline;
       function Count: integer;
       procedure Draw(mode: GLenum = GL_TRIANGLES);
       procedure Clear;
+      procedure Flush(mode: GLenum = GL_TRIANGLES);
       destructor Destroy; override;
   end;
 
@@ -83,24 +87,24 @@ begin
   list.Add(vertex);  
 end;
 
-procedure TVertexBuffer.AddQuad(quad: PVertexArray);
+procedure TVertexBuffer.Add(constref quad: TQuad);
 begin
   {$ifdef FAST_LIST}
   // todo: crashes and causes memory bugs
   //list.Add(PVertex(quad), 6);
-  list.Add(quad^[0]);
-  list.Add(quad^[1]);
-  list.Add(quad^[2]);
-  list.Add(quad^[3]);
-  list.Add(quad^[4]);
-  list.Add(quad^[5]);
+  list.Add(quad[0]);
+  list.Add(quad[1]);
+  list.Add(quad[2]);
+  list.Add(quad[3]);
+  list.Add(quad[4]);
+  list.Add(quad[5]);
   {$else}
-  list.Add(quad^[0]);
-  list.Add(quad^[1]);
-  list.Add(quad^[2]);
-  list.Add(quad^[3]);
-  list.Add(quad^[4]);
-  list.Add(quad^[5]);
+  list.Add(quad[0]);
+  list.Add(quad[1]);
+  list.Add(quad[2]);
+  list.Add(quad[3]);
+  list.Add(quad[4]);
+  list.Add(quad[5]);
   {$endif}
 end;
 
@@ -135,6 +139,15 @@ begin
     begin
       glBindBuffer(GL_ARRAY_BUFFER, bufferID);
       glBindVertexArray(vertexArrayObject);
+    end;
+end;
+
+procedure TVertexBuffer.Flush(mode: GLenum);
+begin
+  if Count > 0 then
+    begin
+      Draw;
+      Clear;
     end;
 end;
 

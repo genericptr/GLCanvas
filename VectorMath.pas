@@ -6,7 +6,7 @@
 unit VectorMath;
 interface
 uses
-	FGL, Math, SysUtils;
+  FGL, Math, SysUtils;
 
 // NOTE: constref is bugged on 3.0.4 and below
 {$macro on}
@@ -15,30 +15,30 @@ uses
 {$endif}
 
 type
-	TScalar = Single;
-	Float = TScalar;
+  TScalar = Single;
+  Float = TScalar;
 
 type
-	TVec2 = record
-		public
+  TVec2 = record
+    public
       class function Zero: TVec2; static; inline;
       class function FromAngle(radians: TScalar): TVec2; static; inline;
 
-			function Length: TScalar; inline;
-			function SquaredLength: TScalar; inline;
-			function Magnitude: TScalar; inline;
-			function Normalize: TVec2; inline;
-			function Dot(constref vec: TVec2): TScalar; inline;
-			function Cross(constref vec:TVec2): TVec2; inline;
-			function Negate: TVec2; inline;
-			function PerpendicularRight: TVec2; inline;
-			function PerpendicularLeft: TVec2; inline;
-			function Angle: TScalar; inline;
-			function Distance(point: TVec2): TScalar; inline; 
-			function Lerp(t: TScalar; p: TVec2): TVec2;
-			function Reflect(n: TVec2): TVec2; inline;
-			function Rotate(radians: TScalar): TVec2; overload;
-			function Rotate(origin: TVec2; radians: TScalar): TVec2; overload;
+      function Length: TScalar; inline;
+      function SquaredLength: TScalar; inline;
+      function Magnitude: TScalar; inline;
+      function Normalize: TVec2; inline;
+      function Dot(constref vec: TVec2): TScalar; inline;
+      function Cross(constref vec:TVec2): TVec2; inline;
+      function Negate: TVec2; inline;
+      function PerpendicularRight: TVec2; inline;
+      function PerpendicularLeft: TVec2; inline;
+      function Angle: TScalar; inline;
+      function Distance(point: TVec2): TScalar; inline; 
+      function Lerp(t: TScalar; p: TVec2): TVec2;
+      function Reflect(n: TVec2): TVec2; inline;
+      function Rotate(radians: TScalar): TVec2; overload;
+      function Rotate(origin: TVec2; radians: TScalar): TVec2; overload;
       function Offset(byX, byY: TScalar): TVec2; overload; inline;
       function Offset(by: TVec2): TVec2; overload; inline;
       function Clamp(lowest, highest: TVec2): TVec2; inline;
@@ -48,46 +48,46 @@ type
       function Max: TScalar;
       function Sum: TScalar;
       function IsZero: boolean; inline;
-			procedure Show;
-			function ToStr(places: integer = -1): string;
-		private
-			function GetComponent(pIndex:integer):TScalar; inline;
+      procedure Show;
+      function ToStr(places: integer = -1): string;
+    private
+      function GetComponent(pIndex:integer):TScalar; inline;
       procedure SetComponent(pIndex:integer;pValue:TScalar); inline;
-		public
-			property Components[pIndex:integer]:TScalar read GetComponent write SetComponent; default;	
-		public
-			class operator := (a: TScalar): TVec2;
+    public
+      property Components[pIndex:integer]:TScalar read GetComponent write SetComponent; default;  
+    public
+      class operator := (a: TScalar): TVec2;
       class operator - (right: TVec2): TVec2;
-			class operator + (constref left, right: TVec2): TVec2; overload;
-			class operator - (constref left, right: TVec2): TVec2; overload; 
-			class operator * (constref left, right: TVec2): TVec2; overload; 
-			class operator / (constref left, right: TVec2): TVec2; overload;
-			class operator = (constref left, right: TVec2): boolean; 
-			class operator + (constref left: TVec2; right: TScalar): TVec2; overload; 
-			class operator - (constref left: TVec2; right: TScalar): TVec2; overload; 
-			class operator * (constref left: TVec2; right: TScalar): TVec2; overload; 
-			class operator / (constref left: TVec2; right: TScalar): TVec2; overload;
+      class operator + (constref left, right: TVec2): TVec2; overload;
+      class operator - (constref left, right: TVec2): TVec2; overload; 
+      class operator * (constref left, right: TVec2): TVec2; overload; 
+      class operator / (constref left, right: TVec2): TVec2; overload;
+      class operator = (constref left, right: TVec2): boolean; 
+      class operator + (constref left: TVec2; right: TScalar): TVec2; overload; 
+      class operator - (constref left: TVec2; right: TScalar): TVec2; overload; 
+      class operator * (constref left: TVec2; right: TScalar): TVec2; overload; 
+      class operator / (constref left: TVec2; right: TScalar): TVec2; overload;
       class operator + (left: string; right: TVec2): string; overload;
-		public
-			case integer of
-				0: (v: array[0..1] of TScalar);
-				1: (x, y: TScalar);
-	end;
+    public
+      case integer of
+        0: (v: array[0..1] of TScalar);
+        1: (x, y: TScalar);
+  end;
   PVec2 = ^TVec2;
 
 type
-	TVec3 = record
-		public
+  TVec3 = record
+    public
       class function Zero: TVec3; static; inline;
-			class function Up: TVec3; static; inline;
-			
-			function Length: TScalar; inline;
-			function SquaredLength: TScalar; inline;
+      class function Up: TVec3; static; inline;
+      
+      function Length: TScalar; inline;
+      function SquaredLength: TScalar; inline;
       function Magnitude: TScalar;
-			function Normalize: TVec3; inline;
-			function Dot(constref vec: TVec3): TScalar; inline;
-			function Cross(constref vec:TVec3): TVec3; inline;
-			function Negate: TVec3; inline;
+      function Normalize: TVec3; inline;
+      function Dot(constref vec: TVec3): TScalar; inline;
+      function Cross(constref vec:TVec3): TVec3; inline;
+      function Negate: TVec3; inline;
       function Distance(point: TVec3): TScalar; inline; 
       function Lerp(t: TScalar; p: TVec3): TVec3; inline;
       function Reflect(n: TVec3): TVec3; inline;
@@ -96,110 +96,112 @@ type
       function Clamp(lowest, highest: TVec3): TVec3; inline;
       function Clamp(lowest, highest: TScalar): TVec3; inline;
       function IsZero: boolean; inline;
-			function XY: TVec2; inline;
-			procedure Show;
-			function ToStr(places: integer = -1): string;
-		private
-			function GetComponent(pIndex:integer):TScalar; inline;
+      function Sum: TScalar; inline;
+      function XY: TVec2; inline;
+      procedure Show;
+      function ToStr(places: integer = -1): string;
+    private
+      function GetComponent(pIndex:integer):TScalar; inline;
       procedure SetComponent(pIndex:integer; pValue:TScalar); inline;
-		public
-			property Components[pIndex:integer]:TScalar read GetComponent write SetComponent; default;
-		public
-			class operator := (a: TScalar): TVec3;
+    public
+      property Components[pIndex:integer]:TScalar read GetComponent write SetComponent; default;
+    public
+      class operator := (a: TScalar): TVec3;
+      class operator explicit (right: TVec3): TVec2;
       class operator - (right: TVec3): TVec3;
-			class operator + (constref left, right: TVec3): TVec3; overload;
-			class operator - (constref left, right: TVec3): TVec3; overload; 
-			class operator * (constref left, right: TVec3): TVec3; overload; 
-			class operator / (constref left, right: TVec3): TVec3; overload;
-			class operator = (constref left, right: TVec3): boolean; 
-			class operator + (constref left: TVec3; right: TScalar): TVec3; overload; 
-			class operator - (constref left: TVec3; right: TScalar): TVec3; overload; 
-			class operator * (constref left: TVec3; right: TScalar): TVec3; overload; 
-			class operator / (constref left: TVec3; right: TScalar): TVec3; overload;
+      class operator + (constref left, right: TVec3): TVec3; overload;
+      class operator - (constref left, right: TVec3): TVec3; overload; 
+      class operator * (constref left, right: TVec3): TVec3; overload; 
+      class operator / (constref left, right: TVec3): TVec3; overload;
+      class operator = (constref left, right: TVec3): boolean; 
+      class operator + (constref left: TVec3; right: TScalar): TVec3; overload; 
+      class operator - (constref left: TVec3; right: TScalar): TVec3; overload; 
+      class operator * (constref left: TVec3; right: TScalar): TVec3; overload; 
+      class operator / (constref left: TVec3; right: TScalar): TVec3; overload;
       class operator + (left: string; right: TVec3): string; overload;
-		public
-			case integer of
-				0: (v: array[0..2] of TScalar);
-				1: (x, y, z: TScalar);
-				2: (r, g, b: TScalar);
-				3: (Pitch,Yaw,Roll:TScalar);
-	end;
+    public
+      case integer of
+        0: (v: array[0..2] of TScalar);
+        1: (x, y, z: TScalar);
+        2: (r, g, b: TScalar);
+        3: (Pitch,Yaw,Roll:TScalar);
+  end;
   PVec3 = ^TVec3;
 
 type
-	TVec4 = record
-		public 
+  TVec4 = record
+    public 
       class function Zero: TVec4; static; inline;
-			function Length: TScalar; inline;
-			function SquaredLength: TScalar; inline;
-			function Normalize: TVec4; inline;
-			function Dot(constref vec: TVec4): TScalar; inline;
-			function Cross(constref vec: TVec4): TVec4; inline;
-			function Negate: TVec4; inline;
-			function XY: TVec2; inline;
-			function XYZ: TVec3; inline;
+      function Length: TScalar; inline;
+      function SquaredLength: TScalar; inline;
+      function Normalize: TVec4; inline;
+      function Dot(constref vec: TVec4): TScalar; inline;
+      function Cross(constref vec: TVec4): TVec4; inline;
+      function Negate: TVec4; inline;
+      function XY: TVec2; inline;
+      function XYZ: TVec3; inline;
       function IsZero: boolean; inline;
-			procedure Show;
-			function ToStr(places: integer = -1): string;
-		private
-			function GetComponent(pIndex:integer):TScalar; inline;
+      procedure Show;
+      function ToStr(places: integer = -1): string;
+    private
+      function GetComponent(pIndex:integer):TScalar; inline;
       procedure SetComponent(pIndex:integer; pValue:TScalar); inline;
-		public
-			property Components[pIndex:integer]:TScalar read GetComponent write SetComponent; default;
-		public
-			class operator := (a:TScalar): TVec4;
-			class operator + (constref left, right: TVec4): TVec4; overload;
-			class operator - (constref left, right: TVec4): TVec4; overload; 
-			class operator * (constref left, right: TVec4): TVec4; overload; 
-			class operator / (constref left, right: TVec4): TVec4; overload;
-			class operator = (constref left, right: TVec4): boolean; 
-			class operator + (constref left: TVec4; right: TScalar): TVec4; overload; 
-			class operator - (constref left: TVec4; right: TScalar): TVec4; overload; 
-			class operator * (constref left: TVec4; right: TScalar): TVec4; overload; 
-			class operator / (constref left: TVec4; right: TScalar): TVec4; overload;
+    public
+      property Components[pIndex:integer]:TScalar read GetComponent write SetComponent; default;
+    public
+      class operator := (a:TScalar): TVec4;
+      class operator + (constref left, right: TVec4): TVec4; overload;
+      class operator - (constref left, right: TVec4): TVec4; overload; 
+      class operator * (constref left, right: TVec4): TVec4; overload; 
+      class operator / (constref left, right: TVec4): TVec4; overload;
+      class operator = (constref left, right: TVec4): boolean; 
+      class operator + (constref left: TVec4; right: TScalar): TVec4; overload; 
+      class operator - (constref left: TVec4; right: TScalar): TVec4; overload; 
+      class operator * (constref left: TVec4; right: TScalar): TVec4; overload; 
+      class operator / (constref left: TVec4; right: TScalar): TVec4; overload;
       class operator + (left: string; right: TVec4): string; overload;
-		public
-			case integer of
-				0: (v: array[0..3] of TScalar);
-				1: (x, y, z, w: TScalar);
-				2: (r, g, b, a: TScalar);
-	end;
+    public
+      case integer of
+        0: (v: array[0..3] of TScalar);
+        1: (x, y, z, w: TScalar);
+        2: (r, g, b, a: TScalar);
+  end;
   PVec4 = ^TVec4;
 
 type
-	TMat4 = record
-		public
-			function Ptr: pointer;
-			class function Identity: TMat4; static; inline;
-						
-			constructor Translate(tx, ty, tz: TScalar); overload;
+  TMat4 = record
+    public
+      function Ptr: pointer;
+      class function Identity: TMat4; static; inline;
+            
+      constructor Translate(tx, ty, tz: TScalar); overload;
       constructor Translate(constref pTranslate: TVec3); overload;
       constructor Translate(tx, ty, tz, tw: TScalar); overload;
       
-			constructor Scale(x, y, z: TScalar);
-			constructor RotateX(Angle: TScalar);
+      constructor Scale(x, y, z: TScalar);
+      constructor RotateX(Angle: TScalar);
       constructor RotateY(Angle: TScalar);
       constructor RotateZ(Angle: TScalar);
       constructor Rotate(Angle: TScalar; constref Axis: TVec3); overload;
       constructor Rotate(constref pMatrix: TMat4); overload;
-			constructor Ortho(Left, Right, Bottom, Top, zNear, zFar: TScalar);
-			constructor OrthoGL(Left, Right, Bottom, Top, zNear, zFar: TScalar);
-			constructor Perspective(fovy, Aspect, zNear, zFar: TScalar);
-			constructor PerspectiveGL(fovy, Aspect, zNear, zFar: TScalar);
-			constructor LookAt(constref Eye, Center, Up: TVec3);
-			
-			function Inverse: TMat4; inline;
+      constructor Ortho(Left, Right, Bottom, Top, zNear, zFar: TScalar);
+      constructor OrthoGL(Left, Right, Bottom, Top, zNear, zFar: TScalar);
+      constructor Perspective(fovy, Aspect, zNear, zFar: TScalar);
+      constructor PerspectiveGL(fovy, Aspect, zNear, zFar: TScalar);
+      constructor LookAt(constref Eye, Center, Up: TVec3);
+      
+      function Inverse: TMat4; inline;
       function Transpose: TMat4; inline;
      
       function ToStr: string;
- 			procedure Show;
-		private
-			function GetComponent(column, row:integer):TScalar; inline;
+      procedure Show;
+    private
+      function GetComponent(column, row:integer):TScalar; inline;
       procedure SetComponent(column, row:integer; pValue:TScalar); inline;
-		public
-			property Components[column, row:integer]:TScalar read GetComponent write SetComponent; default;
-		public
-			class operator := (a:TScalar):TMat4;
+    public
+      property Components[column, row:integer]:TScalar read GetComponent write SetComponent; default;
+    public
+      class operator := (a:TScalar):TMat4;
       class operator = (constref a,b:TMat4):boolean;
       class operator <> (constref a,b:TMat4):boolean;
       class operator + (constref a,b:TMat4):TMat4;
@@ -220,19 +222,19 @@ type
       class operator / (constref a,b:TMat4):TMat4;
       class operator / (constref a:TMat4;b:TScalar):TMat4;
       class operator / (a:TScalar;constref b:TMat4):TMat4;
-		public
-			case integer of
-				0: (m: array[0..3, 0..3] of TScalar);
-				1: (column: array[0..3] of TVec4);
-				2: (Right, Up, Forwards, Offset: TVec4);
-				3: (Tangent, Bitangent, Normal, Translation: TVec4);
-	end;
+    public
+      case integer of
+        0: (m: array[0..3, 0..3] of TScalar);
+        1: (column: array[0..3] of TVec4);
+        2: (Right, Up, Forwards, Offset: TVec4);
+        3: (Tangent, Bitangent, Normal, Translation: TVec4);
+  end;
   PMat4 = ^TMat4;
 
 type
-	TVec2Array = array of TVec2;
-	TVec3Array = array of TVec3;
-	TVec4Array = array of TVec4;
+  TVec2Array = array of TVec2;
+  TVec3Array = array of TVec3;
+  TVec4Array = array of TVec4;
 
 type
   TVec2List = specialize TFPGList<TVec2>;
@@ -244,10 +246,10 @@ type
 
 type 
   generic TGVec2<TComponent> = record
-  	public
-  		x, y: TComponent;
-		private
-			function GetComponent(index: byte): TComponent; inline;
+    public
+      x, y: TComponent;
+    private
+      function GetComponent(index: byte): TComponent; inline;
       procedure SetComponent(index: byte; newValue: TComponent); inline;
     public
       constructor Create(_x, _y: TComponent);
@@ -263,6 +265,7 @@ type
       property Width: TComponent read x write x;
       property Height: TComponent read y write y;
     public
+      class operator explicit (right: TGVec2): TVec2;
       class operator := (right: TComponent): TGVec2;
       class operator = (constref left, right: TGVec2): boolean; 
       class operator + (constref left, right: TGVec2): TGVec2; overload;
@@ -278,19 +281,26 @@ type
 
 type 
   generic TGVec3<TComponent> = record
-  	public
-  		x, y, z: TComponent;
-		private
-			function GetComponent(index: byte): TComponent; inline;
-      procedure SetComponent(index: byte; newValue: TComponent); inline;
+    private type
+      PComponent = ^TComponent;
+    private
+      function GetComponent(index: integer): TComponent; inline;
+      procedure SetComponent(index: integer; newValue: TComponent); inline;
     public
+      x, y, z: TComponent;
+    public
+
+      { Constructors }
       constructor Create(_x, _y, _z: TComponent);
+
+      { Methods }
       function Offset(byX, byY, byZ: TComponent): TGVec3; overload; inline;
       function Offset(by: TGVec3): TGVec3; overload; inline;
       function ToStr: string;
       procedure Show;
-    public
-      property V[index: byte]: TComponent read GetComponent write SetComponent; default;
+
+      { Properties }
+      property Components[index: integer]: TComponent read GetComponent write SetComponent; default;
       
       property R: TComponent read x write x;
       property G: TComponent read y write y;
@@ -300,7 +310,10 @@ type
       property Height: TComponent read y write y;
       property Depth: TComponent read z write z;
       function Volume: TComponent; inline;
-    public
+      
+      { Operators }
+      class operator explicit (right: TGVec3): TVec2;
+      class operator explicit (right: TGVec3): TVec3;
       class operator := (right: TComponent): TGVec3;
       class operator = (constref left, right: TGVec3): boolean;
       class operator + (constref left, right: TGVec3): TGVec3; overload;
@@ -316,37 +329,55 @@ type
 
 type 
   generic TGVec4<TComponent> = record
-  	public
-  		x, y, z, w: TComponent;
-		private
-			function GetComponent(index: byte): TComponent; inline;
-      procedure SetComponent(index: byte; newValue: TComponent); inline;
+    private type
+      PComponent = ^TComponent;
+    private
+      function GetComponent(index: integer): TComponent; inline;
+      procedure SetComponent(index: integer; newValue: TComponent); inline;
     public
+      x, y, z, w: TComponent;
+    public
+
+      { Constructors }
       constructor Create(_x, _y, _z, _w: TComponent);
+
+      { Methods }
       function ToStr: string;
       procedure Show;
-    public
-      property V[index: byte]: TComponent read GetComponent write SetComponent; default;
-      
+
+      { Properties }
+      property Components[index: integer]: TComponent read GetComponent write SetComponent; default;
+        
       property R: TComponent read x write x;
       property G: TComponent read y write y;
       property B: TComponent read z write z;
       property A: TComponent read w write w;
-    public
+
+      { Operators }
       class operator = (constref left, right: TGVec4): boolean; 
   end;
 
 type
-	TVec2i = specialize TGVec2<Integer>;
-	TVec3i = specialize TGVec3<Integer>;
-	TVec4i = specialize TGVec4<Integer>;
+  TVec2i = specialize TGVec2<Integer>;
+  TVec3i = specialize TGVec3<Integer>;
+  TVec4i = specialize TGVec4<Integer>;
 
 type
   TVec2iList = specialize TFPGList<TVec2i>;
   TVec3iList = specialize TFPGList<TVec3i>;
   TVec4iList = specialize TFPGList<TVec4i>;
 
-{	Generic Vector Functions }
+type
+  TVec2iArray = array of TVec2i;
+  TVec3iArray = array of TVec3i;
+  TVec4iArray = array of TVec4i;
+
+type
+  TVec2iMap = specialize TFPGMap<String, TVec2i>;
+  TVec3iMap = specialize TFPGMap<String, TVec3i>;
+  TVec4iMap = specialize TFPGMap<String, TVec4i>;
+
+{ Generic Vector Functions }
 function V2i(x, y: integer): TVec2i;
 function V3i(x, y, z: integer): TVec3i;
 function V4i(x, y, z, w: integer): TVec4i;
@@ -377,6 +408,7 @@ function Vec4(constref vec: TVec4i): TVec4; overload;
 
 function V2(x, y: TScalar): TVec2;
 function V2(constref vec: TVec2i): TVec2; overload;
+function V2(constref vec: TVec3): TVec2; overload;
 
 function V3(x, y, z: TScalar): TVec3; overload;
 function V3(constref vec: TVec2; z: TScalar): TVec3; overload;
@@ -401,30 +433,67 @@ function Clamp(int: TScalar; lowest, highest: TScalar): TScalar; overload; inlin
 function RoundTo(Number: TScalar; Places: longint): TScalar;
 function RoundUp(Number: TScalar): longint;
 
+function Normalize(vec: TVec2): TVec2; overload; inline;
+function Normalize(vec: TVec3): TVec3; overload; inline;
+
 function FloatToStr(number: single; places: integer): string; overload;
 
 implementation
 
 var
-	Matrix4x4Identity: TMat4 = (m:((1.0,0.0,0.0,0.0), 
+  Matrix4x4Identity: TMat4 = (m:((1.0,0.0,0.0,0.0), 
                                  (0.0,1.0,0.0,0.0), 
                                  (0.0,0.0,1.0,0.0), 
                                  (0.0,0.0,0.0,1.0)
                                  ));
-                            	
+                              
 const
-	DEG2RAD=pi/180.0;
+  DEG2RAD=pi/180.0;
   RAD2DEG=180.0/pi;
-  HalfPI=pi*0.5;	
+  HalfPI=pi*0.5;  
+
+{ Helpers }
 
 type
   TComponentIntegerHelper = type helper for Integer
     function ToStr: String;
   end;
+  TComponentByteHelper = type helper for Byte
+    function ToStr: String;
+  end;
+  TComponentShortIntHelper = type helper for ShortInt
+    function ToStr: String;
+  end;
+  TComponentWordHelper = type helper for Word
+    function ToStr: String;
+  end;
+  TComponentFloatHelper = type helper for Float
+    function ToStr: String;
+  end;
+
+function TComponentWordHelper.ToStr: String;
+begin
+  result := IntToStr(self);
+end;
+
+function TComponentShortIntHelper.ToStr: String;
+begin
+  result := IntToStr(self);
+end;
+
+function TComponentByteHelper.ToStr: String;
+begin
+  result := IntToStr(self);
+end;
 
 function TComponentIntegerHelper.ToStr: String;
 begin
-	result := IntToStr(self);
+  result := IntToStr(self);
+end;
+
+function TComponentFloatHelper.ToStr: String;
+begin
+  result := FloatToStr(self);
 end;
 
 function FloatToStr(number: single; places: integer): string; overload;
@@ -451,23 +520,23 @@ end;
 
 function V2i(x, y: integer): TVec2i; inline;
 begin
-	result.x := x;
-	result.y := y;
+  result.x := x;
+  result.y := y;
 end;
 
 function V3i(x, y, z: integer): TVec3i; inline;
 begin
-	result.x := x;
-	result.y := y;
-	result.z := z;
+  result.x := x;
+  result.y := y;
+  result.z := z;
 end;
 
 function V4i(x, y, z, w: integer): TVec4i; inline;
 begin
-	result.x := x;
-	result.y := y;
-	result.z := z;
-	result.w := w;
+  result.x := x;
+  result.y := y;
+  result.z := z;
+  result.w := w;
 end;
 
 operator := (right: TVec2i): TVec2;
@@ -513,6 +582,12 @@ begin
 end;
 
 { TGVec2 }
+class operator TGVec2.explicit (right: TGVec2): TVec2;
+begin
+  result.x := right.x;
+  result.y := right.y;
+end;
+
 class operator TGVec2.:= (right: TComponent): TGVec2;
 begin
   result.x := right;
@@ -571,18 +646,28 @@ end;
 
 function TGVec2.GetComponent(index: byte): TComponent;
 begin
-	result := v[index];
+  case index of
+    0: result := x;
+    1: result := y;
+    otherwise
+      Assert(false, 'component #'+IntToStr(index)+' exceeds vector range(2).');
+  end;
 end;
 
 procedure TGVec2.SetComponent(index: byte; newValue: TComponent);
 begin
-	v[index] := newValue;
+  case index of
+    0: x := newValue;
+    1: y := newValue;
+    otherwise
+      Assert(false, 'component #'+IntToStr(index)+' exceeds vector range(2).');
+  end;
 end;
 
 constructor TGVec2.Create(_x, _y: TComponent);
 begin
-	x := _x;
-	y := _y;
+  x := _x;
+  y := _y;
 end;
 
 function TGVec2.Min: TComponent;
@@ -624,15 +709,28 @@ end;
 
 function TGVec2.ToStr: string;
 begin
-	result := '{'+x.ToStr+','+y.ToStr+'}';
+  result := '{'+x.ToStr+','+y.ToStr+'}';
 end;
 
 procedure TGVec2.Show;
 begin
-	writeln(ToStr);
+  writeln(ToStr);
 end;
 
 { TGVec3 }
+class operator TGVec3.explicit (right: TGVec3): TVec2;
+begin
+  result.x := right.x;
+  result.y := right.y;
+end;
+
+class operator TGVec3.explicit (right: TGVec3): TVec3;
+begin
+  result.x := right.x;
+  result.y := right.y;
+  result.z := right.z;
+end;
+
 class operator TGVec3.:= (right: TComponent): TGVec3;
 begin
   result.x := right;
@@ -647,17 +745,17 @@ end;
 
 class operator TGVec3.+ (constref left, right: TGVec3): TGVec3;
 begin
-  result := Vec3(left.x+right.x, left.y+right.y, left.z+right.z);
+  result := TGVec3.Create(left.x+right.x, left.y+right.y, left.z+right.z);
 end;
 
 class operator TGVec3.- (constref left, right: TGVec3): TGVec3;
 begin
-  result := Vec3(left.x-right.x, left.y-right.y, left.z-right.z);
+  result := TGVec3.Create(left.x-right.x, left.y-right.y, left.z-right.z);
 end;
 
 class operator TGVec3.* (constref left, right: TGVec3): TGVec3; 
 begin
-  result := Vec3(left.x*right.x, left.y*right.y, left.z*right.z);
+  result := TGVec3.Create(left.x*right.x, left.y*right.y, left.z*right.z);
 end;
 
 //class operator TGVec3./ (constref left, right: TGVec3): TGVec3; 
@@ -667,17 +765,17 @@ end;
 
 class operator TGVec3.+ (constref left: TGVec3; right: TComponent): TGVec3;
 begin
-  result := Vec3(left.x+right, left.y+right, left.z+right);
+  result := TGVec3.Create(left.x+right, left.y+right, left.z+right);
 end;
 
 class operator TGVec3.- (constref left: TGVec3; right: TComponent): TGVec3;
 begin
-  result := Vec3(left.x-right, left.y-right, left.z-right);
+  result := TGVec3.Create(left.x-right, left.y-right, left.z-right);
 end;
 
 class operator TGVec3.* (constref left: TGVec3; right: TComponent): TGVec3;
 begin
-  result := Vec3(left.x*right, left.y*right, left.z*right);
+  result := TGVec3.Create(left.x*right, left.y*right, left.z*right);
 end;
 
 //class operator TGVec3./ (constref left: TGVec3; right: TComponent): TGVec3;
@@ -685,21 +783,21 @@ end;
 //  result := Vec3(left.x div right, left.y/right, left.z div right);
 //end;
 
-function TGVec3.GetComponent(index: byte): TComponent;
+function TGVec3.GetComponent(index: integer): TComponent;
 begin
-	result := v[index];
+  result := PComponent(PComponent(@x) + index)^;
 end;
 
-procedure TGVec3.SetComponent(index: byte; newValue: TComponent);
+procedure TGVec3.SetComponent(index: integer; newValue: TComponent);
 begin
-	v[index] := newValue;
+  PComponent(PComponent(@x) + index)^ := newValue;
 end;
 
 constructor TGVec3.Create(_x, _y, _z: TComponent);
 begin
-	x := _x;
-	y := _y;
-	z := _z;
+  x := _x;
+  y := _y;
+  z := _z;
 end;
 
 function TGVec3.Volume: TComponent;
@@ -723,12 +821,12 @@ end;
 
 function TGVec3.ToStr: string;
 begin
-	result := '{'+x.ToStr+','+y.ToStr+','+z.ToStr+'}';
+  result := '{'+x.ToStr+','+y.ToStr+','+z.ToStr+'}';
 end;
 
 procedure TGVec3.Show;
 begin
-	writeln(ToStr);
+  writeln(ToStr);
 end;
 
 { TGVec4 }
@@ -738,37 +836,47 @@ begin
   result := (left.x = right.x) and (left.y = right.y) and (left.z = right.z) and (left.w = right.w);
 end;
 
-function TGVec4.GetComponent(index: byte): TComponent;
+function TGVec4.GetComponent(index: integer): TComponent;
 begin
-	result := v[index];
+  result := PComponent(PComponent(@x) + index)^;
 end;
 
-procedure TGVec4.SetComponent(index: byte; newValue: TComponent);
+procedure TGVec4.SetComponent(index: integer; newValue: TComponent);
 begin
-	v[index] := newValue;
+  PComponent(PComponent(@x) + index)^ := newValue;
 end;
 
 constructor TGVec4.Create(_x, _y, _z, _w: TComponent);
 begin
-	x := _x;
-	y := _y;
-	z := _z;
-	w := _w;
+  x := _x;
+  y := _y;
+  z := _z;
+  w := _w;
 end;
 
 function TGVec4.ToStr: string;
 begin
-	result := '{'+x.ToStr+','+y.ToStr+','+z.ToStr+','+w.ToStr+'}';
+  result := '{'+x.ToStr+','+y.ToStr+','+z.ToStr+','+w.ToStr+'}';
 end;
 
 procedure TGVec4.Show;
 begin
-	writeln(ToStr);
+  writeln(ToStr);
 end;
 
 {=============================================}
 {@! ___PROCEDURAL___ } 
 {=============================================}
+function Normalize(vec: TVec2): TVec2;
+begin
+  result := vec.Normalize;
+end;
+
+function Normalize(vec: TVec3): TVec3;
+begin
+  result := vec.Normalize;
+end;
+
 function RoundUp(number: TScalar): longint;
 begin
   if Frac(number) > 0 then
@@ -777,14 +885,14 @@ begin
     result := trunc(number);
 end;
 
-function RoundTo(Number: TScalar; Places: longint): TScalar;
+function RoundTo(number: TScalar; Places: longint): TScalar;
 var
   t: TScalar;
 begin
   if places = 0 then
     exit(number);
   t := power(10, places);
-  result := round(Number*t)/t;
+  result := round(number * t) / t;
 end;
 
 function Angle(constref a,b,c: TVec3): TScalar;
@@ -845,133 +953,138 @@ end;
 
 function Trunc(vec: TVec2): TVec2;
 begin
-	result.x := trunc(vec.x);
-	result.y := trunc(vec.y);
+  result.x := trunc(vec.x);
+  result.y := trunc(vec.y);
 end;
 
 function Trunc(vec: TVec3): TVec3;
 begin
-	result.x := trunc(vec.x);
-	result.y := trunc(vec.y);
-	result.z := trunc(vec.z);
+  result.x := trunc(vec.x);
+  result.y := trunc(vec.y);
+  result.z := trunc(vec.z);
 end;
 
 function Trunc(vec: TVec4): TVec4;
 begin
-	result.x := trunc(vec.x);
-	result.y := trunc(vec.y);
-	result.z := trunc(vec.z);
-	result.w := trunc(vec.w);
+  result.x := trunc(vec.x);
+  result.y := trunc(vec.y);
+  result.z := trunc(vec.z);
+  result.w := trunc(vec.w);
 end;
 
 { Vec2 }
 
 function Vec2(x, y: TScalar): TVec2; inline;
 begin
-	result.x := x;
-	result.y := y;
+  result.x := x;
+  result.y := y;
 end;
 
 function Vec2(constref vec: TVec2i): TVec2; inline;
 begin
-	result := Vec2(vec.x, vec.y);
+  result := Vec2(vec.x, vec.y);
 end;
 
 function V2(x, y: TScalar): TVec2; inline;
 begin
-	result := Vec2(x, y);
+  result := Vec2(x, y);
 end;
 
 function V2(constref vec: TVec2i): TVec2; inline;
 begin
-	result := Vec2(vec.x, vec.y);
+  result := Vec2(vec.x, vec.y);
+end;
+
+function V2(constref vec: TVec3): TVec2; inline;
+begin
+  result := Vec2(vec.x, vec.y);
 end;
 
 { Vec3 }
 
 function Vec3(x, y, z: TScalar): TVec3; inline;
 begin
-	result.x := x;
-	result.y := y;
-	result.z := z;
+  result.x := x;
+  result.y := y;
+  result.z := z;
 end;
 
 function Vec3(constref vec: TVec2; z: TScalar): TVec3; inline;
 begin
-	result.x := vec.x;
-	result.y := vec.y;
-	result.z := z;
+  result.x := vec.x;
+  result.y := vec.y;
+  result.z := z;
 end;
 
 function Vec3(constref vec: TVec3i): TVec3; inline;
 begin
-	result := Vec3(vec.x, vec.y, vec.z);
+  result := Vec3(vec.x, vec.y, vec.z);
 end;
 
 function V3(x, y, z: TScalar): TVec3; inline;
 begin
-	result := Vec3(x, y, z);
+  result := Vec3(x, y, z);
 end;
 
 function V3(constref vec: TVec2; z: TScalar): TVec3; inline;
 begin
-	result := Vec3(vec, z);
+  result := Vec3(vec, z);
 end;
 
 function V3(constref vec: TVec3i): TVec3; inline;
 begin
-	result := Vec3(vec.x, vec.y, vec.z);
+  result := Vec3(vec.x, vec.y, vec.z);
 end;
 
 { Vec4 }
 
 function Vec4(x, y, z, w: TScalar): TVec4; inline;
 begin
-	result.x := x;
-	result.y := y;
-	result.z := z;
-	result.w := w;
+  result.x := x;
+  result.y := y;
+  result.z := z;
+  result.w := w;
 end;
 
 function Vec4(constref vec: TVec3; w: TScalar): TVec4; inline;
 begin
-	result.x := vec.x;
-	result.y := vec.y;
-	result.z := vec.z;
-	result.w := w;
+  result.x := vec.x;
+  result.y := vec.y;
+  result.z := vec.z;
+  result.w := w;
 end;
 
 function Vec4(constref vec: TVec2; z, w: TScalar): TVec4; inline;
 begin
-	result.x := vec.x;
-	result.y := vec.y;
-	result.z := z;
-	result.w := w;
+  result.x := vec.x;
+  result.y := vec.y;
+  result.z := z;
+  result.w := w;
 end;
 
 function Vec4(constref vec: TVec4i): TVec4; inline;
 begin
-	result := Vec4(vec.x, vec.y, vec.z, vec.w);
+  result := Vec4(vec.x, vec.y, vec.z, vec.w);
 end;
 
 function V4(constref vec: TVec3; w: TScalar): TVec4; inline;
 begin
-	result := Vec4(vec, w);
+  result := Vec4(vec, w);
 end;
 
 function V4(constref vec: TVec2; z, w: TScalar): TVec4; inline;
 begin
-	result := Vec4(vec, z, w);
+  result := Vec4(vec, z, w);
 end;
 
 function V4(x, y, z, w: TScalar): TVec4; inline;
 begin
-	result := Vec4(x, y, z, w);
+  result := Vec4(x, y, z, w);
 end;
 
 function V4(constref vec: TVec4i): TVec4; inline;
 begin
-	result := Vec4(vec.x, vec.y, vec.z, vec.w);
+  result := Vec4(vec.x, vec.y, vec.z, vec.w);
 end;
 
 {=============================================}
@@ -990,73 +1103,73 @@ end;
 
 function TVec2.PerpendicularRight: TVec2;
 begin
-	result := V2(-y, x);
+  result := V2(-y, x);
 end;
 
 function TVec2.PerpendicularLeft: TVec2;
 begin
-	result := V2(y, -x);
+  result := V2(y, -x);
 end;
 
 function TVec2.Angle: TScalar;
 begin
-	result := Arctan2(y, x);
+  result := Arctan2(y, x);
 end;
 
 function TVec2.Distance(point: TVec2): TScalar;
 begin
-	result := (self - point).Magnitude;
+  result := (self - point).Magnitude;
 end;
 
 function TVec2.Lerp(t: TScalar; p: TVec2): TVec2;
 begin
-	result := (self * (1 - t)) + (p * t);
+  result := (self * (1 - t)) + (p * t);
 end;
 
 function TVec2.Reflect(n: TVec2): TVec2;
 begin
-	result := self - ((n * self.Dot(n)) * 2);
+  result := self - ((n * self.Dot(n)) * 2);
 end;
 
 function TVec2.Length: TScalar;
 begin
-	result := Sqrt(SquaredLength);
+  result := Sqrt(SquaredLength);
 end;
 
 function TVec2.SquaredLength: TScalar;
 begin
-	result := Power(x, 2) + Power(y, 2);
+  result := Power(x, 2) + Power(y, 2);
 end;
 
 function TVec2.Magnitude: TScalar;
 begin
-	result := Length;
+  result := Length;
 end;
 
 function TVec2.Normalize: TVec2;
 var
-	fac: TScalar;
+  fac: TScalar;
 begin
-	//result := self / Magnitude;
-	fac:=Sqrt(Sqr(x)+Sqr(y));
-	if fac<>0.0 then begin
-		fac:=1.0/fac;
-		result.x:=x*fac;
-		result.y:=y*fac;
-	end else begin
-		result.x:=0.0;
-		result.y:=0.0;
-	end;
+  //result := self / Magnitude;
+  fac:=Sqrt(Sqr(x)+Sqr(y));
+  if fac<>0.0 then begin
+    fac:=1.0/fac;
+    result.x:=x*fac;
+    result.y:=y*fac;
+  end else begin
+    result.x:=0.0;
+    result.y:=0.0;
+  end;
 end;
 
 function TVec2.Negate: TVec2;
 begin
-	result := Vec2(-x, -y);
+  result := Vec2(-x, -y);
 end;
 
 function TVec2.Dot(constref vec: TVec2): TScalar;
 begin
-	result := (x * vec.x) + (y * vec.y);
+  result := (x * vec.x) + (y * vec.y);
 end;
 
 function TVec2.Cross(constref vec: TVec2): TVec2;
@@ -1073,7 +1186,7 @@ end;
 
 function TVec2.Rotate(origin: TVec2; radians: TScalar): TVec2;
 var
-	dx,dy: TScalar;
+  dx,dy: TScalar;
 begin
   dx := (origin.y * sin(radians)) - (origin.x * cos(radians)) + origin.x;
   dy := -(origin.x * sin(radians)) - (origin.y * cos(radians)) + origin.y;
@@ -1160,18 +1273,18 @@ end;
 
 procedure TVec2.Show;
 begin
-	writeln(ToStr);
+  writeln(ToStr);
 end;
 
 function TVec2.ToStr(places: integer = -1): string;
 begin
-	result := '{'+FloatToStr(x, places)+','+FloatToStr(y, places)+'}';
+  result := '{'+FloatToStr(x, places)+','+FloatToStr(y, places)+'}';
 end;
 
 class operator TVec2.:= (a:TScalar): TVec2;
 begin
-	result.x := a;
-	result.y := a;
+  result.x := a;
+  result.y := a;
 end;
 
 class operator TVec2.- (right: TVec2): TVec2;
@@ -1187,47 +1300,47 @@ end;
 
 class operator TVec2.+ (constref left, right: TVec2): TVec2;
 begin
-	result := Vec2(left.x+right.x, left.y+right.y);
+  result := Vec2(left.x+right.x, left.y+right.y);
 end;
 
 class operator TVec2.- (constref left, right: TVec2): TVec2;
 begin
-	result := Vec2(left.x-right.x, left.y-right.y);
+  result := Vec2(left.x-right.x, left.y-right.y);
 end;
 
 class operator TVec2.* (constref left, right: TVec2): TVec2; 
 begin
-	result := Vec2(left.x*right.x, left.y*right.y);
+  result := Vec2(left.x*right.x, left.y*right.y);
 end;
 
 class operator TVec2./ (constref left, right: TVec2): TVec2; 
 begin
-	result := Vec2(left.x/right.x, left.y/right.y);
+  result := Vec2(left.x/right.x, left.y/right.y);
 end;
 
 class operator TVec2.= (constref left, right: TVec2): boolean; 
 begin
-	result := (left.x = right.x) and (left.y = right.y);
+  result := (left.x = right.x) and (left.y = right.y);
 end;
 
 class operator TVec2.+ (constref left: TVec2; right: TScalar): TVec2;
 begin
-	result := Vec2(left.x+right, left.y+right);
+  result := Vec2(left.x+right, left.y+right);
 end;
 
 class operator TVec2.- (constref left: TVec2; right: TScalar): TVec2;
 begin
-	result := Vec2(left.x-right, left.y-right);
+  result := Vec2(left.x-right, left.y-right);
 end;
 
 class operator TVec2.* (constref left: TVec2; right: TScalar): TVec2;
 begin
-	result := Vec2(left.x*right, left.y*right);
+  result := Vec2(left.x*right, left.y*right);
 end;
 
 class operator TVec2./ (constref left: TVec2; right: TScalar): TVec2;
 begin
-	result := Vec2(left.x/right, left.y/right);
+  result := Vec2(left.x/right, left.y/right);
 end;
 
 class function TVec2.Zero: TVec2;
@@ -1256,32 +1369,32 @@ end;
 
 class function TVec3.Up: TVec3;
 begin
-	result := Vec3(0,1,0);
+  result := Vec3(0,1,0);
 end;
 
 procedure TVec3.Show;
 begin
-	writeln(ToStr);
+  writeln(ToStr);
 end;
 
 function TVec3.XY: TVec2;
 begin
-	result := V2(x, y);
+  result := V2(x, y);
 end;
 
 function TVec3.ToStr(places: integer = -1): string;
 begin
-	result := '{'+FloatToStr(x, places)+','+FloatToStr(y, places)+','+FloatToStr(z, places)+'}';
+  result := '{'+FloatToStr(x, places)+','+FloatToStr(y, places)+','+FloatToStr(z, places)+'}';
 end;
 
 function TVec3.Length: TScalar;
 begin
-	result := Sqrt(SquaredLength);
+  result := Sqrt(SquaredLength);
 end;
 
 function TVec3.SquaredLength: TScalar;
 begin
-	result := Power(x, 2) + Power(y, 2) + Power(z, 2);
+  result := Power(x, 2) + Power(y, 2) + Power(z, 2);
 end;
 
 function TVec3.Magnitude: TScalar;
@@ -1291,29 +1404,29 @@ end;
 
 function TVec3.Normalize: TVec3;
 var
-	fac: TScalar;
+  fac: TScalar;
 begin
-	fac:=Sqrt(Sqr(x)+Sqr(y)+Sqr(z));
-	if fac<>0.0 then begin
-		fac:=1.0/fac;
-		result.x:=x*fac;
-		result.y:=y*fac;
-		result.z:=z*fac;
-	end else begin
-		result.x:=0.0;
-		result.y:=0.0;
-		result.z:=0.0;
-	end;
+  fac:=Sqrt(Sqr(x)+Sqr(y)+Sqr(z));
+  if fac<>0.0 then begin
+    fac:=1.0/fac;
+    result.x:=x*fac;
+    result.y:=y*fac;
+    result.z:=z*fac;
+  end else begin
+    result.x:=0.0;
+    result.y:=0.0;
+    result.z:=0.0;
+  end;
 end;
 
 function TVec3.Negate: TVec3;
 begin
-	result := Vec3(-x, -y, -z);
+  result := Vec3(-x, -y, -z);
 end;
 
 function TVec3.Dot(constref vec: TVec3): TScalar;
 begin
-	result := (x * vec.x) + (y * vec.y) + (z * vec.z);
+  result := (x * vec.x) + (y * vec.y) + (z * vec.z);
 end;
 
 function TVec3.Cross(constref vec: TVec3): TVec3;
@@ -1391,11 +1504,22 @@ begin
   result := (x = 0) and (y = 0) and (z = 0);
 end;
 
+function TVec3.Sum: TScalar;
+begin
+  result := x + y + z;
+end;
+
 class operator TVec3.:= (a:TScalar): TVec3;
 begin
-	result.x := a;
-	result.y := a;
-	result.z := a;
+  result.x := a;
+  result.y := a;
+  result.z := a;
+end;
+
+class operator TVec3.explicit (right: TVec3): TVec2;
+begin
+  result.x := right.x;
+  result.y := right.y;
 end;
 
 class operator TVec3.- (right: TVec3): TVec3;
@@ -1412,47 +1536,47 @@ end;
 
 class operator TVec3.+ (constref left, right: TVec3): TVec3;
 begin
-	result := Vec3(left.x+right.x, left.y+right.y, left.z+right.z);
+  result := Vec3(left.x+right.x, left.y+right.y, left.z+right.z);
 end;
 
 class operator TVec3.- (constref left, right: TVec3): TVec3;
 begin
-	result := Vec3(left.x-right.x, left.y-right.y, left.z-right.z);
+  result := Vec3(left.x-right.x, left.y-right.y, left.z-right.z);
 end;
 
 class operator TVec3.* (constref left, right: TVec3): TVec3; 
 begin
-	result := Vec3(left.x*right.x, left.y*right.y, left.z*right.z);
+  result := Vec3(left.x*right.x, left.y*right.y, left.z*right.z);
 end;
 
 class operator TVec3./ (constref left, right: TVec3): TVec3; 
 begin
-	result := Vec3(left.x/right.x, left.y/right.y, left.z/right.z);
+  result := Vec3(left.x/right.x, left.y/right.y, left.z/right.z);
 end;
 
 class operator TVec3.= (constref left, right: TVec3): boolean; 
 begin
-	result := (left.x = right.x) and (left.y = right.y) and (left.z = right.z);
+  result := (left.x = right.x) and (left.y = right.y) and (left.z = right.z);
 end;
 
 class operator TVec3.+ (constref left: TVec3; right: TScalar): TVec3;
 begin
-	result := Vec3(left.x+right, left.y+right, left.z+right);
+  result := Vec3(left.x+right, left.y+right, left.z+right);
 end;
 
 class operator TVec3.- (constref left: TVec3; right: TScalar): TVec3;
 begin
-	result := Vec3(left.x-right, left.y-right, left.z-right);
+  result := Vec3(left.x-right, left.y-right, left.z-right);
 end;
 
 class operator TVec3.* (constref left: TVec3; right: TScalar): TVec3;
 begin
-	result := Vec3(left.x*right, left.y*right, left.z*right);
+  result := Vec3(left.x*right, left.y*right, left.z*right);
 end;
 
 class operator TVec3./ (constref left: TVec3; right: TScalar): TVec3;
 begin
-	result := Vec3(left.x/right, left.y/right, left.z/right);
+  result := Vec3(left.x/right, left.y/right, left.z/right);
 end;
 
 class function TVec3.Zero: TVec3;
@@ -1468,42 +1592,42 @@ end;
 
 function TVec4.Length: TScalar;
 begin
-	result := Sqrt(SquaredLength);
+  result := Sqrt(SquaredLength);
 end;
 
 function TVec4.SquaredLength: TScalar;
 begin
-	result := Power(x, 2) + Power(y, 2) + Power(z, 2) + Power(w, 2);
+  result := Power(x, 2) + Power(y, 2) + Power(z, 2) + Power(w, 2);
 end;
 
 function TVec4.Normalize: TVec4;
 var
-	fac: TScalar;
+  fac: TScalar;
 begin
-	//result := self / Magnitude;
-	fac:=Sqrt(Sqr(x)+Sqr(y)+Sqr(z)+Sqr(w));
-	if fac<>0.0 then begin
-		fac:=1.0/fac;
-		result.x:=x*fac;
-		result.y:=y*fac;
-		result.z:=z*fac;
-		result.w:=w*fac;
-	end else begin
-		result.x:=0.0;
-		result.y:=0.0;
-		result.z:=0.0;
-		result.w:=0.0;
-	end;
+  //result := self / Magnitude;
+  fac:=Sqrt(Sqr(x)+Sqr(y)+Sqr(z)+Sqr(w));
+  if fac<>0.0 then begin
+    fac:=1.0/fac;
+    result.x:=x*fac;
+    result.y:=y*fac;
+    result.z:=z*fac;
+    result.w:=w*fac;
+  end else begin
+    result.x:=0.0;
+    result.y:=0.0;
+    result.z:=0.0;
+    result.w:=0.0;
+  end;
 end;
 
 function TVec4.Negate: TVec4;
 begin
-	result := Vec4(-x, -y, -z, -w);
+  result := Vec4(-x, -y, -z, -w);
 end;
 
 function TVec4.Dot(constref vec: TVec4): TScalar;
 begin
-	result := (x * vec.x) + (y * vec.y) + (z * vec.z) + (w * vec.w);
+  result := (x * vec.x) + (y * vec.y) + (z * vec.z) + (w * vec.w);
 end;
 
 function TVec4.Cross(constref vec: TVec4): TVec4;
@@ -1531,10 +1655,10 @@ end;
 
 class operator TVec4.:= (a:TScalar): TVec4;
 begin
-	result.x := a;
-	result.y := a;
-	result.z := a;
-	result.w := a;
+  result.x := a;
+  result.y := a;
+  result.z := a;
+  result.w := a;
 end;
 
 class operator TVec4.+ (left: string; right: TVec4): string;
@@ -1544,67 +1668,67 @@ end;
 
 class operator TVec4.+ (constref left, right: TVec4): TVec4;
 begin
-	result := Vec4(left.x+right.x, left.y+right.y, left.z+right.z, left.w+right.w);
+  result := Vec4(left.x+right.x, left.y+right.y, left.z+right.z, left.w+right.w);
 end;
 
 class operator TVec4.- (constref left, right: TVec4): TVec4;
 begin
-	result := Vec4(left.x-right.x, left.y-right.y, left.z-right.z, left.w-right.w);
+  result := Vec4(left.x-right.x, left.y-right.y, left.z-right.z, left.w-right.w);
 end;
 
 class operator TVec4.* (constref left, right: TVec4): TVec4; 
 begin
-	result := Vec4(left.x*right.x, left.y*right.y, left.z*right.z, left.w*right.w);
+  result := Vec4(left.x*right.x, left.y*right.y, left.z*right.z, left.w*right.w);
 end;
 
 class operator TVec4./ (constref left, right: TVec4): TVec4; 
 begin
-	result := Vec4(left.x/right.x, left.y/right.y, left.z/right.z, left.w/right.w);
+  result := Vec4(left.x/right.x, left.y/right.y, left.z/right.z, left.w/right.w);
 end;
 
 class operator TVec4.= (constref left, right: TVec4): boolean; 
 begin
-	result := (left.x = right.x) and (left.y = right.y) and (left.z = right.z) and (left.w = right.w);
+  result := (left.x = right.x) and (left.y = right.y) and (left.z = right.z) and (left.w = right.w);
 end;
 
 class operator TVec4.+ (constref left: TVec4; right: TScalar): TVec4;
 begin
-	result := Vec4(left.x+right, left.y+right, left.z+right, left.w+right);
+  result := Vec4(left.x+right, left.y+right, left.z+right, left.w+right);
 end;
 
 class operator TVec4.- (constref left: TVec4; right: TScalar): TVec4;
 begin
-	result := Vec4(left.x-right, left.y-right, left.z-right, left.w-right);
+  result := Vec4(left.x-right, left.y-right, left.z-right, left.w-right);
 end;
 
 class operator TVec4.* (constref left: TVec4; right: TScalar): TVec4;
 begin
-	result := Vec4(left.x*right, left.y*right, left.z*right, left.w*right);
+  result := Vec4(left.x*right, left.y*right, left.z*right, left.w*right);
 end;
 
 class operator TVec4./ (constref left: TVec4; right: TScalar): TVec4;
 begin
-	result := Vec4(left.x/right, left.y/right, left.z/right, left.w/right);
+  result := Vec4(left.x/right, left.y/right, left.z/right, left.w/right);
 end; 
 
 procedure TVec4.Show;
 begin
-	writeln(ToStr);
+  writeln(ToStr);
 end;
 
 function TVec4.XY: TVec2;
 begin
-	result := V2(x, y);
+  result := V2(x, y);
 end;
 
 function TVec4.XYZ: TVec3;
 begin
-	result := V3(x, y, z);
+  result := V3(x, y, z);
 end;
 
 function TVec4.ToStr(places: integer = -1): string;
 begin
-	result := '{'+FloatToStr(x, places)+','+FloatToStr(y, places)+','+FloatToStr(z, places)+','+FloatToStr(w, places)+'}';
+  result := '{'+FloatToStr(x, places)+','+FloatToStr(y, places)+','+FloatToStr(z, places)+','+FloatToStr(w, places)+'}';
 end;
 
 class function TVec4.Zero: TVec4;
@@ -1620,7 +1744,7 @@ end;
 {=============================================}
 function M4: TMat4;
 begin
-	result := TMat4.Identity;
+  result := TMat4.Identity;
 end;
 
 function TMat4.GetComponent(column, row:integer):TScalar;
@@ -1635,17 +1759,17 @@ end;
 
 function SameValue(a, b: TScalar): boolean; inline;
 begin
-	result := a = b;
+  result := a = b;
 end;
 
 function TMat4.Ptr: pointer;
 begin
-	result := @column[0];
+  result := @column[0];
 end;
 
 class function TMat4.Identity: TMat4;
 begin
-	result := Matrix4x4Identity;
+  result := Matrix4x4Identity;
 end;
 
 constructor TMat4.Translate(tx,ty,tz:TScalar);
@@ -1709,26 +1833,26 @@ begin
 end;
 
 constructor TMat4.Scale(x, y, z: TScalar);
-begin	
-	column[0].x := x;
-	column[0].y := 0;
-	column[0].z := 0;
-	column[0].w := 0;
+begin 
+  column[0].x := x;
+  column[0].y := 0;
+  column[0].z := 0;
+  column[0].w := 0;
           
-	column[1].x := 0;
-	column[1].y := y;
-	column[1].z := 0;
-	column[1].w := 0;
+  column[1].x := 0;
+  column[1].y := y;
+  column[1].z := 0;
+  column[1].w := 0;
  
-	column[2].x := 0;
-	column[2].y := 0;
-	column[2].z := z;
-	column[2].w := 0;
-	        
-	column[3].x := 0;
-	column[3].y := 0;
-	column[3].z := 0;
-	column[3].w := 1;
+  column[2].x := 0;
+  column[2].y := 0;
+  column[2].z := z;
+  column[2].w := 0;
+          
+  column[3].x := 0;
+  column[3].y := 0;
+  column[3].z := 0;
+  column[3].w := 1;
 end;
 
 constructor TMat4.RotateX(Angle:TScalar);
@@ -1857,25 +1981,25 @@ end;
 constructor TMat4.Ortho(Left,Right,Bottom,Top,zNear,zFar:TScalar);
 var rml,tmb,fmn: TScalar;
 begin
-	rml:=Right-Left;
-	tmb:=Top-Bottom;
-	fmn:=zFar-zNear;
-	m[0,0]:=2.0/rml;
-	m[0,1]:=0.0;
-	m[0,2]:=0.0;
-	m[0,3]:=0.0;
-	m[1,0]:=0.0;
-	m[1,1]:=2.0/tmb;
-	m[1,2]:=0.0;
-	m[1,3]:=0.0;
-	m[2,0]:=0.0;
-	m[2,1]:=0.0;
-	m[2,2]:=(-1.0)/fmn;
-	m[2,3]:=0.0;
-	m[3,0]:=(-(Right+Left))/rml;
-	m[3,1]:=(-(Top+Bottom))/tmb;
-	m[3,2]:=(-(zNear))/fmn;
-	m[3,3]:=1.0;  
+  rml:=Right-Left;
+  tmb:=Top-Bottom;
+  fmn:=zFar-zNear;
+  m[0,0]:=2.0/rml;
+  m[0,1]:=0.0;
+  m[0,2]:=0.0;
+  m[0,3]:=0.0;
+  m[1,0]:=0.0;
+  m[1,1]:=2.0/tmb;
+  m[1,2]:=0.0;
+  m[1,3]:=0.0;
+  m[2,0]:=0.0;
+  m[2,1]:=0.0;
+  m[2,2]:=(-1.0)/fmn;
+  m[2,3]:=0.0;
+  m[3,0]:=(-(Right+Left))/rml;
+  m[3,1]:=(-(Top+Bottom))/tmb;
+  m[3,2]:=(-(zNear))/fmn;
+  m[3,3]:=1.0;  
 end;
 
 constructor TMat4.Perspective(fovy,Aspect,zNear,zFar:TScalar);
@@ -1940,7 +2064,7 @@ end;
 
 function TMat4.Inverse:TMat4;
 var
-	t0,t4,t8,t12,d:TScalar;
+  t0,t4,t8,t12,d:TScalar;
 begin
  t0:=(((m[1,1]*m[2,2]*m[3,3])-(m[1,1]*m[2,3]*m[3,2]))-(m[2,1]*m[1,2]*m[3,3])+(m[2,1]*m[1,3]*m[3,2])+(m[3,1]*m[1,2]*m[2,3]))-(m[3,1]*m[1,3]*m[2,2]);
  t4:=((((-(m[1,0]*m[2,2]*m[3,3]))+(m[1,0]*m[2,3]*m[3,2])+(m[2,0]*m[1,2]*m[3,3]))-(m[2,0]*m[1,3]*m[3,2]))-(m[3,0]*m[1,2]*m[2,3]))+(m[3,0]*m[1,3]*m[2,2]);
@@ -1995,21 +2119,21 @@ end;
 
 function TMat4.ToStr: string;
 var
-	x, y: integer;
+  x, y: integer;
 begin
   result := '';
-	for y := 0 to 3 do
-		begin
-			result += '[';
-			for x := 0 to 3 do
-				begin
-					if x < 3 then
-						result += FloatToStr(m[x, y])+','
-					else
-						result += FloatToStr(m[x, y]);
-				end;
-			result += ']';
-		end;
+  for y := 0 to 3 do
+    begin
+      result += '[';
+      for x := 0 to 3 do
+        begin
+          if x < 3 then
+            result += FloatToStr(m[x, y])+','
+          else
+            result += FloatToStr(m[x, y]);
+        end;
+      result += ']';
+    end;
 end;
 
 class operator TMat4.:= (a:TScalar):TMat4;

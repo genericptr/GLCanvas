@@ -2,6 +2,10 @@
 {$ifdef INTERFACE}
 
 type
+  TIntegerList = specialize TFPGList<Integer>;
+  TBooleanList = specialize TFPGList<Boolean>;
+
+type
   TColor = TVec4;
   
 type
@@ -9,6 +13,9 @@ type
     class function Red(alpha: TScalar = 1.0): TVec4; static;
     class function Green(alpha: TScalar = 1.0): TVec4; static;
     class function Blue(alpha: TScalar = 1.0): TVec4; static;
+    class function Cyan(alpha: TScalar = 1.0): TVec4; static;
+    class function Magenta(alpha: TScalar = 1.0): TVec4; static;
+    class function Yellow(alpha: TScalar = 1.0): TVec4; static;
     class function White(alpha: TScalar = 1.0): TVec4; static;
     class function Black(alpha: TScalar = 1.0): TVec4; static;
     class function LightGray(alpha: TScalar = 1.0): TVec4; static;
@@ -26,8 +33,8 @@ type
 			min: T;
 			max: T;
 		public
-			constructor Make(_min, _max: T); overload;
-			constructor Make(values: array of T); overload;
+			constructor Create(_min, _max: T); overload;
+			constructor Create(values: array of T); overload;
 			function Contains(value: T): boolean; overload;
 			function Clamp(value: T): T;
 			function Total: T; inline;
@@ -36,9 +43,36 @@ type
 			function ValueOfPercent(percent: single): T;
 			function PercentOfValue(value: T): single;
 			procedure Show;
+      class operator := (right: T): TRange;
 	end;
 	TRangeInt = specialize TRange<Integer>;
 	TRangeFloat = specialize TRange<Single>;
+
+type
+  generic TMutableValue<T> = record
+    public
+      current: T;
+      total: T;   
+    public
+      constructor Create(_total: T);      
+      function Percent: single;
+      function ToStr: string;
+      procedure Show;
+      procedure Reset; inline;
+      procedure Inc(amount: T = 1); inline;
+      procedure Dec(amount: T = 1); inline;
+      function Full: boolean; inline;
+      class operator := (right: T): TMutableValue;
+      class operator + (constref left: TMutableValue; right: T): TMutableValue;
+      class operator - (constref left: TMutableValue; right: T): TMutableValue;
+      class operator = (constref left: TMutableValue; right: T): boolean;
+      class operator > (constref left: TMutableValue; right: T): boolean; 
+      class operator < (constref left: TMutableValue; right: T): boolean;
+      class operator <= (constref left: TMutableValue; right: T): boolean;
+      class operator >= (constref left: TMutableValue; right: T): boolean;
+  end;
+  TMutableValueInt = specialize TMutableValue<Integer>;
+  TMutableValueFloat = specialize TMutableValue<Single>;
 
 type
   TVariantMap = specialize TFPGMap<String, Variant>;
@@ -48,18 +82,45 @@ type
     private
       m_width: integer; 
       m_height: integer;
-      function GetRef(x, y: integer): PT;
+      m_size: TVec2i;
+      function GetRef(x, y: integer): PT; inline; overload;
+      function GetRef(pos: TVec2i): PT; inline; overload;
       procedure SetRef(x, y: integer; value: PT);
-      function GetItem(x, y: integer): T;
-      procedure SetItem(x, y: integer; value: T);
+      function GetItem(pos: TVec2i): T; overload;
+      function GetItem(x, y: integer): T; overload;
+      function GetItem(index: integer): T; overload;
+      procedure SetItem(x, y: integer; value: T); overload;
+      procedure SetItem(index: integer; value: T); overload;
+    public type
+      TForEachFunction = procedure (matrix: TFPGMatrix; constref src, dest: TVec2i);
+      TForEachFunctionNested = procedure (matrix: TFPGMatrix; constref src, dest: TVec2i) is nested;
+    private
+      procedure ForEachNeighborInternal(pos: TVec2i; func1: TForEachFunction; func2: TForEachFunctionNested);
     public
-      constructor Create(inWidth, inHeight: integer); overload;
-      constructor Create(size: TVec2i); overload;
-      function IndexAt(x, y: integer): integer; inline;
+
+      { Constructors }
+      constructor Create(_width, _height: integer); overload;
+      constructor Create(_size: TVec2i); overload;
+
+      { Methods }
+      procedure Fill(constref value: T);
+      procedure Resize(w, h: integer; const f: T);
+
+      procedure ForEachNeighbor(pos: TVec2i; func: TForEachFunction); overload;
+      procedure ForEachNeighbor(pos: TVec2i; func: TForEachFunctionNested); overload;
+
+      function IndexAt(x, y: integer): integer; inline; overload;
+      function IndexAt(pos: TVec2i): integer; inline; overload;
+      function InBounds(x, y: integer): boolean; inline; overload;
+      function InBounds(pos: TVec2i): boolean; inline; overload;
+      function CopyBlock(offsetX, offsetY, width, height: integer): PTypeList;
+
+      { Properties }
       property Values[x, y: integer]: T read GetItem write SetItem; default;
       property Refs[x, y: integer]: PT read GetRef write SetRef;
       property Width: integer read m_width;
       property Height: integer read m_height;
+      property Size: TVec2i read m_size;
   end;
 
 type
@@ -76,6 +137,8 @@ type
 {$endif}
 
 {$ifdef IMPLEMENTATION}
+
+{ TMemoryPool }
 
 class function TMemoryPool.Stack: TObjectList;
 begin
@@ -99,6 +162,8 @@ begin
   if stack.Count > 0 then
     TObjectList(stack.Last).Add(obj); 
 end;
+
+{ Color Helpers }
 
 function RGBA(r, g, b, a: TScalar): TColor;
 begin
@@ -133,6 +198,21 @@ begin
   result := V4(0, 0, 1, alpha);
 end;
 
+class function TColorHelper.Cyan(alpha: TScalar = 1.0): TVec4;
+begin
+  result := V4(0, 1, 1, alpha);
+end;
+
+class function TColorHelper.Magenta(alpha: TScalar = 1.0): TVec4;
+begin
+  result := V4(1, 0, 1, alpha);
+end;
+
+class function TColorHelper.Yellow(alpha: TScalar = 1.0): TVec4;
+begin
+  result := V4(1, 1, 0, alpha);
+end;
+
 class function TColorHelper.White(alpha: TScalar = 1.0): TVec4;
 begin
   result := V4(1, 1, 1, alpha);
@@ -158,6 +238,98 @@ begin
   result := V4(0, 0, 0, 0);
 end;
 
+{ TMutableValue }
+
+function TMutableValue.Percent: single;
+begin
+  result := current / total;  
+end;
+
+procedure TMutableValue.Reset; 
+begin
+  current := total;
+end;
+
+function TMutableValue.Full: boolean;
+begin
+  result := current = total;
+end;
+
+procedure TMutableValue.Inc(amount: T); 
+begin
+  current += amount;
+  if current > total then
+    current := total;
+end;
+
+procedure TMutableValue.Dec(amount: T); 
+begin
+  current -= amount;
+  if current < 0 then
+    current := 0;
+end;
+
+constructor TMutableValue.Create (_total: T);
+begin
+  total := _total;
+  current := total;
+end;
+
+class operator TMutableValue.= (constref left: TMutableValue; right: T): boolean;
+begin
+  result := left.current = right;
+end;
+
+class operator TMutableValue.> (constref left: TMutableValue; right: T): boolean;
+begin
+  result := left.current > right;
+end;
+
+class operator TMutableValue.< (constref left: TMutableValue; right: T): boolean;
+begin
+  result := left.current < right;
+end;
+
+class operator TMutableValue.>= (constref left: TMutableValue; right: T): boolean;
+begin
+  result := left.current >= right;
+end;
+
+class operator TMutableValue.<= (constref left: TMutableValue; right: T): boolean;
+begin
+  result := left.current <= right;
+end;
+
+class operator TMutableValue.+ (constref left: TMutableValue; right: T): TMutableValue;
+begin
+  result := left;
+  result.Inc(right);
+end;
+
+class operator TMutableValue.- (constref left: TMutableValue; right: T): TMutableValue;
+begin
+  result := left;
+  result.Dec(right);
+end;
+
+class operator TMutableValue.:= (right: T): TMutableValue;
+begin
+  result.current := right;
+  result.total := right;
+end;
+
+function TMutableValue.ToStr: string;
+begin
+  result := current.ToString+'/'+total.ToString;
+end;
+
+procedure TMutableValue.Show;
+begin
+  writeln(ToStr);
+end;
+
+{ TRange }
+
 function TRange.Clamp(value: T): T;
 begin
 	if value < min then
@@ -172,13 +344,13 @@ begin
 	result := (value >= min) and (value <= max);
 end;
 
-constructor TRange.Make(values: array of T);
+constructor TRange.Create(values: array of T);
 begin
 	min := values[0];
 	max := values[1];
 end;
 
-constructor TRange.Make(_min, _max: T);
+constructor TRange.Create(_min, _max: T);
 begin
 	min := _min;
 	max := _max;
@@ -223,17 +395,139 @@ begin
 	writeln(ToStr);
 end;
 
-constructor TFPGMatrix.Create(size: TVec2i);
+class operator TRange.:= (right: T): TRange;
 begin
-  Create(size.width, size.height);
+  result.min := right;
+  result.max := right;
 end;
 
-constructor TFPGMatrix.Create(inWidth, inHeight: integer);
+{ TFPGMatrix }
+
+function TFPGMatrix.CopyBlock(offsetX, offsetY, width, height: integer): PTypeList;
+var
+  total: integer;
+  x, y: integer;
+  i: integer = 0;
+begin
+  total := (width + 1) * (height + 1);
+
+  // todo: 1) use pointer input so we can write to stack
+  // todo: 2) make overload that copies to dynamic array
+  result := PTypeList(GetMem(total * sizeof(T)));
+  if result = nil then
+    exit(nil);
+
+  for y := offsetY to offsetY + height do
+  for x := offsetX to offsetX + width do
+    begin
+      // todo: use move to copy rows
+      //Move(List[0] + );
+      result^[i] := self[x, y];
+      inc(i);
+    end;
+end;
+
+procedure TFPGMatrix.Resize(w, h: integer; const f: T);
+var
+  temp: array of T;
+  x, y, i: integer;
+  ow, oh: integer;
+  shiftX, shiftY: integer;
+begin
+  // TODO: what even if the structure of the list?
+  //temp := PTypeList(GetMem(Count * sizeof(T)));
+  //System.Move(List, temp^, Count * sizeof(T));
+  //FreeMem(temp);
+
+  // copy old values
+  SetLength(temp, Count);
+  for i := 0 to Count - 1 do
+    temp[i] := Items[i];
+
+  ow := width;
+  oh := height;
+  shiftX := 0;
+  shiftY := 0;
+
+  if w < 0 then shiftX := abs(w);
+  if h < 0 then shiftY := abs(h);
+
+  m_width := width + abs(w);
+  m_height := height + abs(h);
+  m_size := V2i(width, height);
+  Count := width * height;
+
+  // fill with values
+  for i := 0 to Count - 1 do
+    Items[i] := f;
+
+  // replace old values
+  for y := 0 to Min(height - 1, oh - 1) do
+  for x := 0 to Min(width - 1, ow - 1) do
+    Items[IndexAt(x + shiftX, y + shiftY)] := temp[x + y * ow];
+end;
+
+procedure TFPGMatrix.Fill(constref value: T);
+var
+  i: integer;
+begin
+  for i := 0 to Count - 1 do
+    Items[i] := value;
+end;
+
+procedure TFPGMatrix.ForEachNeighborInternal(pos: TVec2i; func1: TForEachFunction; func2: TForEachFunctionNested);
+var
+  x, y: integer;
+  target: TVec2i;
+begin
+  for y := -1 to 1 do
+  for x := -1 to 1 do
+    begin
+      target := V2i(pos.x + x, pos.y + y);
+      if not InBounds(target) or (target = pos) then
+        continue;
+      if func1 <> nil then
+        func1(self, pos, target)
+      else
+        func2(self, pos, target);
+    end;
+end;
+
+procedure TFPGMatrix.ForEachNeighbor(pos: TVec2i; func: TForEachFunctionNested);
+begin
+  ForEachNeighborInternal(pos, nil, func);
+end;
+
+procedure TFPGMatrix.ForEachNeighbor(pos: TVec2i; func: TForEachFunction);
+begin
+  ForEachNeighborInternal(pos, func, nil);
+end;
+
+constructor TFPGMatrix.Create(_size: TVec2i);
+begin
+  Create(_size.width, _size.height);
+end;
+
+constructor TFPGMatrix.Create(_width, _height: integer);
 begin
   inherited Create;
-  m_width := inWidth;
-  m_height := inHeight;
+  m_width := _width;
+  m_height := _height;
+  m_size := V2i(width, height);
   Count := width * height;
+end;
+
+function TFPGMatrix.InBounds(x, y: integer): boolean;
+begin
+  result := (x >= 0) and 
+            (y >= 0) and 
+            (x < width) and 
+            (y < height);
+end;
+
+function TFPGMatrix.InBounds(pos: TVec2i): boolean;
+begin
+  result := InBounds(pos.x, pos.y);
 end;
 
 function TFPGMatrix.IndexAt(x, y: integer): integer;
@@ -241,14 +535,29 @@ begin
   result := x + y * width;
 end;
 
+function TFPGMatrix.IndexAt(pos: TVec2i): integer;
+begin
+  result := IndexAt(pos.x, pos.y);
+end;
+
 function TFPGMatrix.GetRef(x, y: integer): PT;
 begin
-  result := TFPSList(self).items[IndexAt(x, y)];
+  result := TFPSList(self).Items[IndexAt(x, y)];
+end;
+
+function TFPGMatrix.GetRef(pos: TVec2i): PT;
+begin
+  result := GetRef(pos.x, pos.y);
 end;
 
 procedure TFPGMatrix.SetRef(x, y: integer; value: PT);
 begin
   TFPSList(self).items[IndexAt(x, y)] := value;
+end;
+
+function TFPGMatrix.GetItem(pos: TVec2i): T;
+begin
+  result := GetItem(pos.x, pos.y);
 end;
 
 function TFPGMatrix.GetItem(x, y: integer): T;
@@ -261,6 +570,11 @@ begin
   result := items[IndexAt(x, y)];
 end;
 
+function TFPGMatrix.GetItem(index: integer): T;
+begin
+  result := items[index];
+end;
+
 procedure TFPGMatrix.SetItem(x, y: integer; value: T);
 var
   index: integer;
@@ -270,5 +584,11 @@ begin
     exit;
   items[IndexAt(x, y)] := value;
 end;
+
+procedure TFPGMatrix.SetItem(index: integer; value: T);
+begin
+  items[index] := value;
+end;
+
 
 {$endif}

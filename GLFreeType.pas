@@ -2,7 +2,7 @@
 {$modeswitch advancedrecords}
 {$implicitexceptions off}
 
-{$include include/targetos}
+{$include include/targetos.inc}
 
 unit GLFreeType;
 interface
@@ -43,7 +43,6 @@ type
       TAnsiChar = char;
       TFaceMap = specialize TFPGMap<TAnsiChar, TFreeTypeFace>;
     private
-      m_texture: GLuint;
       m_faces: TFaceMap;
       m_face: PFT_Face;
       m_textureWidth,
@@ -52,6 +51,10 @@ type
       m_maxLineHeight: integer;
       function GetFace(c: TAnsiChar): TFreeTypeFace;
       procedure AddTexture(c: TAnsiChar; posX, posY: integer); 
+    protected
+      m_texture: integer;
+
+      procedure GenerateTexture(data: pointer; width, height: integer; minFilter, magFilter: integer); virtual;
     public
 
       { Methods }
@@ -67,7 +70,7 @@ type
       property Face[c: TAnsiChar]: TFreeTypeFace read GetFace; default;
       property TextureWidth: integer read m_textureWidth;
       property TextureHeight: integer read m_textureHeight;
-      property TextureID: GLuint read m_texture;
+      property TextureID: integer read m_texture;
       property MaxLineHeight: integer read m_maxLineHeight;
     public
       destructor Destroy; override;
@@ -161,6 +164,15 @@ begin
   m_faces.Add(c, f);
 end;
 
+procedure TFreeTypeFont.GenerateTexture(data: pointer; width, height: integer; minFilter, magFilter: integer); 
+begin
+  glGenTextures(1, @m_texture);
+  glBindTexture(GL_TEXTURE_2D, m_texture);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, magFilter);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, minFilter);
+  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
+end;
+
 procedure TFreeTypeFont.Render(pixelSize: integer; charset: string = FREETYPE_ANSI_CHARSET; minFilter: GLuint = GL_LINEAR; magFilter: GLuint = GL_LINEAR); 
 var
   bitmap: FT_Bitmap;
@@ -176,7 +188,6 @@ var
   padding: integer;
   offset: integer;
   channels: integer;
-  prevTexture: GLint;
 begin
   Assert(m_face <> nil, 'freetype face is nil.');
 
@@ -226,15 +237,7 @@ begin
         end;
     end;
 
-  glGenTextures(1, @m_texture);
-  glGetIntegerv(GL_TEXTURE_BINDING_2D, @prevTexture);
-
-  glBindTexture(GL_TEXTURE_2D, m_texture);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, magFilter);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, minFilter);
-  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
-
-  glBindTexture(GL_TEXTURE_2D, prevTexture);
+  GenerateTexture(data, width, height, minFilter, magFilter);
 
   FreeMem(data);
 end;

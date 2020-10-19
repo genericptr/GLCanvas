@@ -1,11 +1,6 @@
-{$mode objfpc}
 
-unit UTimer;
-interface
-uses
-	SysUtils,
-	UInvocation, UArray, USystem, UObject;
 
+{$ifdef INTERFACE}
 const
 	kTimerInterval = 1;
 	kTimerIntervalSecond = kTimerInterval * 60;
@@ -21,29 +16,28 @@ type
 
 type
 	TTimer = class;
-	
-	TTimerDispatcher = class (TObject)
+	TTimerList = specialize TFPGObjectList<TTimer>;
+
+	TTimerDispatcher = class
 		public
 			class procedure Register(dispatcher: TTimerDispatcher);
-			
+			procedure AfterConstruction; override;
+			destructor Destroy; override;
+
 			procedure AddTimer(timer: TTimer);
 			procedure RemoveTimer(timer: TTimer);
 			function TimerForTarget(target: TObject): TTimer;
 			function Process: boolean; virtual;
-		protected
-			procedure Initialize; override;
-			procedure Deallocate; override;
 		private
-			timers: TArray;
+			timers: TTimerList;
 			currentTimer: TTimer;
 	end;
-	
-	TTimer = class (TObject)
+	TTimerDispatcherList = specialize TFPGObjectList<TTimerDispatcher>;
+
+	TTimer = class
 		public
 			
 			{ Class Methods }
-			class function InvokeMethod(_interval: TimerInterval; _action: pointer; _target: TObject; _argument: pointer = nil; _repeats: boolean = false): TTimer; overload;
-			class function InvokeMethod(_interval: TimerInterval; _action: string; _target: TObject; _argument: pointer = nil; _repeats: boolean = false): TTimer; overload;
 			class function Invoke(_interval: TimerInterval; _invocation: TInvocation; _repeats: boolean = false): TTimer; overload;
 
 			class procedure CancelPreviousInvocationsWithTarget(_target: TObject);
@@ -52,10 +46,9 @@ type
 			class function DefaultDispatcher: TTimerDispatcher; virtual;
 
 			{ Constructors }
-			constructor Create(_interval: TimerInterval; _action: pointer; _target: TObject; _argument: pointer = nil; _repeats: boolean = false); overload;
-			constructor Create(_interval: TimerInterval; _action: string; _target: TObject; _argument: pointer = nil; _repeats: boolean = false); overload;
 			constructor Create(_interval: TimerInterval; _invocation: TInvocation; _repeats: boolean = false); overload;
-			
+			destructor Destroy; override;
+
 			{ Accessors }
 			procedure SetName(newValue: string);
 			procedure SetStartDelay(newValue: TimerInterval);
@@ -78,7 +71,6 @@ type
 			
 		protected
 			interval: TimerInterval;
-			procedure Deallocate; override;
 		private
 			dispatcher: TTimerDispatcher;
 			intervalCount: LongInt;
@@ -93,22 +85,23 @@ type
 	TTimerClass = class of TTimer;
 
 type
-	TTimerInvocations = class helper for TObject
-		function InvokeMethodAfterDelay(_interval: TimerInterval; _action: pointer; _repeats: boolean): TTimer; overload;
-		function InvokeMethodAfterDelay(_interval: TimerInterval; _action: pointer): TTimer; overload;
-		function InvokeMethodAfterDelay(_interval: TimerInterval; _action: string): TTimer; overload;
+	TTimerInvocations = class helper for System.TObject
+		function InvokeAfterDelay(_interval: TimerInterval; method: TInvocationCallbackProcedure; params: TInvocation.TVariantParams = nil; _repeats: boolean = false): TTimer; overload;
+		function InvokeAfterDelay(_interval: TimerInterval; method: TInvocationCallbackClass; params: TInvocation.TVariantParams = nil; _repeats: boolean = false): TTimer; overload;
+		function InvokeAfterDelay(_interval: TimerInterval; Code: CodePointer; params: TInvocation.TVariantParams = nil; _repeats: boolean = false): TTimer; overload;
 	end;
 
 type
-	TOperationQueue = class (TTimer)
+	TOperationQueue = class(TTimer)
 		public
 			constructor Create(_limit: TimerInterval; _finishedAction: TInvocation);
 			procedure Add(op: TInvocation);
 			function Fire: boolean; override;
+			destructor Destroy; override;
 		private
 			finishedAction: TInvocation;
 			limit: TimerInterval;
-			queue: TArray;
+			queue: TInvocationList;
 	end;
 
 var
@@ -117,26 +110,32 @@ var
 function ProcessTimersForLoop: boolean;
 procedure InvalidateTimer(var timer: TTimer);
 
-implementation
+{$endif}
+
+{$ifdef IMPLEMENTATION}
 
 var
-	GlobalDispatchers: TPointerArray = nil;
+	MainThreadID: GLPT_Thread_ID;
+	GlobalDispatchers: TTimerDispatcherList = nil;
 	GlobalDispatchHandler: TTimerDispatchHandler = nil;
 	GlobalDispatchHandlerContext: Pointer = nil;
 	
-{=============================================}
-{@! ___PROCEDURAL___ } 
-{=============================================}
+//#########################################################
+// PROCEDURAL
+//#########################################################
+
+function GetTargetFrameRate: integer;
+begin
+	result := 60;
+end;
+
 function ProcessTimersForLoop: boolean;
 var
 	dispatcher: TTimerDispatcher;
 	i: integer;
 begin
-	for i := 0 to GlobalDispatchers.High do
-		begin
-			dispatcher := TTimerDispatcher(GlobalDispatchers.GetValue(i));
-			dispatcher.Process;
-		end;
+	for dispatcher in GlobalDispatchers do
+		dispatcher.Process;
 	result := true;
 end;
 
@@ -149,13 +148,13 @@ begin
 		end;
 end;
 
-{=============================================}
-{@! ___OPERATION QUEUE___ } 
-{=============================================}
+//#########################################################
+// OPERATION QUEUE
+//#########################################################
 
 procedure TOperationQueue.Add(op: TInvocation);
 begin
-	queue.AddValue(op);
+	queue.Add(op);
 end;
 
 function TOperationQueue.Fire: boolean;
@@ -163,13 +162,14 @@ var
 	op: TInvocation;
 	startTime: TimerInterval;
 begin
-	startTime := SystemTime;
+	startTime := GLPT_GetTime;
 	while queue.Count > 0 do
 		begin
-			queue.GetValue(0, op);
+			//queue.GetValue(0, op);
+			op := queue[0];
 			op.Invoke;
-			queue.RemoveIndex(0);
-			if SystemTime - startTime > limit then
+			queue.Delete(0);
+			if GLPT_GetTime - startTime > limit then
 				break;
 		end;
 	result := queue.Count > 0;
@@ -179,37 +179,48 @@ begin
 		finishedAction.Invoke;
 end;
 
+destructor TOperationQueue.Destroy;
+begin
+	FreeAndNil(finishedAction);
+	queue.Free;
+	inherited;
+end;
+
 constructor TOperationQueue.Create(_limit: TimerInterval; _finishedAction: TInvocation);
 begin
 	limit := _limit;
 	interval := 0.0;
-	if _finishedAction <> nil then
-		ManageObject(_finishedAction, finishedAction);
-	ManageObject(TArray, queue);
-	Initialize;
+	finishedAction := _finishedAction;
+	queue := TInvocationList.Create;
 end;
 
-{=============================================}
-{@! ___TIMER INVOCATIONS___ } 
-{=============================================}
-function TTimerInvocations.InvokeMethodAfterDelay(_interval: TimerInterval; _action: pointer; _repeats: boolean): TTimer;
+//#########################################################
+// TIMER INVOCATIONS
+//#########################################################
+
+function TTimerInvocations.InvokeAfterDelay(_interval: TimerInterval; method: TInvocationCallbackProcedure; params: TInvocation.TVariantParams = nil; _repeats: boolean = false): TTimer;
 begin
-	result := TTimer.InvokeMethod(_interval, _action, self, nil, _repeats);	
+	result := TTimer.Invoke(_interval, TInvocation.Create(method, params), _repeats);	
 end;
 
-function TTimerInvocations.InvokeMethodAfterDelay(_interval: TimerInterval; _action: pointer): TTimer;
+function TTimerInvocations.InvokeAfterDelay(_interval: TimerInterval; method: TInvocationCallbackClass; params: TInvocation.TVariantParams = nil; _repeats: boolean = false): TTimer;
 begin
-	result := TTimer.InvokeMethod(_interval, _action, self, nil, false);	
+	result := TTimer.Invoke(_interval, TInvocation.Create(method, params), _repeats);	
 end;
 
-function TTimerInvocations.InvokeMethodAfterDelay(_interval: TimerInterval; _action: string): TTimer;
+function TTimerInvocations.InvokeAfterDelay(_interval: TimerInterval; code: CodePointer; params: TInvocation.TVariantParams = nil; _repeats: boolean = false): TTimer;
+var
+	method: TInvocationCallbackClass;
 begin
-	result := TTimer.InvokeMethod(_interval, _action, self, nil, false);
+	TMethod(method).data := self;
+	TMethod(method).code := code;
+	result := TTimer.Invoke(_interval, TInvocation.Create(method, params), _repeats);	
 end;
 
-{=============================================}
-{@! ___TIMER DISPATCHER___ } 
-{=============================================}
+//#########################################################
+// TIMER DISPATCHER
+//#########################################################
+
 function TTimerDispatcher.TimerForTarget(target: TObject): TTimer;
 var
 	timer: TTimer;
@@ -222,12 +233,12 @@ end;
 
 procedure TTimerDispatcher.AddTimer(timer: TTimer);
 begin		
-	timers.AddValue(timer);	
+	timers.Add(timer);	
 end;
 
 procedure TTimerDispatcher.RemoveTimer(timer: TTimer);
 begin
-	timers.RemoveFirstValue(timer);
+	timers.Remove(timer);
 end;
 
 function TTimerDispatcher.Process: boolean;
@@ -267,40 +278,40 @@ begin
 			if timer.IsValid and (timer.intervalCount <= 0) then
 				begin
 					timer.Invalidate;
-					timer.Release;
+					timer.Free;
 				end
 			else if not timer.IsValid then
 				begin
 					// if the timer was invalidated in invoke release us here
-					timer.Release;
+					timer.Free;
 				end;	
 		end;
 	
 	result := timers.Count > 0;
 end;
 
-procedure TTimerDispatcher.Initialize;
+procedure TTimerDispatcher.AfterConstruction;
 begin
-	inherited Initialize;
+	inherited;
 	
-	timers := TArray.Create;
+	timers := TTimerList.Create(false);
 end;
 
-procedure TTimerDispatcher.Deallocate;
+destructor TTimerDispatcher.Destroy;
 begin
-	timers.Release;
+	timers.Free;
 	
-	inherited Deallocate;
+	inherited;
 end;
 
 class procedure TTimerDispatcher.Register(dispatcher: TTimerDispatcher);
 begin
-	GlobalDispatchers.AddValue(dispatcher);
+	GlobalDispatchers.Add(dispatcher);
 end;
 
-{=============================================}
-{@! ___TIMER___ } 
-{=============================================}	
+//#########################################################
+// TIMER
+//#########################################################
 
 function TTimer.GetInvocation: TInvocation;
 begin
@@ -315,12 +326,12 @@ end;
 procedure TTimer.SetStartDelay(newValue: TimerInterval);
 begin
 	startDelay := newValue;
-	startDelayIntervalCount := Round(startDelay * GetPreferredSystemFrameRate);
+	startDelayIntervalCount := Round(startDelay * GetTargetFrameRate);
 end;
 
 function TTimer.GetArguments: pointer;
 begin
-	result := invocation.GetArguments;
+	result := invocation.params;
 end;
 
 function TTimer.IsPaused: boolean;
@@ -355,7 +366,7 @@ end;
 
 procedure TTimer.Reset;
 begin
-	intervalCount := Round(interval * GetPreferredSystemFrameRate);
+	intervalCount := Round(interval * GetTargetFrameRate);
 end;
 
 procedure TTimer.Reset(nextInterval: TimerInterval);
@@ -375,13 +386,13 @@ end;
 
 class function TTimer.DefaultDispatcher: TTimerDispatcher;
 begin
-	result := TTimerDispatcher(GlobalDispatchers.GetValue(0)); 
+	result := TTimerDispatcher(GlobalDispatchers[0]); 
 end;
 
 procedure TTimer.Install(in_dispatcher: TTimerDispatcher = nil);
 begin	
-	Fatal(valid, 'Timer has already been installed.');
-	Fatal(GetCurrentThreadID <> GetMainThreadID, 'Timer access outside of main thread.');
+	Assert(not valid, 'Timer has already been installed.');
+	Assert(GLPT_ThreadID = MainThreadID, 'Timer access outside of main thread.');
 	
 	if in_dispatcher = nil then
 		dispatcher := DefaultDispatcher
@@ -391,9 +402,8 @@ begin
 	if name = '' then
 		name := ClassName;
 	valid := true;
-	intervalCount := Round(interval * GetPreferredSystemFrameRate);
+	intervalCount := Round(interval * 60{todo: why do we need this????});
 	dispatcher.AddTimer(self);
-	Retain;
 	
 	// the first timer was added so notify the dispatch handler
 	if GlobalDispatchHandlerContext <> nil then
@@ -403,26 +413,19 @@ end;
 
 procedure TTimer.Invalidate;
 begin
-	Fatal(GetCurrentThreadID <> GetMainThreadID, 'Timer access outside of main thread.');
+	Assert(GLPT_ThreadID = MainThreadID, 'Timer access outside of main thread.');
 	
 	//writeln('invalidate timer');
 	valid := false;
-	
-	// remove the timer from the dispatcher
 	dispatcher.RemoveTimer(self);
-	
-	// release the invocation now to avoid retain cycles
-	ReleaseObject(invocation);
-	
-	//writeln('timer invalidated ', getretaincount);
 end;
 
-procedure TTimer.Deallocate;
+destructor TTimer.Destroy;
 begin
-	//writeln('dealloc timer');
-	ReleaseObject(invocation);
+	//writeln('destroyed timer');
+	FreeAndNil(invocation);
 		
-	inherited Deallocate;
+	inherited;
 end;
 
 class procedure TTimer.RegisterDispatchHandler(handler: TTimerDispatchHandler; context: pointer);
@@ -436,7 +439,7 @@ var
 	aTimer: TTimer;
 	aDispatcher: TTimerDispatcher;
 begin
-	Fatal(GetCurrentThreadID <> GetMainThreadID, 'Timer access outside of main thread.');
+	Assert(GLPT_ThreadID = MainThreadID, 'Timer access outside of main thread.');
 	for pointer(aDispatcher) in GlobalDispatchers do
 		begin
 			aTimer := aDispatcher.timerForTarget(_target);
@@ -444,65 +447,27 @@ begin
 				if aTimer.IsValid then
 					begin
 						aTimer.Invalidate;
-						aTimer.Release;
+						aTimer.Free;
 					end;
 		end;
-end;
-
-constructor TTimer.Create(_interval: TimerInterval; _action: pointer; _target: TObject; _argument: pointer = nil; _repeats: boolean = false); overload;
-begin
-	interval := _interval;
-	repeats := _repeats;
-	invocation := TInvocation.Create(_action, _target);
-	if _argument = nil then
-		invocation.SetArguments(self)
-	else
-		invocation.SetArguments(_argument);
-	Initialize;
-end;
-
-constructor TTimer.Create(_interval: TimerInterval; _action: string; _target: TObject; _argument: pointer = nil; _repeats: boolean = false); overload;
-begin
-	interval := _interval;
-	repeats := _repeats;
-	invocation := TInvocation.Create(_action, _target);
-	if _argument = nil then
-		invocation.SetArguments(self)
-	else
-		invocation.SetArguments(_argument);
-	Initialize;
 end;
 
 constructor TTimer.Create(_interval: TimerInterval; _invocation: TInvocation; _repeats: boolean = false);
 begin
 	interval := _interval;
 	repeats := _repeats;
-	invocation := TInvocation(_invocation.Retain);
-	Initialize;
-end;
-
-class function TTimer.InvokeMethod(_interval: TimerInterval; _action: pointer; _target: TObject; _argument: pointer = nil; _repeats: boolean = false): TTimer;
-begin
-	result := TTimerClass(ClassType).Create(_interval, _action, _target, _argument, _repeats);
-	result.Install;
-	result.Release;
-end;
-
-class function TTimer.InvokeMethod(_interval: TimerInterval; _action: string; _target: TObject; _argument: pointer = nil; _repeats: boolean = false): TTimer;
-begin
-	result := TTimerClass(ClassType).Create(_interval, _action, _target, _argument, _repeats);
-	result.Install;
-	result.Release;
+	invocation := _invocation;
 end;
 
 class function TTimer.Invoke(_interval: TimerInterval; _invocation: TInvocation; _repeats: boolean = false): TTimer;
 begin
 	result := TTimerClass(ClassType).Create(_interval, _invocation, _repeats);
 	result.Install;
-	result.Release;
 end;
+{$endif}
 
-begin
-	GlobalDispatchers := TPointerArray.Create;
-	TTimerDispatcher.Register(TTimerDispatcher.Create);
-end.
+{$ifdef INITIALIZATION}
+MainThreadID := GLPT_ThreadID;
+GlobalDispatchers := TTimerDispatcherList.Create;
+TTimerDispatcher.Register(TTimerDispatcher.Create);
+{$endif}

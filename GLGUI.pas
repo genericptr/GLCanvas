@@ -4,7 +4,8 @@
 {$modeswitch nestedprocvars}
 {$modeswitch arrayoperators}
 {$modeswitch autoderef}
-{$include include/targetos}
+
+{$include include/targetos.inc}
 
 {$interfaces corba}
 {$implicitexceptions off}
@@ -29,40 +30,21 @@ uses
   GLES30,
   {$endif}
 	SysUtils, FGL,
-	GLPT, GLCanvas,
+	GLPT, GLCanvas, GLPT_Threads,
 	GeometryTypes, VectorMath;
 
 type
+	TVariantList = specialize TFPGList<Variant>;
 	TVariantMap = specialize TFPGMap<String, Variant>;
 	TObjectList = specialize TFPGObjectList<TObject>;
 	TPoint = TVec2i;
 
-	// TODO: implement a timer just for the GUI? UTimer.pas needs to be there and UInvocation.inc made
-	TTimer = class
-	end;
-
-type
-	TInvocation = class;
-	TInvocationParams = pointer;
-	TInvocationCallbackClass = procedure (params: TInvocationParams) of object;
-	TInvocationCallbackProcedure = procedure (params: TInvocationParams);
-	TInvocationCallbackNested = procedure (params: TInvocationParams) is nested;
-	TInvocation = class
-		callbackClass: TInvocationCallbackClass;
-		callbackProcedure: TInvocationCallbackProcedure;
-		callbackNested: TInvocationCallbackNested;
-		params: TInvocationParams;
-		procedure Invoke(withParams: TInvocationParams = nil);
-		constructor Create(callback: TInvocationCallbackProcedure; _params: TInvocationParams = nil); overload;
-		constructor Create(callback: TInvocationCallbackNested; _params: TInvocationParams = nil); overload;
-		constructor Create(callback: TInvocationCallbackClass; _params: TInvocationParams = nil); overload;
-	end;
-
 {$define INTERFACE}
+{$include include/Invocation.inc}
 {$include include/NotificationCenter.inc}
+{$include include/Timer.inc}
 {$include include/GUIStyles.inc}
 {$undef INTERFACE}
-
 
 type
 	TEvent = class
@@ -177,6 +159,8 @@ const
 type
 	TWindow = class;
 	TView = class;
+	TControl = class;
+
 	TViewList = specialize TFPGList<TView>;
 	TViewClass = class of TView;
 	
@@ -203,6 +187,8 @@ type
 			procedure SetHeight(newValue: TScalar);
 			procedure SetLocation(x, y: TScalar); overload;
 			procedure SetLocation(where: TPoint); overload;
+			procedure SetLeftEdge(offset: TScalar);
+			procedure SetTopEdge(offset: TScalar);
 			procedure SetRightEdge(offset: TScalar);
 			procedure SetBottomEdge(offset: TScalar);
 			procedure SetBackgroundColor(newValue: TColor);
@@ -225,18 +211,25 @@ type
 
 			procedure ChangeAutoresizingOptions(newValue: TAutoresizingOptions; add: boolean);
 
-			{ Methods }
-			procedure AddSubview(view: TView); virtual;
+			{ Managing Subviews }
+			procedure AddSubview(view: TView);
 			procedure InsertSubview(view: TView; index: integer);
 			procedure RemoveSubview(view: TView);
 			procedure RemoveSubviews;
 			procedure RemoveFromParent;			
 
+			{ Searching }
 			function FindParent(ofClass: TViewClass): TView;
 			function FindSubview(withTag: integer): TView;			
+			function FindValue(identifier: string): variant;
+			function FindControl(identifier: string): TControl;
+
+			{ Keyboard }
 			procedure SendKeyDown(event: TEvent);
 			function IsFocused(global: boolean = false): boolean;
 			procedure GiveFocus;
+
+			{ Methods }
 			function IsMember(viewClass: TViewClass): boolean;
 			destructor Destroy; override;
 
@@ -245,6 +238,7 @@ type
 			procedure NeedsLayoutSubviews;
 			procedure LayoutSubviews; virtual;
 
+			{ Visibility }
 			function IsVisible: boolean;
 			function IsHidden: boolean;
 			procedure SetVisible(newValue: boolean);
@@ -341,7 +335,6 @@ type
 			function GetResolution: TScalar;
 			procedure DisplayNeedsUpdate;
 			procedure PostFrameChangedNotification;
-			procedure FindSubviewDeep(withTag: integer; var ioView);
 			procedure ReliquishFocus;
 			procedure DrawInternal(parentOrigin: TVec2);
 			procedure LayoutRoot;
@@ -358,14 +351,17 @@ type
 		hover: TView;			
 	end; 
 
-	TLayoutTable = record
+	TLayoutTable = class
 		origin: TVec2;
 		rowHeight: integer;
 		totalHeight: integer;
-		class operator = (left: TLayoutTable; right: TLayoutTable): boolean;
+		views: TViewList;
+		function AddView(view: TView): TRect;
+		constructor Create;
+		destructor Destroy; override;
 	end;
 	PLayoutTable = ^TLayoutTable;
-	TLayoutTableList = specialize TFPGList<TLayoutTable>;
+	TLayoutTableList = specialize TFPGObjectList<TLayoutTable>;
 
 	IWindowDelegate = interface (IDelegate) ['IWindowDelegate']
 		procedure HandleWindowWillClose(window: TWindow);
@@ -409,11 +405,13 @@ type
 			function GetDelegate: TObject;
 			
 			{ Layout Tables }
-			procedure OpenTable(position: TVec2; rowHeight: integer);
-			procedure CloseTable;
+			procedure BeginLayout(position: TVec2; rowHeight: integer);
+			procedure EndLayout;
+			function LayoutViews: TViewList;
+			procedure AddRow(view: TView);
+			procedure AddColumn(view: TView);
 
 			{ Methods }
-			procedure AddSubview(view: TView); override;
 			procedure MakeKey; 
 			procedure MakeKeyAndOrderFront;
 			procedure Close;
@@ -515,10 +513,12 @@ type
 
 type
 	TControlState = (Off, On, Mixed);
+
 	TControlKeyEquivalent = record
 		keycode: GLPT_Keycode;
 		modifiers: TShiftState;
 	end;
+
 	TControl = class (TView)
 		public
 			{ Accessors }
@@ -527,20 +527,25 @@ type
 			procedure SetControlState(newValue: TControlState);
 			procedure SetAction(newValue: TInvocation);
 			procedure SetKeyEquivalent(keycode: GLPT_Keycode; modifiers: TShiftState = []);
+			procedure SetIdentifier(newValue: string);
 
+			function GetValue: variant;
 			function GetStringValue: string;
 			function GetFloatValue: single;
 			function GetDoubleValue: double;
 			function GetIntegerValue: integer;
 			function GetLongValue: longint;
-
 			function GetAction: TInvocation;
+
 			function GetControlState: TControlState;
 			function IsEnabled: boolean;
 
 			{ Methods }
+			procedure AddAction(newValue: TInvocation);
+			procedure InsertAction(index: integer; newValue: TInvocation);
 			procedure InvokeAction;
 			procedure SizeToFit; virtual;
+			destructor Destroy; override;
 
 		protected
 			procedure Initialize; override;
@@ -548,13 +553,18 @@ type
 			procedure HandleStateChanged; virtual;
 		private
 			m_value: variant;
-			//stringValue: string;
+			m_actions: TInvocationList;
 			enabled: boolean;
-			action: TInvocation;
 			controlFont: IFont;
 			state: TControlState;
 			keyEquivalent: TControlKeyEquivalent;
+			identifier: ansistring;
 
+			function GetActions: TInvocationList;
+			property Actions: TInvocationList read GetActions;
+
+			procedure SetIdentifierFromTitle(newValue: string);
+			procedure SetValue(newValue: variant; alwaysNotify: boolean = false);
 			procedure SetStringValue(newValue: string; alwaysNotify: boolean); overload;
 	end;
 
@@ -744,6 +754,7 @@ type
 			procedure SetTitle(newValue: string);
 			procedure SetTitleFont(newValue: IFont);
 			procedure SetShowValueWhileDragging(newValue: boolean);
+			procedure SetLiveUpdate(newValue: boolean);
 
 			function GetValue: TSliderValue;
 			function GetMinValue: TSliderValue;
@@ -764,6 +775,7 @@ type
 			procedure HandleInputStarted(event: TEvent); override;
 			procedure HandleInputDragged(event: TEvent); override;
 			procedure HandleInputEnded(event: TEvent); override;
+			procedure HandleValueChanged; override;
 
 			function GetTrackSize: TVec2;
 			function GetTrackFrame: TRect; virtual;
@@ -1406,7 +1418,7 @@ uses
 
 function MainPlatformWindow: pGLPTwindow; inline;
 begin
-	result := GLCanvasState.window;
+	result := CanvasState.window;
 end;
 
 type
@@ -1438,7 +1450,9 @@ var
 	CurrentEvent: TEvent = nil;
 
 {$define IMPLEMENTATION}
+{$include include/Invocation.inc}
 {$include include/NotificationCenter.inc}
+{$include include/Timer.inc}
 {$include include/GUIStyles.inc}
 {$undef IMPLEMENTATION}
 
@@ -1610,7 +1624,7 @@ end;
 
 function TEvent.Location(system: TObject = nil): TPoint;
 begin
-	result := V2(msg^.params.mouse.x, msg^.params.mouse.y);
+	result := CanvasMousePosition(msg);
 	if system <> nil then
 		result := TView(system).ConvertPointFrom(result, RootWindow);
 end;
@@ -1631,44 +1645,6 @@ constructor TEvent.Create(raw: pGLPT_MessageRec);
 begin
 	msg := raw;
 end;
-
-constructor TInvocation.Create(callback: TInvocationCallbackClass; _params: TInvocationParams = nil);
-begin
-	callbackClass := callback;
-	params := _params;
-end;
-
-constructor TInvocation.Create(callback: TInvocationCallbackProcedure; _params: TInvocationParams = nil);
-begin
-	callbackProcedure := callback;
-	params := _params;
-end;
-
-constructor TInvocation.Create(callback: TInvocationCallbackNested; _params: TInvocationParams = nil);
-begin
-	callbackNested := callback;
-	params := _params;
-end;
-
-procedure TInvocation.Invoke(withParams: TInvocationParams = nil);
-var
-	newParams: TInvocationParams;
-begin
-	if assigned(withParams) then
-		newParams := withParams
-	else
-		newParams := params;
-
-	if callbackClass <> nil then
-		callbackClass(newParams)
-	else if callbackProcedure <> nil then
-		callbackProcedure(newParams)
-	else if callbackNested <> nil then
-		callbackNested(newParams)
-	else
-		halt(-1);
-end;
-
 
 //#########################################################
 // VIEW
@@ -1920,30 +1896,70 @@ begin
 	result := nil;
 end;
 
-function TView.FindSubview(withTag: integer): TView;
+function TView.FindValue(identifier: string): variant;
+var
+	found: TControl = nil;
 begin
-	result := nil;
-	FindSubviewDeep(withTag, result);
+	found := FindControl(identifier);
+	if found <> nil then
+		result := found.GetValue
+	else
+		result := false;
 end;
 
-procedure TView.FindSubviewDeep(withTag: integer; var ioView);
-var
-	child: TView;
-	view: TView absolute ioView;
-begin
-	if subviews <> nil then
-		for child in subviews do
-			if child.GetTag = withTag then
-				begin
-					view := child;
-					break;
-				end
-			else if child.subviews.Count > 0 then
-				begin
-					child.FindSubviewDeep(withTag, ioView);
-					if view <> nil then
+function TView.FindControl(identifier: string): TControl;
+
+	procedure FindControlInternal(root: TView; var ioView);
+	var
+		child: TView;
+		view: TView absolute ioView;
+	begin
+		if root.subviews <> nil then
+			for child in root.subviews do
+				if (child is TControl) and 
+				   (TControl(child).identifier = identifier) then
+					begin
+						view := child;
 						break;
-				end;
+					end
+				else if child.subviews.Count > 0 then
+					begin
+						FindControlInternal(child, ioView);
+						if view <> nil then
+							break;
+					end;
+	end;
+
+begin
+	result := nil;
+	FindControlInternal(self, result);
+end;
+
+function TView.FindSubview(withTag: integer): TView;
+
+	procedure FindSubviewInternal(root: TView; var ioView);
+	var
+		child: TView;
+		view: TView absolute ioView;
+	begin
+		if root.subviews <> nil then
+			for child in root.subviews do
+				if child.GetTag = withTag then
+					begin
+						view := child;
+						break;
+					end
+				else if child.subviews.Count > 0 then
+					begin
+						FindSubviewInternal(child, ioView);
+						if view <> nil then
+							break;
+					end;
+	end;
+
+begin
+	result := nil;
+	FindSubviewInternal(self, result);
 end;
 
 procedure TView.ChangeAutoresizingOptions(newValue: TAutoresizingOptions; add: boolean);
@@ -2092,6 +2108,24 @@ begin
 			newFrame.size := m_frame.size;
 			SetFrame(newFrame);
 		end;
+end;
+
+procedure TView.SetLeftEdge(offset: TScalar);
+var
+	newLocation: TPoint;
+begin
+	newLocation := GetLocation;
+	newLocation.x := trunc(offset);
+	SetLocation(newLocation);
+end;
+
+procedure TView.SetTopEdge(offset: TScalar);
+var
+	newLocation: TPoint;
+begin
+	newLocation := GetLocation;
+	newLocation.y := trunc(offset);
+	SetLocation(newLocation);
 end;
 
 procedure TView.SetRightEdge(offset: TScalar);
@@ -2731,43 +2765,63 @@ begin
 	Close;
 end;
 
-class operator TLayoutTable.= (left: TLayoutTable; right: TLayoutTable): boolean;
+function TLayoutTable.AddView(view: TView): TRect;
+var
+	newFrame: TRect;
 begin
-	result := @left = @right;
+	newFrame := view.GetFrame;
+	newFrame.origin := V2(origin.x, origin.y + totalHeight);
+	views.Add(view);
+	totalHeight += rowHeight;
+	result := newFrame;
 end;
 
-procedure TWindow.OpenTable(position: TVec2; rowHeight: integer);
+constructor TLayoutTable.Create; 
+begin
+	views := TViewList.Create;
+end;
+
+destructor TLayoutTable.Destroy; 
+begin
+	FreeAndNil(views);
+  inherited;
+end;
+
+procedure TWindow.BeginLayout(position: TVec2; rowHeight: integer);
 var
 	table: TLayoutTable;
 begin
 	if layoutTableStack = nil then
 		layoutTableStack := TLayoutTableList.Create;
 
+	table := TLayoutTable.Create;
 	table.origin := position;
 	table.rowHeight := rowHeight;
-	table.totalHeight := 0;
 	layoutTableStack.Add(table);
 end;
 
-procedure TWindow.AddSubview(view: TView);
-var
-	table: PLayoutTable;
-	newFrame: TRect;
+function TWindow.LayoutViews: TViewList;
 begin
-	if (layoutTableStack <> nil) and (layoutTableStack.Count > 0) then
-		begin
-			table := TFPSList(layoutTableStack).Last;
-			newFrame := view.GetFrame;
-			newFrame.origin := V2(table.origin.x, table.origin.y + table.totalHeight);
-			view.SetFrame(newFrame);
-			inherited AddSubview(view);
-			table.totalHeight += table.rowHeight;
-		end
-	else
-		inherited AddSubview(view);
+	Assert((layoutTableStack <> nil) and (layoutTableStack.Count > 0), 'empty layout stack');
+	result := layoutTableStack.Last.views;
 end;
 
-procedure TWindow.CloseTable;
+procedure TWindow.AddRow(view: TView);
+var
+	newFrame: TRect;
+begin
+	Assert((layoutTableStack <> nil) and (layoutTableStack.Count > 0), 'empty layout stack');
+	newFrame := layoutTableStack.Last.AddView(view);
+	view.SetFrame(newFrame);
+	AddSubview(view);
+end;
+
+procedure TWindow.AddColumn(view: TView);
+begin
+	Assert((layoutTableStack <> nil) and (layoutTableStack.Count > 0), 'empty layout stack');
+end;
+
+procedure TWindow.EndLayout;
 begin
 	Assert(layoutTableStack <> nil, 'no layout table stack');
 	Assert(layoutTableStack.Count > 0, 'trying to close empty layout table stack');
@@ -3365,35 +3419,35 @@ begin
 	margin := 8;
 
 	case preferredEdge of
-		TRectEdgeMinX:
+		TRectEdge.MinX:
 			begin
 				newFrame := GetFrame;
 				newFrame.origin.x := rect.origin.x - (self.GetWidth + margin);
 				newFrame.origin.y := rect.origin.y + (rect.height / 2 - self.GetHeight / 2);
 				SetFrame(newFrame);
 			end;
-		TRectEdgeMaxX:
+		TRectEdge.MaxX:
 			begin
 				newFrame := GetFrame;
 				newFrame.origin.x := rect.MaxX + margin;
 				newFrame.origin.y := rect.origin.y + (rect.height / 2 - self.GetHeight / 2);
 				SetFrame(newFrame);
 			end;
-		TRectEdgeMinY:
+		TRectEdge.MinY:
 			begin
 				newFrame := GetFrame;
 				newFrame.origin.x := rect.origin.x + (rect.width / 2 - self.GetWidth / 2);
 				newFrame.origin.y := rect.origin.y - (self.GetHeight + margin);
 				SetFrame(newFrame);
 			end;
-		TRectEdgeMaxY:
+		TRectEdge.MaxY:
 			begin
 				newFrame := GetFrame;
 				newFrame.origin.x := rect.origin.x + (rect.width / 2 - self.GetWidth / 2);
 				newFrame.origin.y := rect.maxY + margin;
 				SetFrame(newFrame);
 			end;
-		TRectEdgeAny:
+		TRectEdge.Any:
 			begin
 				SetLocation(rect.origin);
 			end;
@@ -3959,7 +4013,7 @@ end;
 procedure TMenu.Popup(where: TPoint);
 begin
 	LayoutSubviews;
-	Show(RectMake(where, 0, 0), nil, TRectEdgeAny);
+	Show(RectMake(where, 0, 0), nil, TRectEdge.Any);
 	UpdatePosition;
 	popupOrigin := TWindow.MouseLocation;
 end;
@@ -3968,7 +4022,7 @@ procedure TMenu.Popup(parentView: TView);
 begin
 	Assert(parentView <> nil, 'parent view must not be nil');
 	LayoutSubviews;
-	Show(parentView.GetBounds, parentView, TRectEdgeMaxY);
+	Show(parentView.GetBounds, parentView, TRectEdge.MaxY);
 	UpdatePosition;
 	popupOrigin := TWindow.MouseLocation;
 end;
@@ -4423,7 +4477,7 @@ end;
 procedure TScroller.Initialize;
 begin
 	inherited;
-	range := TRangeInt.Make(0, 100);
+	range := TRangeInt.Create(0, 100);
 end;
 
 procedure TScroller.HandleWillAddToParent(sprite: TView);
@@ -4491,7 +4545,7 @@ end;
 
 constructor TSlider.Create(min, max: TSliderValue; _frame: TRect);
 begin
-	range := TRangeInt.Make(min, max);
+	range := TRangeInt.Create(min, max);
 	SetFrame(_frame);
 	Initialize;
 end;
@@ -4517,6 +4571,11 @@ begin
 	showValueWhileDragging := newValue;
 end;
 
+procedure TSlider.SetLiveUpdate(newValue: boolean);
+begin
+	liveUpdate := newValue;
+end;
+
 procedure TSlider.SetTitleFont(newValue: IFont);
 begin
 	labelFont := newValue;
@@ -4537,6 +4596,7 @@ begin
 
 	textView.SetStringValue(newValue);
 	NeedsLayoutSubviews;
+	SetIdentifierFromTitle(newValue);
 end;
 
 function TSlider.GetValue: TSliderValue;
@@ -4697,6 +4757,13 @@ begin
 		end;
 end;
 
+procedure TSlider.HandleValueChanged; 
+begin
+	inherited;
+
+	InvokeAction;
+end;
+
 procedure TSlider.HandleInputStarted(event: TEvent);
 var
 	where: TPoint;
@@ -4779,7 +4846,6 @@ begin
 			if not liveUpdate then
 				HandleValueChanged;
 
-			InvokeAction;
 			dragging := false;
 		end;
 end;
@@ -4790,7 +4856,7 @@ begin
 
 	tickMarks := 0;
 	interval := 1;
-	liveUpdate := true;
+	liveUpdate := false;
 end;
 
 //#########################################################
@@ -6157,7 +6223,7 @@ begin
 		begin
 			if event.KeyCode = GLPT_KEY_RETURN then
 				begin
-					if assigned(action) then
+					if assigned(actions) then
 						InvokeAction
 					else
 						SetStringValue(GetStringValue + LineEnding);
@@ -6342,7 +6408,8 @@ end;
 
 procedure TButton.SetTitle(newValue: string);
 begin
-	SetStringValue(newValue);
+	textView.SetStringValue(newValue);
+	SetIdentifierFromTitle(newValue);
 end;
 
 procedure TButton.SetFont(newValue: IFont);
@@ -6422,9 +6489,12 @@ begin
 end;
 
 procedure TButton.HandleAction;
+var
+	action: TInvocation;
 begin
-	if action <> nil then
-		action.Invoke(self);
+	if assigned(actions) then
+		for action in actions do
+			action.Invoke(self);
 end;
 
 procedure TButton.HandleInputEnded(event: TEvent);
@@ -6436,8 +6506,8 @@ begin
 			//	TSound.Play(sound);
 			//if action <> nil then
 			//	TTimer.Invoke(0.0, action);
-			HandleAction;
 			HandlePressed;
+			HandleAction;
 		end;
 	
 	DepressButton;		
@@ -6484,7 +6554,7 @@ end;
 
 function TButton.GetTitle: string;
 begin
-	result := GetStringValue;
+	result := textView.GetStringValue;
 end;
 
 function TButton.GetTitleFrame: TRect;
@@ -6598,17 +6668,14 @@ end;
 procedure TCheckBox.Initialize;
 begin
 	inherited;
-
 	enableContentClipping := false;
 	SetResizeByWidth(true);
+	SetChecked(false);
 end;
 
 procedure TCheckBox.HandlePressed;
 begin
-	if state = TControlState.Off then
-		state := TControlState.On
-	else
-		state := TControlState.Off;
+	SetChecked(state = TControlState.Off);
 end;
 
 procedure TCheckBox.SetChecked(newValue: boolean);
@@ -6617,6 +6684,7 @@ begin
 		state := TControlState.On
 	else
 		state := TControlState.Off;
+	SetValue(IsChecked);
 end;
 
 function TCheckBox.IsChecked: boolean; 
@@ -6912,7 +6980,7 @@ end;
 
 function TPopupButton.InsertItem(index: integer; title: string): TMenuItem;
 begin
-	result := MenuItemClass.Create(title, action);
+	result := MenuItemClass.Create(title, GetAction);
 	menu.InsertItem(index, result);
 	NeedsLayoutSubviews;
 end;
@@ -7027,9 +7095,9 @@ begin
 	result := state;
 end;
 
-function TControl.GetAction: TInvocation;
+function TControl.GetValue: variant;
 begin
-	result := action;
+	result := m_value;
 end;
 
 function TControl.GetStringValue: string;
@@ -7057,6 +7125,14 @@ begin
 	result := m_value;
 end;
 
+function TControl.GetAction: TInvocation;
+begin
+	if assigned(actions) then
+		result := actions.Last
+	else
+		result := nil;
+end;
+
 function TControl.IsEnabled: boolean;
 begin
 	result := enabled;
@@ -7067,15 +7143,31 @@ begin
 	enabled := newValue;
 end;
 
-procedure TControl.SetStringValue(newValue: string; alwaysNotify: boolean);
+{ Transforms title string to camel_case as the
+  default identifier if the control has explicity defined on. }
+procedure TControl.SetIdentifierFromTitle(newValue: string);
+begin
+	if identifier <> '' then
+		exit;
+	newValue := Lowercase(newValue);
+	newValue := StringReplace(newValue, ' ', '_', [rfReplaceAll]);
+	SetIdentifier(newValue);
+end;
+
+procedure TControl.SetValue(newValue: variant; alwaysNotify: boolean);
 var
 	changed: boolean;
 begin
-	changed := GetStringValue <> newValue;
+	changed := GetValue <> newValue;
 	m_value := newValue;
 	if changed or alwaysNotify then
 		HandleValueChanged;
 	NeedsLayoutSubviews;
+end;
+
+procedure TControl.SetStringValue(newValue: string; alwaysNotify: boolean);
+begin
+	SetValue(newValue, alwaysNotify);
 end;
 
 procedure TControl.SetStringValue(newValue: string);
@@ -7096,27 +7188,57 @@ begin
 	keyEquivalent.modifiers := modifiers;
 end;
 
+procedure TControl.SetIdentifier(newValue: string);
+begin
+	identifier := newValue;
+end;
+
+procedure TControl.AddAction(newValue: TInvocation);
+begin
+	actions.Add(newValue);
+end;
+
+procedure TControl.InsertAction(index: integer; newValue: TInvocation);
+begin
+	actions.Insert(index, newValue);
+end;
+
 procedure TControl.SetAction(newValue: TInvocation);
 begin
-	if action <> nil then
-		action.Free;
-	action := newValue;
+	actions.Clear;
+	AddAction(newValue);
+end;
+
+function TControl.GetActions: TInvocationList;
+begin
+	if m_actions = nil then
+		m_actions := TInvocationList.Create(true);
+	result := m_actions;
 end;
 
 procedure TControl.InvokeAction;
+var
+	action: TInvocation;
 begin
-	if action <> nil then
-		begin
-			if action.params = nil then
-				action.Invoke(self)
-			else
-				action.Invoke;
-		end;
+	if m_actions <> nil then
+		for action in actions do
+			begin
+				if action.params = nil then
+					action.Invoke(self)
+				else
+					action.Invoke;
+			end;
 end;
 
 procedure TControl.SizeToFit;
 begin
 	LayoutSubviews;
+end;
+
+destructor TControl.Destroy;
+begin
+	FreeAndNil(m_actions);
+	inherited;
 end;
 
 procedure TControl.HandleStateChanged;
@@ -7131,6 +7253,8 @@ procedure TControl.Initialize;
 begin
 	inherited Initialize;
 	
+	m_value := false;
+
 	SetEnabled(true);
 	SetControlState(TControlState.Off);
 end;
@@ -7263,5 +7387,6 @@ begin
 
 	{$define INITIALIZATION}
 	{$include include/NotificationCenter.inc}
+	{$include include/Timer.inc}
 	{$undef INITIALIZATION}
 end.

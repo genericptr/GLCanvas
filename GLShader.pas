@@ -2,7 +2,7 @@
 {$modeswitch advancedrecords}
 {$implicitexceptions off}
 
-{$include include/targetos}
+{$include include/targetos.inc}
 
 unit GLShader;
 interface
@@ -28,10 +28,14 @@ type
       function IsActive: boolean;
       function GetUniformLocation(name: pchar): integer;
       procedure SetUniformMat4(name: pchar; constref mat: TMat4);
-      procedure SetUniformInts(name: pchar; count: integer; ints: PInteger);
+      procedure SetUniformInts(name: pchar; count: integer; ints: PInteger); overload;
+      procedure SetUniformInts(name: pchar; ints: array of GLint); overload;
       procedure SetUniformInt(name: pchar; value: integer);
       procedure SetUniformFloat(name: pchar; value: float);
-      
+      procedure SetUniformVec2(name: pchar; value: TVec2);
+      procedure SetUniformVec3(name: pchar; value: TVec3);
+      procedure SetUniformVec4(name: pchar; value: TVec4);
+
       destructor Destroy; override;
   end;
   TShaderObjectList = specialize TFPGObjectList<TShader>;
@@ -140,6 +144,27 @@ begin
   GLAssert('glUniform1f '+name);
 end;
 
+procedure TShader.SetUniformVec2(name: pchar; value: TVec2);
+begin
+  Assert(IsActive, 'shader must be active before setting uniforms.');
+  glUniform2f(GetUniformLocation(name), value.x, value.y);
+  GLAssert('glUniform2f '+name);
+end;
+
+procedure TShader.SetUniformVec3(name: pchar; value: TVec3);
+begin
+  Assert(IsActive, 'shader must be active before setting uniforms.');
+  glUniform3f(GetUniformLocation(name), value.x, value.y, value.z);
+  GLAssert('glUniform3f '+name);
+end;
+
+procedure TShader.SetUniformVec4(name: pchar; value: TVec4);
+begin
+  Assert(IsActive, 'shader must be active before setting uniforms.');
+  glUniform4f(GetUniformLocation(name), value.x, value.y, value.z, value.w);
+  GLAssert('glUniform4f '+name);
+end;
+
 procedure TShader.SetUniformInt(name: pchar; value: integer);
 begin
   Assert(IsActive, 'shader must be active before setting uniforms.');
@@ -151,6 +176,13 @@ procedure TShader.SetUniformInts(name: pchar; count: integer; ints: PInteger);
 begin
   Assert(IsActive, 'shader must be active before setting uniforms.');
   glUniform1iv(GetUniformLocation(name), count, ints);
+  GLAssert('glUniform1iv '+name);
+end;
+
+procedure TShader.SetUniformInts(name: pchar; ints: array of GLint);
+begin
+  Assert(IsActive, 'shader must be active before setting uniforms.');
+  glUniform1iv(GetUniformLocation(name), length(ints), ints);
   GLAssert('glUniform1iv '+name);
 end;
 

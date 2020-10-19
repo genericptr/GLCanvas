@@ -1,7 +1,7 @@
 {$mode objfpc}
 {$implicitexceptions off}
 
-{$include include/targetos}
+{$include include/targetos.inc}
 
 unit GLFrameBuffer;
 interface
@@ -16,12 +16,19 @@ uses
 
 type
   TFrameBuffer = class
+    private
+      m_texture: GLuint;
+      m_width: integer;
+      m_height: integer;
+      m_pixelFormat: GLenum;
+      m_pixelType: GLenum;
     public
-      texture: GLuint;
-      width, height: integer;
-    public
-      constructor Create(_width, _height: integer; pixelFormat: GLenum = GL_RGB); overload;
+
+      { Constructors }
+      constructor Create(width, height: integer; pixelFormat: GLenum = GL_RGB); overload;
       constructor Create(size: TVec2i; pixelFormat: GLenum = GL_RGB); overload;
+
+      { Methods }
       function IsActive: boolean;
       procedure Push; virtual;
       procedure Pop; virtual;
@@ -29,10 +36,17 @@ type
       procedure Unbind;
       procedure Resize(newWidth, newHeight: integer); virtual;
       destructor Destroy; override;
+
+      { Properties }
+      property Width: integer read m_width;
+      property Height: integer read m_height;
+      property Texture: GLuint read m_texture;
+      property PixelFormat: GLenum read m_pixelFormat;
+      property PixelType: GLenum read m_pixelType;
     private
       buffer: GLuint;
-      pixelFormat: GLenum;
       previousViewPort: array[0..3] of GLint;
+      procedure LoadTexture2D(data: pointer = nil);
   end;  
   TFrameBufferList = specialize TFPGList<TFrameBuffer>;
 
@@ -43,21 +57,13 @@ implementation
 uses
   GLUtils;
 
-procedure LoadTexture2D(width, height: GLsizei; format: GLenum; data: pointer = nil);
+procedure TFrameBuffer.LoadTexture2D(data: pointer = nil);
 begin
-  case format of
-    GL_RGB:
-      glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, data);
-    GL_RGBA:
-      glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
-  end;
-
+  glTexImage2D(GL_TEXTURE_2D, 0, PixelFormat, width, height, 0, PixelFormat, PixelType, data);
   GLAssert('glTexImage2D failed');
 
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-  //glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-  //glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 end;
@@ -70,8 +76,8 @@ begin
   if (width = newWidth) and (height = newHeight) then
     exit;
 
-  width := newWidth;
-  height := newHeight;
+  m_width := newWidth;
+  m_height := newHeight;
 
   // TODO: disabled for now
   Assert(texture = 0, 'frame buffer already allocated.');
@@ -84,10 +90,10 @@ begin
   //    exit;
   //  end;
 
-  glGenTextures(1, @texture);
+  glGenTextures(1, @m_texture);
   glGetIntegerv(GL_TEXTURE_BINDING_2D, @prevTexture);
   glBindTexture(GL_TEXTURE_2D, texture);
-  LoadTexture2D(width, height, pixelFormat);
+  LoadTexture2D(nil);
 
   glGetIntegerv(GL_FRAMEBUFFER_BINDING, @prevFBO);
   glBindFramebuffer(GL_FRAMEBUFFER, buffer);
@@ -148,14 +154,15 @@ end;
 destructor TFrameBuffer.Destroy;
 begin
   glDeleteFramebuffers(1, @buffer);
-  glDeleteTextures(1, @texture);
+  glDeleteTextures(1, @m_texture);
 end;
 
-constructor TFrameBuffer.Create(_width, _height: integer; pixelFormat: GLenum = GL_RGB);
+constructor TFrameBuffer.Create(width, height: integer; pixelFormat: GLenum = GL_RGB);
 begin
-  self.pixelFormat := pixelFormat;
+  self.m_pixelFormat := pixelFormat;
+  self.m_pixelType := GL_UNSIGNED_BYTE;
   glGenFramebuffers(1, @buffer);
-  Resize(_width, _height);
+  Resize(width, height);
 end;  
 
 constructor TFrameBuffer.Create(size: TVec2i; pixelFormat: GLenum = GL_RGB);

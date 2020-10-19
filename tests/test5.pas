@@ -1,7 +1,7 @@
 {$mode objfpc}
 {$modeswitch advancedrecords}
 {$modeswitch autoderef}
-{$include include/targetos}
+{$include include/targetos.inc}
 
 program Test5;
 uses

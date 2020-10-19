@@ -1,3 +1,4 @@
+
 var
     DefaultVertexShader: pchar = 
                                 {$ifdef API_OPENGL}

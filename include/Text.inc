@@ -1,10 +1,12 @@
 
 {$ifdef INTERFACE}
 
+{$scopedenums on}
 type
-	TTextAlignment = (kAlignmentLeft, 
-										kAlignmentCenter
+	TTextAlignment = (Left, 
+										Center
 										);
+{$scopedenums off}
 
 type
 	TFontRenderFrame = record
@@ -181,22 +183,22 @@ end;
 
 function DrawText(text: ansistring; textAlignment: TTextAlignment; bounds: TRect; color: TColor): TVec2;
 begin
-	DrawText(GLCanvasState.activeFont, text, textAlignment, bounds, color);
+	DrawText(CanvasState.activeFont, text, textAlignment, bounds, color);
 end;
 
 function DrawText(text: ansistring; textAlignment: TTextAlignment; bounds: TRect): TVec2;
 begin
-	DrawText(GLCanvasState.activeFont, text, textAlignment, bounds, 1);	
+	DrawText(CanvasState.activeFont, text, textAlignment, bounds, 1);	
 end;
 
 procedure DrawText(text: ansistring; where: TVec2; color: TColor; scale: single = 1.0);
 begin
-	DrawText(GLCanvasState.activeFont, text, where, color, scale);
+	DrawText(CanvasState.activeFont, text, where, color, scale);
 end;
 
 procedure DrawText(text: ansistring; where: TVec2; scale: single = 1.0);
 begin
-	DrawText(GLCanvasState.activeFont, text, where, GLCanvasState.activeFont.PreferredTextColor, scale);
+	DrawText(CanvasState.activeFont, text, where, CanvasState.activeFont.PreferredTextColor, scale);
 end;
 
 function DrawText(font: IFont; text: ansistring; textAlignment: TTextAlignment; bounds: TRect; color: TColor): TVec2;
@@ -215,7 +217,7 @@ begin
 	for line in lines do
 		begin
 			case textAlignment of
-				kAlignmentCenter:				
+				TTextAlignment.Center:				
 					where.x := bounds.MidX - (MeasureText(font, line, maxInt).width / 2);
 				otherwise
 					;
@@ -230,31 +232,45 @@ begin
 	result := DrawText(font, text, textAlignment, bounds, 1);
 end;
 
-procedure DrawText(font: IFont; text: ansistring; where: TVec2; color: TColor; scale: single = 1.0);
+procedure DrawText(font: IFont; text: ansistring; where: TVec2; color: TColor; scale: single = 1.0; textAlignment: TTextAlignment = TTextAlignment.Left);
 var
 	c: char;
 	renderFrame: TFontRenderFrame;
-	newOrigin: TVec2;
-	origin: TVec2;
+	newOrigin,
+	origin,
+	size: TVec2;
 begin
 	Assert(font <> nil, 'font must not be nil');
 
 	if text = '' then
 		exit;
-		
-	origin := where / scale;
+	
+	case textAlignment of
+		TTextAlignment.Left:
+			origin := where / scale;
+		TTextAlignment.Center:
+			begin
+				origin := where / scale;
+				size := MeasureText(font, text);
+				origin.x -= size.width / 2; 
+			end;
+	end;	
 
 	for c in text do
 		begin
 			if not font.HasGlyph(c) then
 				begin
-					if c = #32 then
-						origin.x += font.SpaceWidth
-					else if c = #9 then
-						origin.x += font.SpaceWidth * font.TabWidth
-					else
-						origin.x += font.SpaceWidth;
-
+					case c of
+						#32: origin.x += font.SpaceWidth; 								// space
+						#9: origin.x += font.SpaceWidth * font.TabWidth;  // tab
+						#10, #12, #13:																		// EOL
+							begin
+								origin.y += font.LineHeight;
+								origin.x := where.x / scale;
+							end
+						otherwise
+							origin.x += font.SpaceWidth;
+					end;
 					continue;
 				end;
 
@@ -265,7 +281,7 @@ begin
 			DrawTexture(font, RectMake(newOrigin, renderFrame.faceSize) * scale, renderFrame.textureFrame, color);
 			//FillRect(RectMake(newOrigin, renderFrame.faceSize) * scale, RGBA(1, 0, 0, 0.2));
 
-			origin.x += {renderFrame.faceSize.width +} renderFrame.advance;
+			origin.x += renderFrame.advance;
 		end;
 end;
 

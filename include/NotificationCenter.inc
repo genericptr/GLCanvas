@@ -26,7 +26,7 @@ type
 		public
 			notification: string;
 			property Target: TObject read GetTarget;
-			property Obj: TInvocationParams read params;
+			property Obj: TInvocationParams read m_params;
 			constructor Create(callback: TNotificationCallback; _notification: string; _object: pointer);
 	end;
 	TNotificationHandlerList = specialize TFPGList<TNotificationHandler>;
@@ -89,7 +89,7 @@ constructor TNotificationHandler.Create(callback: TNotificationCallback; _notifi
 begin
 	callbackClass := TInvocationCallbackClass(callback);
 	notification := _notification;
-	params := _object;
+	m_params := _object;
 end;
 
 class function TNotification.Notification(name: string; _objct: pointer; userInfo: variant): TNotification;

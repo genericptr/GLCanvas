@@ -3,6 +3,9 @@
 
 function GetMouseLocation: TVec2i;
 function IsMouseDown: boolean;
+function IsLeftMouseDown: boolean;
+function IsRightMouseDown: boolean;
+function IsMouseOffscreen: boolean;
 function IsCommandKeyDown: boolean;
 function IsShiftKeyDown: boolean;
 function IsOptionKeyDown: boolean;
@@ -47,6 +50,7 @@ type
       rightMouseDown: boolean;
       mouseLocation: TVec2i;
       mouseDownLocation: TVec2i;
+      mouseOffscreen: boolean;
     public
       actions: TKeyCodeMap;
     public
@@ -59,6 +63,7 @@ var
 constructor TInputManager.Create;
 begin
   actions := TKeyCodeMap.Create;
+  mouseOffscreen := true;
 end;
 
 { Actions }
@@ -92,7 +97,22 @@ end;
 
 function IsMouseDown: boolean;
 begin
-  result := InputManager.leftMouseDown or InputManager.leftMouseDown;
+  result := InputManager.leftMouseDown or InputManager.rightMouseDown;
+end;
+
+function IsLeftMouseDown: boolean;
+begin
+  result := InputManager.leftMouseDown;
+end;
+
+function IsRightMouseDown: boolean;
+begin
+  result := InputManager.rightMouseDown;
+end;
+
+function IsMouseOffscreen: boolean;
+begin
+  result := InputManager.mouseOffscreen;
 end;
 
 function IsCommandKeyDown: boolean;
@@ -133,6 +153,18 @@ begin
         InputManager.rightMouseDown := false;
         InputManager.mouseDownLocation := 0;
       end;
+    GLPT_MESSAGE_MOUSEEXIT:
+      InputManager.mouseOffscreen := true;
+    GLPT_MESSAGE_MOUSEENTER:
+      begin
+        InputManager.mouseOffscreen := false;
+        InputManager.mouseLocation := CanvasMousePosition(event);;
+        InputManager.shiftState := event^.params.mouse.shiftstate;
+      end;
+    GLPT_MESSAGE_SCROLL:
+      begin
+        InputManager.mouseLocation := CanvasMousePosition(event);
+      end;
     GLPT_MESSAGE_MOUSEDOWN:
       begin
         InputManager.mouseDownLocation := InputManager.mouseLocation;
@@ -142,7 +174,8 @@ begin
       end;
     GLPT_MESSAGE_MOUSEMOVE:
       begin
-        InputManager.mouseLocation := V2i(event^.params.mouse.x, event^.params.mouse.y);
+        //InputManager.mouseOffscreen := false;
+        InputManager.mouseLocation := CanvasMousePosition(event);
       end;
     GLPT_MESSAGE_KEYRELEASE:
       begin
