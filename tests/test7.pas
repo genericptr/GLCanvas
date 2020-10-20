@@ -1,13 +1,17 @@
+{
+    Copyright (c) 2019 by Ryan Joseph
+
+    GLCanvas Test #7
+    
+    Tests custom shaders
+}
 {$mode objfpc}
 {$assertions on}
 
 program Test7;
 uses
-  // rtl
   CThreads, VectorMath,
   GLCanvas, GLShader, GLPT;
-
-{$define API_OPENGL}
 
 var
   VertexShader: pchar =       '#version 330 core'#10+
@@ -57,8 +61,6 @@ var
   shader: TShader;
 begin
   SetupCanvas(window_size_width, window_size_height);
-
-  Chdir(GLPT_GetBasePath+'/tests');
 
   texture := CreateTexture('deer.png');
 

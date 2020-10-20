@@ -146,6 +146,13 @@ function TimeSinceNow: longint;
 
 type
   TCanvasState = class
+    private
+      viewTransformStack: TMat4List;
+      modelTransformStack: TMat4List;
+      clipRectStack: TRectList;
+      sampleTime: double;
+      frameCount: longint;
+      fps: longint;
     public
       window: PGLPTWindow;          // reference to the GLPT window
       activeFont: IFont;            // default font for DrawText(...) if no font is specified
@@ -160,13 +167,6 @@ type
       viewPort: TRect;              // rect set by SetViewPort
       fullScreen: boolean;          // the window was created in fullscreen mode
       totalFrameCount: longint;     // frame count for each SwapBuffers call 
-    private
-      viewTransformStack: TMat4List;
-      modelTransformStack: TMat4List;
-      clipRectStack: TRectList;
-      sampleTime: double;
-      frameCount: longint;
-      fps: longint;
     public
       procedure FlushDrawing; virtual;
       procedure SwapBuffers; virtual;
@@ -182,6 +182,9 @@ uses
   Variants, CTypes,
   SysUtils, DOM, XMLRead, Strings;
 
+{ IMPORTANT: if you change the texture unit count then
+  you need to update the default shaders in Shaders.inc also }
+  
 const
   DEFAULT_SHADER_TEXTURE_UNITS = 8;
 

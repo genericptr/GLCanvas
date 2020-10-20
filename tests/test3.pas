@@ -1,3 +1,10 @@
+{
+    Copyright (c) 2019 by Ryan Joseph
+
+    GLCanvas Test #3
+    
+    Tests drawing single textures loaded from file
+}
 {$mode objfpc}
 {$assertions on}
 

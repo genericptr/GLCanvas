@@ -1,3 +1,10 @@
+{
+    Copyright (c) 2019 by Ryan Joseph
+
+    GLCanvas Test #4
+    
+    Tests FreeType font rendering
+}
 {$mode objfpc}
 {$assertions on}
 
@@ -19,9 +26,8 @@ procedure LoadFreeType;
 var
   font: TGLFreeTypeFont;
 begin
-  Chdir(GLPT_GetBasePath+'/tests');
   font := TGLFreeTypeFont.Create('Avenir.ttc');
-  font.Render(trunc(36 / 0.5));
+  font.Render(36 * 2);
   { make this the system font }
   SetActiveFont(font);
   { call this once we're done using loading fonts }

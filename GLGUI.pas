@@ -4753,7 +4753,7 @@ begin
       rect.origin.y -= rect.size.height;
       FillRect(rect, RGBA(244/255,240/255,156/255,0.90));
 
-      DrawText(labelFont, GetStringValue, kAlignmentCenter, rect, RGBA(0, 1));
+      DrawText(labelFont, GetStringValue, TTextAlignment.Center, rect, RGBA(0, 1));
     end;
 end;
 
@@ -6311,7 +6311,7 @@ begin
 
   SetWidthTracksContainer(true);
   SetMaximumWidth(0);
-  SetTextAlignment(kAlignmentLeft);
+  SetTextAlignment(TTextAlignment.Left);
   SetTextColor(RGBA(0, 0));
 end;
 
@@ -7286,7 +7286,7 @@ begin
     
   titleView := TTextView.Create;
   titleView.SetWidthTracksView(true);
-  titleView.SetTextAlignment(kAlignmentCenter);
+  titleView.SetTextAlignment(TTextAlignment.Center);
   AddSubview(titleView);
 end;
 

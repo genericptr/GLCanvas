@@ -1,10 +1,17 @@
+{
+    Copyright (c) 2019 by Ryan Joseph
+
+    GLCanvas Test #6
+    
+    Tests loading textures from memory
+}
 {$mode objfpc}
 {$assertions on}
 
 program Test6;
 uses
   // rtl
-  CThreads, ExtraTypes, VectorMath,
+  CThreads, GeometryTypes, VectorMath,
   GLCanvas, GLPT;
 
 const
@@ -12,10 +19,11 @@ const
   window_size_height = 512;
 
 type
-  TPixelMatrix = specialize TFPGMatrix<TImagePixel>;
+  TRGBA_U8_PixelMatrix = specialize TFPGMatrix<TImagePixel>;
+  TRGBA_F32_PixelMatrix = specialize TFPGMatrix<TColor>;
 
 var
-  pix: TPixelMatrix;
+  pix: RGBA_U8_PixelMatrix;
   texture: TTexture;
   x, y: integer;
 begin
@@ -23,17 +31,20 @@ begin
 
   // TODO: make a TTexture subclass which handles this matrix also
   // then we can include the matrix class in GLCanvas 
-  pix := TPixelMatrix.Create(16, 16);
+  pix := TRGBA_U8_PixelMatrix.Create(16, 16);
+  pix.Fill(TImagePixel.Create(255, 0, 0, 255));
 
-  for y := 0 to 4 do
-  for x := 0 to 4 do
-    pix[x,y] := RGBA(1,0,0,1);
+  // make a random texture
+  RandSeed := 100;
+  for y := 0 to pix.height - 1 do
+  for x := 0 to pix.width - 1 do
+    begin
+      if Rand(100) < 50 then
+        continue;
+      pix[x,y] := TImagePixel.Create(0, 255, 0, 255);
+    end;
 
-  texture := TTexture.Create(pix.width, pix.height, pix.data);
-  // todo: we need to bind and update the texture now
-  // since binding happens before drawing can we add a note
-  // to update before drawing so we don't double bind
-  texture.Load;
+  texture := TTexture.Create(pix.width, pix.height, pix.List^);
 
   // reload a part of the texture
   {
@@ -41,7 +52,7 @@ begin
     glTexSubImage2D
     PopTextureInternal;
   }
-  texture.Reload(RectMake(0, 0, 4, 4));
+  //texture.Reload(RectMake(0, 0, 4, 4));
 
   while IsRunning do
     begin

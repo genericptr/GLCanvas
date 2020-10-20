@@ -1,4 +1,12 @@
+{
+    Copyright (c) 2019 by Ryan Joseph
+
+    GLCanvas Test #2
+    
+    Tests drawing shapes
+}
 {$mode objfpc}
+{$assertions on}
 
 program Test2;
 uses

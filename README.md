@@ -30,7 +30,7 @@ end.
 
  - Flat procedural API
  - Standard vector types and matrix math
- - Texture loading
+ - Texture loading (only supports PNG format currently)
  - Bitmap and Freetype fonts
  - Shaders (optional)
  - Frame buffers (optional)
@@ -38,4 +38,4 @@ end.
 
 ### ⛓ Dependancies:
 
- - [GLPT](https://github.com/genericptr/GLPT) for the platform layer.
+ - [GLPT](https://github.com/genericptr/GLPT) for the platform layer (windows + events).

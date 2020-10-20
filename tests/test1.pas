@@ -1,3 +1,10 @@
+{
+    Copyright (c) 2019 by Ryan Joseph
+
+    GLCanvas Test #1
+  
+    Tests minimal canvas setup & compiles all units
+}
 {$mode objfpc}
 {$assertions on}
 
@@ -15,7 +22,7 @@ uses
   GLFreeType, 
   GLFrameBuffer,
   // glcanvas extras
-  TileMap, VectorMath, GeometryTypes,
+  VectorMath, GeometryTypes,
   // GLPT
   GLPT;
 

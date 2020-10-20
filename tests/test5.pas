@@ -1,3 +1,10 @@
+{
+    Copyright (c) 2019 by Ryan Joseph
+
+    GLCanvas Test #5
+    
+    Tests possible sprite class implementation
+}
 {$mode objfpc}
 {$modeswitch advancedrecords}
 {$modeswitch autoderef}
@@ -126,7 +133,7 @@ var
 begin
   transform := TMat4.RotateZ(-rotation);
   local := point - rect.origin;
-  result := rect.ContainsPoint((transform * local) + rect.origin);
+  result := rect.Contains((transform * local) + rect.origin);
 end;
 
 function FindSprite(at: TVec2): TSprite;
@@ -219,13 +226,7 @@ begin
   SetupCanvas(window_size_width, window_size_height, @EventCallback);
 
   Sprites := TSpriteList.Create;
-
-  {$ifdef target_os_mac}
-  Chdir(GLPT_GetBasePath+'/tests');
   texture := TTexture.Create('deer.png');
-  {$else}
-  texture := TTexture.Create('deer.png');
-  {$endif}
 
   sprite := TSprite.Create(texture);
   sprites.Add(sprite);

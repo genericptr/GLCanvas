@@ -58,17 +58,34 @@ unit BeRoPNG;
 {$endif}
 {$overflowchecks off}
 {$rangechecks off}
+{$modeswitch advancedrecords}
 
 interface
 
 type PPNGPixel=^TPNGPixel;
+     TPNGPixelType = {$ifdef PNGHighDepth}word{$else}byte{$endif};
      TPNGPixel=packed record
-      r,g,b,a:{$ifdef PNGHighDepth}word{$else}byte{$endif};
+      r,g,b,a: TPNGPixelType;
+      constructor Create(_r,_g,_b,_a: TPNGPixelType);
+      class operator = (left: TPNGPixel; right: TPNGPixel): boolean;
      end;
 
 function LoadPNG(DataPointer:pointer;DataSize:longword;var ImageData:pointer;var ImageWidth,ImageHeight:longint;HeaderOnly:boolean):boolean;
 
 implementation
+
+constructor TPNGPixel.Create(_r,_g,_b,_a: TPNGPixelType);
+begin
+  r:=_r;
+  g:=_g;
+  b:=_b;
+  a:=_a;
+end;
+
+class operator TPNGPixel.= (left: TPNGPixel; right: TPNGPixel): boolean;
+begin
+  result := (left.r = right.r) and (left.g = right.g) and (left.b = right.b) and (left.a = right.a);
+end;
 
 type TPNGHeader=array[0..7] of byte;
 
