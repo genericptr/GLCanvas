@@ -56,8 +56,8 @@ type
     public
       property Components[pIndex:integer]:TScalar read GetComponent write SetComponent; default;  
     public
-      class operator := (a: TScalar): TVec2;
-      class operator - (right: TVec2): TVec2;
+      class operator := (right: TScalar): TVec2;
+      class operator - (constref right: TVec2): TVec2;
       class operator + (constref left, right: TVec2): TVec2; overload;
       class operator - (constref left, right: TVec2): TVec2; overload; 
       class operator * (constref left, right: TVec2): TVec2; overload; 
@@ -178,7 +178,10 @@ type
       constructor Translate(constref pTranslate: TVec3); overload;
       constructor Translate(tx, ty, tz, tw: TScalar); overload;
       
-      constructor Scale(x, y, z: TScalar);
+      constructor Scale(x, y, z: TScalar); overload;
+      constructor Scale(constref pScale: TVec2; z: TScalar); overload;
+      constructor Scale(constref pScale: TVec3); overload;
+
       constructor RotateX(Angle: TScalar);
       constructor RotateY(Angle: TScalar);
       constructor RotateZ(Angle: TScalar);
@@ -237,6 +240,11 @@ type
   TVec4Array = array of TVec4;
 
 type
+  PVec2Array = ^TVec2Array;
+  PVec3Array = ^TVec3Array;
+  PVec4Array = ^TVec4Array;
+
+type
   TVec2List = specialize TFPGList<TVec2>;
   TVec3List = specialize TFPGList<TVec3>;
   TVec4List = specialize TFPGList<TVec4>;
@@ -255,6 +263,9 @@ type
       constructor Create(_x, _y: TComponent);
       function Offset(byX, byY: TComponent): TGVec2; overload; inline;
       function Offset(by: TGVec2): TGVec2; overload; inline;
+      function Length: TComponent;
+      function SquaredLength: TComponent;
+      function Magnitude: TComponent;
       function Min: TComponent;
       function Max: TComponent;
       function Sum: TComponent;
@@ -294,6 +305,7 @@ type
       constructor Create(_x, _y, _z: TComponent);
 
       { Methods }
+      function XY: specialize TGVec2<TComponent>;
       function Offset(byX, byY, byZ: TComponent): TGVec3; overload; inline;
       function Offset(by: TGVec3): TGVec3; overload; inline;
       function ToStr: string;
@@ -342,6 +354,8 @@ type
       constructor Create(_x, _y, _z, _w: TComponent);
 
       { Methods }
+      function XY: specialize TGVec2<TComponent>;
+      function XYZ: specialize TGVec3<TComponent>;
       function ToStr: string;
       procedure Show;
 
@@ -361,6 +375,11 @@ type
   TVec2i = specialize TGVec2<Integer>;
   TVec3i = specialize TGVec3<Integer>;
   TVec4i = specialize TGVec4<Integer>;
+
+type
+  PVec2i = ^TVec2i;
+  PVec3i = ^TVec3i;
+  PVec4i = ^TVec4i;
 
 type
   TVec2iList = specialize TFPGList<TVec2i>;
@@ -707,6 +726,21 @@ begin
   result.y := y + by.Y;
 end;
 
+function TGVec2.Length: TComponent;
+begin
+  result := Trunc(Sqrt(SquaredLength));
+end;
+
+function TGVec2.SquaredLength: TComponent;
+begin
+  result := Trunc(Power(x, 2) + Power(y, 2));
+end;
+
+function TGVec2.Magnitude: TComponent;
+begin
+  result := Length;
+end;
+
 function TGVec2.ToStr: string;
 begin
   result := '{'+x.ToStr+','+y.ToStr+'}';
@@ -805,6 +839,12 @@ begin
   result := x * y * z;
 end;
 
+function TGVec3.XY: specialize TGVec2<TComponent>;
+begin
+  result.x := x;
+  result.y := y;
+end;
+
 function TGVec3.Offset(byX, byY, byZ: TComponent): TGVec3;
 begin
   result.x := x + byX;
@@ -852,6 +892,19 @@ begin
   y := _y;
   z := _z;
   w := _w;
+end;
+
+function TGVec4.XY: specialize TGVec2<TComponent>;
+begin
+  result.x := x;
+  result.y := y;
+end;
+
+function TGVec4.XYZ: specialize TGVec3<TComponent>;
+begin
+  result.x := x;
+  result.y := y;
+  result.z := z;
 end;
 
 function TGVec4.ToStr: string;
@@ -1281,13 +1334,13 @@ begin
   result := '{'+FloatToStr(x, places)+','+FloatToStr(y, places)+'}';
 end;
 
-class operator TVec2.:= (a:TScalar): TVec2;
+class operator TVec2.:= (right: TScalar): TVec2;
 begin
-  result.x := a;
-  result.y := a;
+  result.x := right;
+  result.y := right;
 end;
 
-class operator TVec2.- (right: TVec2): TVec2;
+class operator TVec2.- (constref right: TVec2): TVec2;
 begin
   result.x := -right.x;
   result.y := -right.y;
@@ -1853,6 +1906,16 @@ begin
   column[3].y := 0;
   column[3].z := 0;
   column[3].w := 1;
+end;
+
+constructor TMat4.Scale(constref pScale: TVec2; z: TScalar);
+begin
+  Scale(pScale.x, pScale.y, z);
+end;
+
+constructor TMat4.Scale(constref pScale: TVec3);
+begin
+  Scale(pScale.x, pScale.y, pScale.z);
 end;
 
 constructor TMat4.RotateX(Angle:TScalar);

@@ -14,13 +14,7 @@
 
 {define GLGUI_DEBUG}
 
-// imgui
-// https://www.geeks3d.com/hacklab/20170929/how-to-build-user-interfaces-with-imgui/
-
-// controls to implement
-// https://github.com/HankiDesign/awesome-dear-imgui
-
-unit GLGUI;
+unit GLUI;
 interface
 uses
   {$ifdef API_OPENGL}
@@ -29,7 +23,7 @@ uses
   {$ifdef API_OPENGLES}
   GLES30,
   {$endif}
-  SysUtils, FGL,
+  SysUtils, FGL, TypInfo,
   GLPT, GLCanvas, GLPT_Threads,
   GeometryTypes, VectorMath;
 
@@ -43,40 +37,44 @@ type
 {$include include/Invocation.inc}
 {$include include/NotificationCenter.inc}
 {$include include/Timer.inc}
-{$include include/GUIStyles.inc}
 {$undef INTERFACE}
 
 type
   TEvent = class
-    msg: pGLPT_MessageRec;
-    accepted: boolean;
-    acceptedObject: TObject;
-    // TODO: use the keycode! this will change with keyboard layouts
-    // https://stackoverflow.com/questions/56915258/dİfference-between-sdl-scancode-and-sdl-keycode
-    function KeyCode: GLPT_Keycode;
-    function ScrollWheel: TVec2;
-    function ClickCount: integer;
-    function KeyboardModifiers: TShiftState;
-    function MouseModifiers: TShiftState;
-    function KeyboardCharacter: char;
-    function Location(system: TObject = nil): TPoint;
-    property IsAccepted: boolean read accepted;
-    procedure Accept(obj: TObject = nil);
-    procedure Reject;
-    constructor Create(raw: pGLPT_MessageRec);
+    private
+      msg: pGLPT_MessageRec;
+      m_accepted: boolean;
+      m_inputSender: TObject;
+      acceptedObject: TObject;
+    public
+      function KeyCode: GLPT_Keycode;
+      function ScrollWheel: TVec2;
+      function ClickCount: integer;
+      function IsKeyboardCommand: boolean;
+      function KeyboardModifiers: TShiftState;
+      function MouseModifiers: TShiftState;
+      function KeyboardCharacter: TFontChar;
+      function Location(system: TObject = nil): TPoint;
+      property IsAccepted: boolean read m_accepted;
+      property InputSender: TObject read m_inputSender;
+      procedure Accept(obj: TObject = nil);
+      procedure Reject;
+      constructor Create(raw: pGLPT_MessageRec);
   end;
 
-// TODO: not sure what this is yet. we may need to implement drag and drop in GLPT
 type
-  TDraggingSession = class
-  end;
+  TDragOperation = (
+    None,
+    Generic,
+    Copy,
+    Move,
+    Delete
+  );
 
-const
-  kDragOperationNone = 0;
-  kDragOperationGeneric = 1;
-  kDragOperationCopy = 2;
-  kDragOperationMove = 3;
-  kDragOperationDelete = 4;
+type
+  TDraggingItem = class
+  end;
+  TDraggingItems = specialize TFPGList<TDraggingItem>;
 
 type
   IDelegate = interface ['IDelegate']
@@ -86,21 +84,6 @@ type
   IDelegation = interface
     procedure SetDelegate(newValue: TObject);
     function GetDelegate: TObject;
-  end;
-
-type
-  IDraggingDestinationDelegate = interface (IDelegate) ['IDraggingDestinationDelegate']
-    function HandleDraggingEntered(session: TDraggingSession): integer;
-    function HandleDraggingUpdated(session: TDraggingSession): integer;
-    procedure HandleDraggingExited(session: TDraggingSession);
-    function HandlePerformDragOperation(session: TDraggingSession): boolean;
-  end;
-
-type
-  IDraggingSourceDelegate = interface (IDelegate) ['IDraggingSourceDelegate']
-    procedure HandleDraggingSessionWillBeginAtPoint(session: TDraggingSession; canvasPoint: TPoint);
-    procedure HandleDraggingSessionMovedToPoint(session: TDraggingSession; canvasPoint: TPoint);
-    procedure HandleDraggingSessionEndedAtPoint(session: TDraggingSession; canvasPoint: TPoint; operation: integer);
   end;
 
 type
@@ -133,42 +116,114 @@ const
   kNotificationFrameChanged = 'TView.FrameChanged';
   kNotificationFocusChanged = 'TView.FocusChanged';
 
+const
+  kNotificationScreenWillResize = 'TScreen.WillResize';
+  kNotificationScreenDidResize = 'TScreen.DidResize';
+
 type
   TAutoresizingOption = ( MinXMargin,
                           WidthSizable,
                           MaxXMargin,
                           MinYMargin,
                           HeightSizable,
-                          MaxYMargin,
-                          RelativeXMargin,
-                          RelativeYMargin
+                          MaxYMargin
                           );  
   TAutoresizingOptions = set of TAutoresizingOption;  
 
-type
-  TWindowOptions = set of ( Modal,
-                              MoveableByBackground
-                              );
-
-// TODO: make an enum instead of consts! this is c stuff not pascal
 const
-  kWindowLevels = 2;
-  kWindowLevelNormal = 0;
-  kWindowLevelUtility = 1;
-  
+  TAutoresizingStretchToFill = [TAutoresizingOption.MinXMargin, TAutoresizingOption.MinYMargin, 
+                                TAutoresizingOption.MaxXMargin, TAutoresizingOption.MaxYMargin, 
+                                TAutoresizingOption.WidthSizable, TAutoresizingOption.HeightSizable];
+
+type
+  TWindowOption = ( Modal,
+                    MoveableByBackground
+                    );
+
+  TWindowOptions = set of TWindowOption;
+
+//const
+//  kWindowLevels = 3;
+//  kWindowLevelNormal = 0;
+//  kWindowLevelUtility = 1;
+//  kWindowLevelMenu = 2;
+type
+  // see CGWindowLevelKey for more
+  TWindowLevel = (
+    Normal = 0,
+    Utility = 1,
+    Menu = 2,
+    Drag = 3
+  ); 
+
 type
   TWindow = class;
   TView = class;
   TControl = class;
+  TDraggingSession = class;
 
   TViewList = specialize TFPGList<TView>;
   TViewClass = class of TView;
-  
-  TView = class (ICoordinateConversion)
+
+  TWindowList = specialize TFPGList<TWindow>;
+  TWindowClass = class of TWindow;
+  TWindowArray = array of TWindow;
+
+  IDraggingSource = interface;
+
+  { TResponder }
+
+  TResponder = class
+    protected
+      procedure HandleCommand(command: string); virtual;
+      procedure HandleKeyEquivalent(event: TEvent); virtual;
+    public
+      procedure DefaultHandlerStr(var message); override;
+  end;
+
+  { TApplication }
+
+  TApplication = class(TResponder)
+    private
+      locked: boolean;
+      list: array[TWindowLevel] of TWindowList;
+      pendingClose: TWindowList;
+      currentEvent: TEvent;
+      function GetWindow(level: TWindowLevel; index: integer): TWindow;
+      property Get[level: TWindowLevel; index: integer]: TWindow read GetWindow; default;
+    private
+      procedure Add(window: TWindow);
+      procedure Remove(window: TWindow);
+      procedure MoveToFront(window: TWindow);
+
+      procedure Update;
+      function GetNextEvent(constref msg: pGLPT_MessageRec): TEvent;
+      function PollEvent(constref msg: pGLPT_MessageRec): boolean;
+      procedure ResizeScreen(constref msg: pGLPT_MessageRec);
+    protected
+      procedure HandleKeyEquivalent(event: TEvent); override;
+      procedure HandleCommand(command: string); override;
+    public
+
+      { Static }
+      class function FirstResponder: TObject;
+
+      { Methods }
+      function FrontWindow: TWindow;
+      function AvailableWindows: TWindowArray;
+      function FindWindow(window: TWindow): boolean;
+      function FindWindowOfClass(ofClass: TWindowClass): TWindow;
+      function FrontWindowOfAnyLevel: TWindow;
+      function FrontWindowOfLevel(level: TWindowLevel): TWindow;
+
+      procedure AfterConstruction; override;
+  end;  
+
+  { TView }
+
+  TView = class (TResponder, ICoordinateConversion)
     private
       function GetSubviews: TViewList; inline;
-    public
-      property Subviews: TViewList read GetSubviews;
     public
       
       { Class Methods }
@@ -209,7 +264,12 @@ type
       function GetParent: TView; inline;
       function GetTag: integer; inline;
 
-      procedure ChangeAutoresizingOptions(newValue: TAutoresizingOptions; add: boolean);
+      { Properties }
+      property Window: TWindow read GetWindow;
+      property Subviews: TViewList read GetSubviews;
+      property Frame: TRect read GetFrame write SetFrame;
+      property Bounds: TRect read GetBounds write SetBounds;
+      property Tag: integer read GetTag;
 
       { Managing Subviews }
       procedure AddSubview(view: TView);
@@ -220,7 +280,10 @@ type
 
       { Searching }
       function FindParent(ofClass: TViewClass): TView;
-      function FindSubview(withTag: integer): TView;      
+      function FindSubview(withTag: integer): TView;  
+
+      { Controls }    
+      // TODO: remove these to helpers so we can decouple TControl from TView
       function FindValue(identifier: string): variant;
       function FindControl(identifier: string): TControl;
 
@@ -232,6 +295,7 @@ type
       { Methods }
       function IsMember(viewClass: TViewClass): boolean;
       destructor Destroy; override;
+      procedure ChangeAutoresizingOptions(newValue: TAutoresizingOptions; add: boolean);
 
       { Layout }
       procedure LayoutIfNeeded;
@@ -260,13 +324,14 @@ type
     protected
       procedure Initialize; virtual;
       procedure Draw; virtual;
+      procedure DrawDebugWidgets; virtual;
       procedure Update; virtual;
       procedure AutoResize; virtual;
       function ShouldDrawSubview(view: TView): boolean; virtual;
       function IsSubviewClipping(view: TView): boolean; inline;
 
       procedure PushClipRect(rect: TRect);
-      function GetClipRect: TRect; inline;
+      function GetClipRect: TRect; virtual;
 
       { View Handlers }
       procedure HandleFrameDidChange(previousFrame: TRect); virtual;
@@ -274,7 +339,7 @@ type
       procedure HandleWillRemoveFromParent(view: TView); virtual;
       procedure HandleDidRemoveFromParent(view: TView); virtual;
       procedure HandleWillAddToParent(view: TView); virtual;
-      procedure HandleWillAddToWindow(window: TWindow); virtual;
+      procedure HandleWillAddToWindow(win: TWindow); virtual;
       procedure HandleDidAddToParent(view: TView); virtual;
       procedure HandleVisibilityChanged(visible: boolean); virtual;
       procedure HandleSubviewsChanged; virtual;
@@ -286,7 +351,8 @@ type
 
       { Keyboard Events }
       procedure HandleKeyDown(event: TEvent); virtual;
-      
+      procedure HandleKeyEquivalent(event: TEvent); override;
+
       { Generic Input Events }
       procedure HandleInputPress(event: TEvent); virtual;
       procedure HandleInputStarted(event: TEvent); virtual;
@@ -303,10 +369,16 @@ type
       procedure HandleMouseWheelScroll(event: TEvent); virtual;
       procedure HandleContextualClick(event: TEvent); virtual;
       function AcceptsMouseMovedEvents: boolean; virtual;
-            
-      { Dragging }
-      function StartDrag(face: TTexture; event: TEvent; offset: TVec2; data: TVariantMap): TDraggingSession;
       
+      { Properties }
+      property ClipRect: TRect read GetClipRect;
+
+    private type
+      TInitialState = record
+        margin: TAABB;
+        relativeSize: TVec2;
+        relativeMid: TVec2;
+      end;
     private
       parentWindow: TWindow;
       backgroundColor: TColor;
@@ -315,10 +387,8 @@ type
       m_parent: TView;
       m_tag: integer;
       m_frame: TRect;
-      m_clipRect: TRect;
-      initialMargin: TAABB;
-      initialRelative: TRect;
       renderOrigin: TVec2;
+      initialState: TInitialState;
 
       // TODO: make an enum we can use once properties are established
       m_visible: boolean;
@@ -338,18 +408,23 @@ type
       procedure ReliquishFocus;
       procedure DrawInternal(parentOrigin: TVec2);
       procedure LayoutRoot;
+      procedure InternalLayoutSubviews;
       procedure SubviewsAreClipping(var clipping: boolean; deep: boolean = true);
       procedure TestMouseTracking(event: TEvent);
+      procedure TestDragTracking(event: TEvent);
   end;
 
-  TWindowList = specialize TFPGList<TWindow>;
-  TWindowClass = class of TWindow;
-  TWindowArray = array of TWindow;
+  { TScreen }
 
-  TWindowCursor = record
-    mouseDown: boolean;   
-    hover: TView;     
-  end; 
+  TScreen = class(TView)
+    private
+      { This is the rectangle defining the portion of the screen in 
+        which it is currently safe to draw your application content. }
+      function GetVisibleFrame: TRect;
+    public
+      class function MainScreen: TScreen;
+      property VisibleFrame: TRect read GetVisibleFrame;
+  end;
 
   TLayoutTable = class
     origin: TVec2;
@@ -364,17 +439,16 @@ type
   TLayoutTableList = specialize TFPGObjectList<TLayoutTable>;
 
   IWindowDelegate = interface (IDelegate) ['IWindowDelegate']
+    function HandleWindowShouldClose(window: TWindow): boolean;
     procedure HandleWindowWillClose(window: TWindow);
   end;
 
-  TWindow = class (TView, IDraggingDestinationDelegate, IDelegation)
+  TWindow = class (TView, IDelegation)
     public
 
       { Class Methods }
       class function ScreenRect: TRect;
       class function KeyWindow: TWindow;
-      class function FrontWindow: TWindow;
-      class function AvailableWindows: TWindowArray;
       class function MouseLocation: TPoint;
       class function FindWindow(ofClass: TWindowClass): TWindow;
       class function FindWindowAtMouse: TWindow;
@@ -388,10 +462,10 @@ type
       procedure SetContentSize(newValue: TVec2);
       procedure SetContentView(newValue: TView);
       procedure SetMoveableByBackground(newValue: boolean);
-      procedure SetWindowLevel(newValue: integer);
+      procedure SetWindowLevel(newValue: TWindowLevel);
 
-      function GetContentSize: TVec2;
-      function GetContentFrame: TRect;
+      function GetContentSize: TVec2; virtual;
+      function GetContentFrame: TRect; virtual;
       function GetFocusedView: TView;
       function GetParentCoordinateSystem: TObject; override;
 
@@ -399,6 +473,10 @@ type
       function IsModal: boolean;
       function IsFloating: boolean;
       function IsKey: boolean;
+
+      { Properties }
+      property ContentSize: TVec2 read GetContentSize;
+      property ContentFrame: TRect read GetContentFrame;
 
       { IDelegation }
       procedure SetDelegate(newValue: TObject);
@@ -412,6 +490,7 @@ type
       procedure AddColumn(view: TView);
 
       { Methods }
+      function IsOpen: boolean;
       procedure MakeKey; 
       procedure MakeKeyAndOrderFront;
       procedure Close;
@@ -419,6 +498,7 @@ type
       procedure Center;
       procedure AdvanceFocus;
       procedure SendDefaultAction;
+      function ShouldConstrainToSafeArea: boolean;
 
       destructor Destroy; override;
 
@@ -426,20 +506,25 @@ type
       procedure Initialize; override;
       procedure SetModal(newValue: boolean);    
       procedure PerformClose(params: TInvocationParams);
-      function ShouldMoveByBackground(event: TEvent): boolean; virtual;
 
+      function ShouldMoveByBackground(event: TEvent): boolean; virtual;
+      function ShouldResize(event: TEvent): boolean; virtual;
+      function ShouldClose: boolean; virtual;
+
+      procedure HandleFrameWillChange(var newFrame: TRect); override;
       procedure HandleFrameDidChange(previousFrame: TRect); override;
       
       { Notifications }
       procedure HandleWillClose; virtual;
       procedure HandleDidAddToScreen; virtual;
-      procedure HandleWillRemoveFromScreen; virtual;
       procedure HandleWillResignKeyWindow; virtual;
       procedure HandleWillBecomeKeyWindow; virtual;
       procedure HandleDidBecomeKeyWindow; virtual;
       procedure HandleWillResignFrontWindow; virtual;
+      procedure HandleDidResignFrontWindow; virtual;
       procedure HandleWillBecomeFrontWindow; virtual;
       procedure HandleDidBecomeFrontWindow; virtual;
+      procedure HandleScreenDidResize; virtual;
 
       { Events }
       procedure HandleInputStarted(event: TEvent); override;
@@ -450,36 +535,78 @@ type
       function AcceptsMouseMovedEvents: boolean; override;
       function AcceptsKeyboardEvents: boolean; virtual;
       procedure HandleMouseMoved(event: TEvent); override;
-      
-      { IDraggingDestinationDelegate }
-      function HandleDraggingEntered(session: TDraggingSession): integer;
-      function HandleDraggingUpdated(session: TDraggingSession): integer;
-      procedure HandleDraggingExited(session: TDraggingSession);
-      function HandlePerformDragOperation(session: TDraggingSession): boolean;
-      
+      procedure HandleKeyEquivalent(event: TEvent); override;
+
       { IKeyboardEventDelegate }
       procedure HandleKeyDown(event: TEvent); override;
       
+      { Layout }
+      function GetFrameForContentFrame(_contentFrame: TRect): TRect; virtual;
+
     private
-      windowLevel: integer;
+      windowLevel: TWindowLevel;
       modal: boolean;
       moveableByBackground: boolean;
-      contentSize: TVec2;
+      freeWhenClosed: boolean;
       wantsCenter: boolean;
       delegate: TObject;
       pressOrigin: TPoint;
       dragOrigin: TPoint;
+      resizeOrigin: TPoint;
+      resizeOriginalSize: TVec2;
       focusedView: TView;
       mouseInsideView: TView;
       defaultButton: TView;
       layoutTableStack: TLayoutTableList;
 
-      function GetWindowLevel: integer;
+      function GetWindowLevel: TWindowLevel;
       procedure HandleDefaultAction(var msg); message 'DefaultAction';
       procedure FindSubviewForMouseEvent(event: TEvent; parent: TView; var outView: TView);
       procedure SetFocusedView(newValue: TView);
       procedure ProcessKeyDown(super: TView; event: TEvent);
-      function PollEvent(constref raw: pGLPT_MessageRec): boolean;
+      function PollEvent(event: TEvent): boolean;
+      procedure FinalizeClose;
+      function ShouldAllowEnabling: boolean;
+  end;
+
+  { TDraggingSession }
+
+  TDraggingSession = class(TWindow)
+    private
+      source: IDraggingSource;
+      m_operation: TDragOperation;
+      offset: TVec2;
+      items: TDraggingItems;
+      dragImage: TTexture;
+      dragTarget: TView;
+    protected
+      procedure HandleInputDragged(event: TEvent); override;
+      procedure HandleInputEnded(event: TEvent); override;
+      procedure TrackDrag(view: TView; event: TEvent);
+    public
+      class function IsDragging: boolean;
+      constructor Create(dragEvent: TEvent; _offset: TVec2; _source: IDraggingSource);
+      destructor Destroy; override;
+      procedure Draw; override;
+      procedure SetImage(size: TVec2; image: TTexture);
+      property Operation: TDragOperation read m_operation;
+  end;
+
+  { IDraggingDestination }
+
+  IDraggingDestination = interface (IDelegate) ['IDraggingDestination']
+    function HandleDraggingEntered(session: TDraggingSession): TDragOperation;
+    function HandleDraggingUpdated(session: TDraggingSession): TDragOperation;
+    procedure HandleDraggingExited(session: TDraggingSession);
+    function HandlePerformDragOperation(session: TDraggingSession): boolean;
+  end;
+
+  { IDraggingSourceDelegate }
+
+  IDraggingSource = interface (IDelegate)
+    procedure HandleDraggingSessionWillBeginAtPoint(session: TDraggingSession; screenPoint: TPoint);
+    procedure HandleDraggingSessionMovedToPoint(session: TDraggingSession; screenPoint: TPoint);
+    procedure HandleDraggingSessionEndedAtPoint(session: TDraggingSession; screenPoint: TPoint; operation: TDragOperation);
   end;
 
 type
@@ -503,10 +630,12 @@ type
       procedure HandleInputDragged(event: TEvent); override;
       procedure HandleWillResignFrontWindow; override;
       procedure HandleCloseEvent(event: TEvent); virtual;
+      procedure HandlePositioningFrameWillChange(var newFrame: TRect); virtual;
     private
       positioningRect: TRect;
       positioningView: TView;
       preferredEdge: TRectEdge;
+      positioningEdgeMargin: integer;
       procedure UpdatePosition;
       procedure HandleWindowWillOpen(notification: TNotification);
   end;
@@ -519,15 +648,26 @@ type
     modifiers: TShiftState;
   end;
 
+  TControlBinding = record
+    prop: string;
+    controller: TObject;
+    procedure Apply(control: TControl);
+  end;
+
   TControl = class (TView)
+    private
+      binding: TControlBinding;
     public
       { Accessors }
       procedure SetStringValue(newValue: string); virtual; overload;
       procedure SetEnabled(newValue: boolean);
       procedure SetControlState(newValue: TControlState);
-      procedure SetAction(newValue: TInvocation);
-      procedure SetKeyEquivalent(keycode: GLPT_Keycode; modifiers: TShiftState = []);
+      procedure SetAction(newValue: TInvocation); overload;
+      procedure SetAction(newValue: string); overload;
+      procedure SetKeyEquivalent(keycode: GLPT_Keycode; modifiers: TShiftState = []); virtual;
       procedure SetIdentifier(newValue: string);
+      procedure SetBinding(prop: string; controller: TObject);
+      procedure SetController(controller: TObject);
 
       function GetValue: variant;
       function GetStringValue: string;
@@ -535,26 +675,42 @@ type
       function GetDoubleValue: double;
       function GetIntegerValue: integer;
       function GetLongValue: longint;
+      function GetBoolValue: boolean;
       function GetAction: TInvocation;
 
       function GetControlState: TControlState;
+
       function IsEnabled: boolean;
+      function HasActions: boolean;
+
+      { Properties }
+      property StringValue: string read GetStringValue;
+      property FloatValue: single read GetFloatValue;
+      property DoubleValue: double read GetDoubleValue;
+      property IntegerValue: integer read GetIntegerValue;
+      property LongValue: longint read GetLongValue;
+      property BoolValue: boolean read GetBoolValue;
+
+      property BindingName: string read binding.prop;
 
       { Methods }
       procedure AddAction(newValue: TInvocation);
       procedure InsertAction(index: integer; newValue: TInvocation);
       procedure InvokeAction;
       procedure SizeToFit; virtual;
+      procedure Bind;
       destructor Destroy; override;
 
     protected
       procedure Initialize; override;
       procedure HandleValueChanged; virtual;
       procedure HandleStateChanged; virtual;
+      procedure HandleActivityChanged; virtual;
+      procedure HandleKeyEquivalent(event: TEvent); override;
     private
       m_value: variant;
       m_actions: TInvocationList;
-      enabled: boolean;
+      m_enabled: boolean;
       controlFont: IFont;
       state: TControlState;
       keyEquivalent: TControlKeyEquivalent;
@@ -578,31 +734,95 @@ type
 
 type
   TImageView = class (TControl)
-    public
-      constructor Create(inFrame: TRect; image: TTexture); overload;
-      
-      procedure SetImage(newValue: TTexture); overload;
-      procedure SetOptions(newValue: TImageViewOptions);
-      
-      procedure SetBackgroundImage(newValue: TTexture);
-
-      destructor Destroy; override;
-    protected
-      procedure Draw; override;
     private
-      frontImage: TTexture;
+      m_frontImage: TTexture;
       backgroundImage: TTexture;
       options: TImageViewOptions;
+    protected
+      procedure Draw; override;
+    public
+
+      { Constructors }
+      constructor Create(inFrame: TRect; image: TTexture); overload;
+
+      { Methods }
+      procedure SetImage(newValue: TTexture); overload;
+      procedure SetOptions(newValue: TImageViewOptions);
+      procedure SetBackgroundImage(newValue: TTexture);
+
+      { Properties }
+      property Image: TTexture read m_frontImage;
   end;
 
 type
-  TTextView = class (TControl)
+  TTextViewOption = (
+      WidthTracksContainer,
+      HeightTracksContainer,
+      WidthTracksView,
+      Editable
+    );
+  TTextViewOptions = set of TTextViewOption;
+  TTextViewString = UnicodeString;
+
+  TTextViewSelectionMode = (
+      Character,
+      Word,
+      Line
+    );
+
+type
+  TTextStorage = class
+    m_text: TTextViewString;
+
+    //function FindCharacterAtPoint(point: TVec2i): LongInt;
+    //function FindPointAtLocation(location: LongInt): TVec2i;
+    //function FindWordAtPoint(point: TVec2i): TTextRange;
+    //function FindLineAtPoint(point: TVec2i): TTextRange;
+  end;
+
+type
+  TTextView = class (TView)
+    private
+      m_text: TTextViewString;
+      textFont: IFont;
+      textColor: TColor;
+      textAlignment: TTextAlignment;
+      cursor: TTextRange;
+      options: TTextViewOptions;
+      selMode: TTextViewSelectionMode;
+      maximumWidth: integer;
+      dragStart: longint;
+      dirty: boolean;
+    protected
+      procedure Initialize; override;
+      procedure Draw; override;
+
+      { Methods }
+      procedure TextLayoutChanged;
+
+      { Events }
+      procedure HandleFrameDidChange(previousFrame: TRect); override;
+      procedure HandleKeyDown(event: TEvent); override;
+      procedure HandleInputStarted(event: TEvent); override;
+      procedure HandleInputDragged(event: TEvent); override;
+      procedure HandleInputEnded(event: TEvent); override;
+      procedure HandleKeyEquivalent(event: TEvent); override;
+
+      { Handlers }
+      function HandleWillInsertText(var newText: TTextViewString): boolean; virtual;
+      function HandleWillDelete: boolean; virtual;
+
+      { Rendering }
+      function GetTextFrame: TRect; virtual;
+      function GetTextLayout: TTextLayoutOptions;
+      
     public
 
       { Constructors }
       constructor Create(inFrame: TRect; text: string; inWidthTracksContainer: boolean = true; inFont: IFont = nil); overload;
 
       { Accessors }
+      procedure SetText(newValue: TTextViewString);
       procedure SetFont(newValue: IFont);
       procedure SetWidthTracksContainer(newValue: boolean);
       procedure SetHeightTracksContainer(newValue: boolean);
@@ -612,31 +832,62 @@ type
       procedure SetEditable(newValue: boolean);
       procedure SetTextColor(newValue: TColor);
 
-      function GetFont: IFont;
-      function GetTextSize: TVec2;
-      function IsReadyToLayout: boolean;
-    protected
-      procedure Initialize; override;
-      
-      procedure HandleFrameDidChange(previousFrame: TRect); override;
-      procedure HandleKeyDown(event: TEvent); override;
-      function HandleWillInsertCharacter(var c: char): boolean; virtual;
-      function HandleWillDelete: boolean; virtual;
-      procedure HandleValueChanged; override;
+      function GetFont: IFont; inline;
+      function GetTextSize: TVec2; inline;
 
-      procedure Draw; override;
+      function IsEditable: boolean; inline;
+      function IsSelectable: boolean; inline;
+      function IsReadyToLayout: boolean; inline;
+
+      { Methods }
       procedure LayoutSubviews; override;
-    private
-      textFont: IFont;
-      textColor: TColor;
+      procedure InsertText(location, length: TTextOffset; newText: TTextViewString); overload;
+      procedure InsertText(newText: TTextViewString); overload;
+      procedure DeleteText(location, length: TTextOffset);
 
-      widthTracksContainer: boolean;
-      widthTracksView: boolean;
-      heightTracksContainer: boolean;
-      
-      maximumWidth: integer;
-      textAlignment: TTextAlignment;
-      editable: boolean;
+      procedure ToggleOption(newValue: boolean; option: TTextViewOption);
+      procedure MoveCursor(location: TTextOffset; grow: boolean = false); 
+      procedure SelectRange(location, length: TTextOffset);
+
+      { Text Storage }
+      function FindCharacterAtPoint(point: TVec2i): LongInt;
+      function FindPointAtLocation(location: LongInt): TVec2i;
+      function FindWordAtPoint(point: TVec2i): TTextRange;
+      function FindLineAtPoint(point: TVec2i): TTextRange;
+
+      { Properties }
+      property Text: TTextViewString read m_text write SetText;
+      property TextFrame: TRect read GetTextFrame;
+      property TextLayout: TTextLayoutOptions read GetTextLayout;
+  end;
+
+type
+  TTextField = class (TControl)
+    private
+      m_text: TTextView;
+      m_borderWidth: integer;
+      // TODO: TControl already has "controlFont" so we probably added this by accident
+      m_font: IFont;
+      m_labelView: TTextView;
+      procedure SetBorderWidth(newValue: integer);
+      procedure SetFont(newValue: IFont);
+      procedure SetLabelString(newValue: string);
+      procedure AdjustFrame;
+
+      property LabelView: TTextView read m_labelView;
+    private
+      textFrame: TRect;
+    protected
+      procedure HandleWillAddToParent(view: TView); override;
+      procedure HandleViewFrameChanged(notification: TNotification);
+      procedure HandleViewFocusChanged(notification: TNotification);
+      procedure HandleInputStarted(event: TEvent); override;
+      procedure HandleKeyDown (event: TEvent); override;
+    public
+      procedure Draw; override;
+      property BorderWidth: integer read m_borderWidth write SetBorderWidth; 
+      property TextFont: IFont read m_font write SetFont; 
+      property LabelString: string write SetLabelString;
   end;
 
 type
@@ -645,7 +896,7 @@ type
 type
   TButton = class (TControl)
     public
-      constructor Create(frame: TRect; _title: string; _font: IFont = nil); overload;
+      constructor Create(_frame: TRect; _title: string; _font: IFont = nil); overload;
 
       procedure SetTitle(newValue: string);
       procedure SetFont(newValue: IFont);
@@ -679,7 +930,7 @@ type
       function GetContainerFrame: TRect; virtual;
 
       procedure HandleValueChanged; override;
-      procedure HandleWillAddToWindow(window: TWindow); override;
+      procedure HandleWillAddToWindow(win: TWindow); override;
 
       { Handlers }
       procedure HandlePressed; virtual;
@@ -746,8 +997,12 @@ type
     private type
       TSliderValue = integer;
     public
-      constructor Create(min, max: TSliderValue; _frame: TRect); overload;
 
+      { Constructors }
+      constructor Create(current, min, max: TSliderValue; _frame: TRect); overload;
+      constructor Create(propName: string; controller: TObject; current, min, max: TSliderValue; _frame: TRect); overload;
+
+      { Accessors }
       procedure SetValue(newValue: TSliderValue);
       procedure SetInterval(newValue: integer);
       procedure SetTickMarks(newValue: integer);
@@ -762,13 +1017,21 @@ type
 
       function IsVertical: boolean;
       function IsDragging: boolean;
+
+      procedure LayoutSubviews; override;
+
+      { Properties }
+      property Value: TSliderValue read GetValue;
+      property MinValue: TSliderValue read GetMinValue;
+      property MaxValue: TSliderValue read GetMaxValue;
+
     protected
       range: TRangeInt;
+      // TODO: TControl has a "controlFont" which we should use instead
       labelFont: IFont;
 
       procedure Initialize; override;
       procedure Draw; override;
-      procedure LayoutSubviews; override;
       procedure DrawHandle(rect: TRect); virtual;
       procedure DrawTrack(rect: TRect); virtual;
 
@@ -782,7 +1045,7 @@ type
       function GetHandleFrame: TRect; virtual;
       function GetTitleFrame: TRect; virtual;
 
-      function ClosestTickMarkToValue(value: TSliderValue): integer;
+      function ClosestTickMarkToValue(inValue: TSliderValue): integer;
       function ValueAtRelativePosition(percent: single): TSliderValue;
       function RectOfTickMarkAtIndex(index: integer): TRect;
     private
@@ -795,6 +1058,7 @@ type
       tickMarkFrames: array[0..32] of TRect;
       textView: TTextView;
       showValueWhileDragging: boolean;
+      startValue: variant;
   end;
 
 
@@ -830,13 +1094,14 @@ type
       
       function GetVisibleRect: TRect;
       function GetVerticalScroller: TScroller;
-      function GetHorizontalScroller: TScroller;      
+      function GetHorizontalScroller: TScroller;
       function GetContentView: TView;
 
       function IsVerticalScrollerVisible: boolean;
       function IsHorizontalScrollerVisible: boolean;
 
       destructor Destroy; override;
+      procedure LayoutSubviews; override;
 
     protected
       procedure Initialize; override;
@@ -847,10 +1112,10 @@ type
       procedure HandleInputDragged(event: TEvent); override;
       procedure Draw; override;
       procedure Update; override;
-      procedure LayoutSubviews; override;
 
       function GetHorizontalScrollerFrame: TRect; virtual;
       function GetVerticalScrollerFrame: TRect; virtual;
+      function GetClipRect: TRect; override;
 
       procedure HandleContentViewFrameChanged(notification: TNotification);
 
@@ -878,7 +1143,6 @@ type
       procedure HandleSwipeTimer(timer: TTimer);
 
       function GetScrollableFrame: TRect; 
-      function GetClipRect: TRect;
       function InsertRectForScrollers(rect: TRect): TRect; inline;
       procedure UpdateContentSize;
       procedure Scroll(direction: TPoint);
@@ -925,6 +1189,15 @@ type
 
 type
   TTextAndImageCell = class (TCell)
+    private
+      imageTitleMargin: TScalar;
+    protected
+      textView: TTextView;
+      imageView: TImageView;
+      procedure Initialize; override;
+      function GetTextView: TTextView;
+      function GetTextFrame: TRect; virtual;
+      function GetImageFrame: TRect; virtual;
     public
       procedure SetStringValue(newValue: string); override;
       procedure SetObjectValue(newValue: pointer); override;
@@ -935,22 +1208,17 @@ type
       procedure SetImageValue(newValue: TTexture); overload;
             
       function GetImageValue: TTexture;
-      function GetStringValue: string;      
+      function GetStringValue: string;
       function GetFont: IFont;
 
-      procedure SizeToFit; override;
-    protected
-      textView: TTextView;
-      imageView: TImageView;
+      function IsImageVisible: boolean;
 
-      procedure Initialize; override;
+      procedure SizeToFit; override;
       procedure LayoutSubviews; override;
 
-      function GetTextView: TTextView;
-      function GetTextFrame: TRect; virtual;
-      function GetImageFrame: TRect; virtual;
-    private
-      imageTitleMargin: TScalar;
+      { Properties }
+      property TextFrame: TRect read GetTextFrame;
+      property ImageFrame: TRect read GetImageFrame;
   end;
 
 type
@@ -1032,24 +1300,61 @@ type
 
 type
   TTableView = class;
+  
   ITableViewDataSource = interface (IDelegate) ['ITableViewDataSource']
     function TableViewValueForRow(tableView: TTableView; column: TTableColumn; row: integer): pointer;
     function TableViewNumberOfRows(tableView: TTableView): integer;
   end;
+
+  ITableViewCellDelegate = interface (IDelegate) ['ITableViewCellDelegate']
+    procedure TableViewPrepareCell(tableView: TTableView; column: TTableColumn; cell: TCell);
+  end;
+
   TTableView = class (TCellView)
-    public            
+    private
+      m_dataSource: TObject;
+      m_columns: TTableColumnList;
+      m_cellDelegate: boolean;
+      arrangingCells: boolean;
+      cellsNeedArranging: boolean;
+      lastColumnTracksWidth: boolean;
+      cellSpacing: integer;
+      cellHeight: integer;
+      cellFont: IFont;
+      cellClass: TCellClass;
+      totalHeight: TScalar;
+
+      function ColumnAtIndex(index: integer): PTableColumn; inline;
+      function GetColumns: TTableColumnList; inline;
+      property Columns: TTableColumnList read GetColumns;
+      procedure ReloadCellsFromDataSource(dataSource: ITableViewDataSource; firstRow, maxRows: integer);
+      procedure ScrollUp;
+      procedure ScrollDown;
+      function HeightForCell(cell: TCell): integer; inline;
+    protected
+      procedure Initialize; override;
+      procedure Draw; override;
+      procedure ArrangeCells; override;
+      function ShouldDrawSubview(view: TView): boolean; override;
+
+      procedure HandleDrawSelection(rect: TRect); virtual;
+      procedure HandleFrameDidChange(previousFrame: TRect); override;
+      procedure HandleDidAddToParent(sprite: TView); override;
+      procedure HandleKeyDown(event: TEvent); override;
+    public
       procedure SetCellSpacing(newValue: integer);
       procedure SetCellHeight(newValue: integer);
       procedure SetCellFont(newValue: IFont);
       procedure SetCellClass(newValue: TCellClass);
       procedure InsertCells(newValue: TCellList; index: integer);
       function GetCell(index: integer): TCell;
-      procedure SetDataSource(newValue: TObject);
+      procedure SetDataSource(newValue: TObject; cellDelegate: boolean = false);
       procedure SetLastColumnTracksWidth(newValue: boolean);
 
       function GetCellHeight: integer;
       function GetCellSpacing: integer;
-            
+      function GetVisibleRange: TRangeInt;
+      
       procedure AddColumn(column: TTableColumn); overload;
       procedure AddColumn(id: integer; title: string); overload;
       procedure Reload;
@@ -1057,39 +1362,22 @@ type
 
       destructor Destroy; override;
 
-    protected
-      procedure Initialize; override;
-      
-      procedure Draw; override;
-      procedure HandleDrawSelection(rect: TRect); virtual;
-      procedure HandleFrameDidChange(previousFrame: TRect); override;
-      procedure HandleDidAddToParent(sprite: TView); override;
-      procedure HandleKeyDown(event: TEvent); override;
-      
-      procedure ArrangeCells; override;
-      function ShouldDrawSubview(view: TView): boolean; override;
+      { Properties }
+      property VisibleRange: TRangeInt read GetVisibleRange;
+  end;
 
+type
+  TImageAndTextCellDataSource = class(ITableViewDataSource)
+    private type
+      TDataList = specialize TFPGList<ITableViewCellDelegate>;
     private
-      m_dataSource: TObject;
-      m_columns: TTableColumnList;
-
-      cellSpacing: integer;
-      cellHeight: integer;
-      cellFont: IFont;
-      cellClass: TCellClass;
-      totalHeight: TScalar;
-      arrangingCells: boolean;
-      cellsNeedArranging: boolean;
-      lastColumnTracksWidth: boolean;
-
-      function ColumnAtIndex(index: integer): PTableColumn; inline;
-      function GetColumns: TTableColumnList; inline;
-      property Columns: TTableColumnList read GetColumns;
-      function EnclosingScrollView: TScrollView;
-      procedure ReloadCellsFromDataSource(dataSource: ITableViewDataSource; firstRow, maxRows: integer);
-      procedure ScrollUp;
-      procedure ScrollDown;
-      function HeightForCell(cell: TCell): integer; inline;
+      data: TDataList;
+    public
+      constructor Create;
+      destructor Destroy; override;
+      procedure Add(item: ITableViewCellDelegate); inline;
+      function TableViewValueForRow(tableView: TTableView; column: TTableColumn; row: integer): pointer;
+      function TableViewNumberOfRows(tableView: TTableView): integer;
   end;
 
 type
@@ -1100,16 +1388,28 @@ type
 
 type
   ITableViewDelegate = interface (ICellViewDelegate) ['ITableViewDelegate']
-    procedure TableViewWillDisplayCell(tableView: TTableView; row: integer; cell: TCell);
   end;
   
 
 type
   TBarItem = class (TControl)
+    private
+      cellPadding: integer;
+
+      function GetCell: TCell; inline;
     public
+
+      { Constructors }
       constructor Create(_view: TView); overload;
       constructor Create(width: integer); overload;
+
+      { Methods }
       procedure SetView(newValue: TView);
+      procedure LayoutSubviews; override;
+      procedure Initialize; override;
+
+      { Properties }
+      property Cell: TCell read GetCell;
   end;
   TBarItemList = specialize TFPGList<TBarItem>;
   
@@ -1203,7 +1503,71 @@ type
 type
   TMenu = class;
 
+  TMenuBarItem = class (TBarItem)
+    private
+      m_menu: TMenu;
+      procedure OpenMenu;
+    protected
+      procedure HandleInputStarted(event: TEvent); override;
+      procedure HandleMouseEntered(event: TEvent); override;
+      procedure HandleKeyEquivalent(event: TEvent); override;
+    public
+      constructor Create(_view: TView; _menu: TMenu);
+      property Menu: TMenu read m_menu;
+  end;
+  TMenuBarItemClass = class of TMenuBarItem;
+  TMenuBarItemList = specialize TFPGList<TMenuBarItem>;
+
+  TMenuBar = class (TWindow)
+    private
+      itemBar: TItemBar;
+
+      function GetItems: TMenuBarItemList;
+    protected
+      procedure HandleWillAddToParent(view: TView); override;
+      procedure HandleScreenDidResize; override;
+    public
+
+      { Static }
+      class function MainMenu: TMenuBar;
+      class function MenuBarHeight: integer; virtual;
+      class function ItemMargin: integer; virtual;
+      class function MenuBarItemClass: TMenuBarItemClass; virtual;
+
+      { Constructors }
+      constructor Create;
+
+      { Methods }
+      procedure AddMenu(menu: TMenu);
+      function IndexOfMenu(menu: TMenu): integer;
+      function HasOpenMenus: boolean;
+
+      { Properties }
+      property Items: TMenuBarItemList read GetItems;
+  end;
+
   TMenuItem = class (TControl)
+    private
+      checked: boolean;
+      cell: TTextAndImageCell;
+      keyEquivalentCell: TTextAndImageCell;
+      m_submenu: TMenu;
+
+      function GetMenu: TMenu;
+      function PopupSubmenu(sender: TMenu): TMenu;
+      procedure SetKeyEquivalentCellValue(value: string);
+      procedure SetSubmenu(newValue: TMenu);
+
+      { Properties }
+      property Menu: TMenu read GetMenu;
+
+    protected
+      procedure Initialize; override;
+      procedure Draw; override;
+      procedure HandleInputEnded(event: TEvent); override;
+
+      { Appearance }
+      procedure SetHilighted(newValue: boolean);
     public
     
       { Constructors }
@@ -1212,29 +1576,24 @@ type
       { Accessors }
       procedure SetChecked(newValue: boolean);
       procedure SetFont(newValue: IFont);
-      
+      procedure SetImage(newValue: TTexture);
+      procedure SetKeyEquivalent(keycode: GLPT_Keycode; modifiers: TShiftState); override;
+
       function GetTextSize: TVec2i;
+      function GetItemIndex: integer;
       function GetTitle: string;
       function IsChecked: boolean;
       function IsSelected: boolean;
-    protected
-      procedure Initialize; override;
+      function IsSubmenuOpen: boolean;
+
+      { Properties }
+      property Title: string read GetTitle;
+      property ItemIndex: integer read GetItemIndex;
+      property Submenu: TMenu read m_submenu write SetSubmenu;
+
+      { Methods }
+      procedure SizeToFit; override;
       procedure LayoutSubviews; override;
-      procedure Draw; override;
-
-      procedure DrawAccessory(rect: TRect); virtual;
-      function GetAccessoryFrame: TRect; virtual;
-
-      procedure HandleMouseEntered(event: TEvent); override;
-      procedure HandleMouseExited(event: TEvent); override;
-      procedure HandleInputEnded(event: TEvent); override;
-    private
-      checked: boolean;
-      selected: boolean;
-      cell: TTextAndImageCell;
-
-      function GetMenu: TMenu;
-      property Menu: TMenu read GetMenu;
   end;
   TMenuItemClass = class of TMenuItem;
   TMenuItemList = specialize TFPGList<TMenuItem>;
@@ -1246,39 +1605,89 @@ type
     procedure HandleMenuWillSelectItem(menu: TMenu; item: TMenuItem);
   end;
 
-  TMenu = class (TPopover)
-    private
-      items: TMenuItemList;
-    public
-      constructor Create;
-      procedure SetFont(newValue: IFont);
-      
-      { Methods }
-      procedure AddItem(item: TMenuItem); overload;
-      function AddItem(title: string; action: TInvocation): TMenuItem; overload;
-      procedure InsertItem(index: integer; item: TMenuItem);
-      procedure RemoveItem(item: TMenuItem); overload;
-      procedure RemoveItem(index: integer); overload;
-      
-      procedure Popup(where: TPoint); overload;
-      procedure Popup(parentView: TView); overload;
-      
-      destructor Destroy; override; 
+  IMenuItemValidation = interface ['IMenuItemValidation']
+    function HandleValidateMenuItem(item: TMenuItem): boolean;
+  end;
 
-    protected
-      procedure Initialize; override;
-      procedure LayoutSubviews; override;
-      procedure DrawSelection(rect: TRect); virtual;
-      procedure HandleCloseEvent(event: TEvent); override;
-      function GetItemFrame(item: TMenuItem): TRect; virtual;
+  TMenu = class (TPopover)
     private
       font: IFont;
       margin: TVec2i;
       itemHeight: integer;
       minimumWidth: integer;
       popupOrigin: TVec2i;
+      m_selectedItem: TMenuItem;
+      m_items: TMenuItemList;
+      m_menuBarItem: TMenuBarItem;
+      m_title: string;
+      parentMenu: TMenu;
+      childMenu: TMenu;
+
+      procedure ValidateMenuItems;
+      function GetSelectedItem: TMenuItem;
+      procedure SetSelectedItem(newValue: TMenuItem);
+    protected
+      procedure Initialize; override;
+      procedure HandleWillClose; override;
+      procedure HandleCloseEvent(event: TEvent); override;
+      function AcceptsMouseMovedEvents: boolean; override;
+      procedure TrackSelection(event: TEvent);
+      function GetItemFrame(item: TMenuItem): TRect; virtual;
+
+      { Handlers }
+      procedure HandleKeyDown(event: TEvent); override;
+      procedure HandleMouseMoved(event: TEvent); override;
+      procedure HandleMouseDragged(event: TEvent); override;
+      procedure HandleSelectionWillChange(newItem: TMenuItem); virtual;
+      procedure HandleSelectionDidChange; virtual;
+
+      { Properties }
+      property SelectedItem: TMenuItem read GetSelectedItem write SetSelectedItem;
+    public
+
+      { Constructors }
+      constructor Create(_title: string = '');
+      destructor Destroy; override; 
+
+      { Methods }
+      procedure SetFont(newValue: IFont);
+
+      procedure AddItem(item: TMenuItem); overload;
+      function AddItem(title: string; action: TInvocation): TMenuItem; overload;
+      function AddItem(title: string; action: TInvocation; keycode: GLPT_Keycode; modifiers: TShiftState = []): TMenuItem; overload;
+      function AddItem(title: string; method: string; keycode: GLPT_Keycode; modifiers: TShiftState = []): TMenuItem; overload;
+
+      procedure InsertItem(index: integer; item: TMenuItem);
+      procedure RemoveItem(item: TMenuItem); overload;
+      procedure RemoveItem(index: integer); overload;
+
+      procedure LayoutSubviews; override;
+      procedure CloseAll;
+
+      { Finding Items }
+      function IndexOfItem(item: TMenuItem): integer;
+      function IndexOfItemWithTitle(_title: string): integer;
+      function IndexOfItemWithTag(_tag: integer): integer;
+
+      function ItemWithTitle(_title: string): TMenuItem;
+      function ItemWithTag(_tag: integer): TMenuItem;
+
+      { Opening }
+      procedure Popup(where: TPoint); overload;
+      procedure Popup(parentView: TView); overload;
+      procedure Popup(_positioningRect: TRect; _positioningView: TView; edge: TRectEdge);
+
+      { Drawing }
+      procedure DrawSelection(rect: TRect); virtual;
+
+      { Properties }
+      property Title: string read m_title;
+      property MenuBarItem: TMenuBarItem read m_menuBarItem;
+      property Items: TMenuItemList read m_items;
   end;
   TMenuClass = class of TMenu;
+
+{ TPopupButton }
 
 type
   TPopupButton = class (TButton, IWindowDelegate, IMenuDelegate)
@@ -1293,10 +1702,9 @@ type
 
       procedure SelectItem(item: TMenuItem);
       procedure SelectItemAtIndex(index: integer);
-      procedure SelectItemWithTag(tag: integer);
+      procedure SelectItemWithTag(_tag: integer);
       procedure SelectItemWithTitle(title: string);
 
-      function SelectedItem: TMenuItem;
       function TitleOfSelectedItem: string;
       function IndexOfSelectedItem: integer;
       function SelectedTag: integer;
@@ -1312,16 +1720,25 @@ type
       procedure HandleDidSelectItem; virtual;
 
       function GetMinimumMenuWidth: integer; virtual;
+      function GetCheckmarkImage: TTexture; virtual;
 
     private
-      procedure HandleWindowWillClose(window: TWindow);
+      procedure HandleWindowWillClose(win: TWindow);
+      function HandleWindowShouldClose(win: TWindow): boolean;
       procedure HandleMenuWillSelectItem(menu: TMenu; item: TMenuItem);
     private
       menu: TMenu;
       m_selectedItem: TMenuItem;
       pullsdown: boolean;
+      procedure SetSelectedItem(newValue: TMenuItem);
       procedure Popup;
+
+      { Properties }
+      property SelectedItem: TMenuItem read m_selectedItem write SetSelectedItem;
+      property CheckmarkImage: TTexture read GetCheckmarkImage;
   end;
+
+{ TMatrixView }
 
 type
   TMatrixView = class (TCellView)
@@ -1356,6 +1773,8 @@ type
       resizeToFit: boolean;
   end;
 
+{ TStatusBar }
+
 type
   TStatusBar = class (TControl)
     public
@@ -1368,6 +1787,7 @@ type
       minimumValue: TScalar;
   end;
 
+{ TNavigationBar }
 
 type
   TNavigationBar = class (TView)
@@ -1381,6 +1801,8 @@ type
       backButton: TButton;
       titleView: TTextView;
   end;
+
+{ TNavigationView }
 
 type
   TNavigationView = class (TView)
@@ -1406,81 +1828,296 @@ type
       procedure PopPage(page: TView);
   end;
 
+// TODO: Move to TApplication and make an oveload for SetupCanvas
+// that can take an object reference
 function PollWindowEvents(constref event: pGLPT_MessageRec): boolean;
 procedure UpdateWindows;
 
 procedure Draw3PartImage(parts: TTextureArray; frame: TRect; vertical: boolean = false); 
 procedure Draw9PartImage(parts: TTextureSheet; frame: TRect); 
 
+var
+  PlatformScreenScale: Float;
+  MainScreen: TScreen = nil;
+  SharedApp: TApplication = nil;
+
 implementation
 uses
   StrUtils, Math;
 
-function MainPlatformWindow: pGLPTwindow; inline;
-begin
-  result := CanvasState.window;
-end;
-
 type
-  TWindowManifest = class
-    private
-      list: array[0..kWindowLevels - 1] of TWindowList;
-      function GetWindow(level, index: integer): TWindow;
-    public
-      property Get[level, index: integer]: TWindow read GetWindow; default;
-      function AvailableWindows: TWindowArray;
-      function FindWindow(window: TWindow): boolean;
-      function FrontWindow: TWindow;
-      function FrontWindowOfAnyLevel: TWindow;
-      procedure Update;
-      function PollEvents(constref event: pGLPT_MessageRec): boolean;
-      procedure Add(window: TWindow);
-      procedure Remove(window: TWindow);
-      procedure MoveToFront(window: TWindow);
-      procedure AfterConstruction; override;
-  end;
+  TWindowCursor = record
+    mouseDown: boolean;   
+    hover: TView;
+    inputStarted: TView;
+  end; 
 
 var
-  WindowManifest: TWindowManifest;
-  RootWindow: TView = nil;
+  MainApp: TApplication;
   KeyWindow: TWindow;
   ScreenMouseLocation: TPoint;
   SubpixelAccuracyEnabled: boolean = false;
   SharedCursor: TWindowCursor;
-  CurrentEvent: TEvent = nil;
+  MainMenuBar: TMenuBar = nil;
+  PendingEvents: array of GLPT_MessageRec;
 
 {$define IMPLEMENTATION}
 {$include include/Invocation.inc}
 {$include include/NotificationCenter.inc}
 {$include include/Timer.inc}
-{$include include/GUIStyles.inc}
 {$undef IMPLEMENTATION}
 
 const
   kNormalPressDelay = 0.2;
   kLongPressDelay = 0.75;
 
-function PollWindowEvents(constref event: pGLPT_MessageRec): boolean;
+type
+  TScrollViewHelper = class helper for TView
+    function EnclosingScrollView: TScrollView;
+  end;
+
+function TScrollViewHelper.EnclosingScrollView: TScrollView;
 begin
-  result := WindowManifest.PollEvents(event);
+  result := FindParent(TScrollView) as TScrollView;
+end;
+
+function MainPlatformWindow: pGLPTwindow; inline;
+begin
+  result := CanvasState.window;
+end;
+
+function PollWindowEvents(constref event: pGLPT_MessageRec): boolean;
+var
+  msg: GLPT_MessageRec;
+begin
+  result := SharedApp.PollEvent(event);
+
+  while Length(PendingEvents) > 0 do
+    begin
+      msg := PendingEvents[High(PendingEvents)];
+      SharedApp.PollEvent(@msg);
+      SetLength(PendingEvents, Length(PendingEvents) - 1);
+    end;
 end;
 
 procedure UpdateWindows;
 begin
-  WindowManifest.Update;
+  SharedApp.Update;
+  ProcessTimersForLoop;
 end;
 
-//#########################################################
-// WINDOW MANIFEST
-//#########################################################
+{ DRAWING }
 
-function TWindowManifest.FrontWindowOfAnyLevel: TWindow;
+procedure Draw3PartImage(parts: TTextureArray; frame: TRect; vertical: boolean = false); 
 var
-  level: integer;
+ rect: TRect;
+begin
+ Assert(Length(parts) = 3, 'invalid 3-part texture');
+
+ if vertical then
+   begin
+     rect := RectMake(frame.MinX, frame.MinY, parts[0].GetWidth, parts[0].GetHeight);
+     DrawTexture(parts[0], rect);
+
+     rect.origin.y += parts[0].GetHeight;
+     rect.size.height := frame.Height - (parts[0].GetHeight + parts[2].GetHeight);
+     DrawTexture(parts[1], rect);
+
+     rect.origin.y := rect.MaxY;
+     rect.size.height := parts[2].GetHeight;
+     DrawTexture(parts[2], rect);
+   end
+ else
+   begin
+     rect := RectMake(frame.MinX, frame.MinY, parts[0].GetWidth, frame.Height);
+     DrawTexture(parts[0], rect);
+
+     rect.origin.x += parts[0].GetWidth;
+     rect.size.width := frame.Width - (parts[0].GetWidth + parts[2].GetWidth);
+     DrawTexture(parts[1], rect);
+
+     rect.origin.x := rect.MaxX;
+     rect.size.width := parts[2].GetWidth;
+     DrawTexture(parts[2], rect);
+   end;
+end;
+
+procedure Draw9PartImage(parts: TTextureSheet; frame: TRect); 
+var
+ texture: TTexture;
+ rect: TRect;
+ cornerSize: float;
+begin
+ cornerSize := parts[0].GetSize.Max;
+
+ // corners
+ texture := parts[0];
+ rect.size := V2(cornerSize, cornerSize);
+ rect.origin := V2(frame.MinX, frame.MinY);
+ DrawTexture(texture, rect);
+
+ texture := parts[2];
+ rect.size := V2(cornerSize, cornerSize);
+ rect.origin := V2(frame.MaxX - cornerSize, frame.MinY);
+ DrawTexture(texture, rect);
+
+ texture := parts[8];
+ rect.size := V2(cornerSize, cornerSize);
+ rect.origin := V2(frame.MaxX - cornerSize, frame.MaxY - cornerSize);
+ DrawTexture(texture, rect);
+
+ texture := parts[6];
+ rect.size := V2(cornerSize, cornerSize);
+ rect.origin := V2(frame.MinX, frame.MaxY - cornerSize);
+ DrawTexture(texture, rect);
+
+ // middles
+ texture := parts[1];
+ rect.size := V2(frame.Width - (cornerSize * 2), cornerSize);
+ rect.origin := V2(frame.MinX + cornerSize, frame.MinY);
+ DrawTexture(texture, rect);
+
+ texture := parts[7];
+ rect.size := V2(frame.Width - (cornerSize * 2), cornerSize);
+ rect.origin := V2(frame.MinX + cornerSize, frame.MaxY - cornerSize);
+ DrawTexture(texture, rect);
+
+ texture := parts[3];
+ rect.size := V2(cornerSize, frame.Height - (cornerSize * 2));
+ rect.origin := V2(frame.MinX, frame.MinY + cornerSize);
+ DrawTexture(texture, rect);
+
+ texture := parts[5];
+ rect.size := V2(cornerSize, frame.Height - (cornerSize * 2));
+ rect.origin := V2(frame.MaxX - cornerSize, frame.MinY + cornerSize);
+ DrawTexture(texture, rect);
+
+ // center
+ texture := parts[4];
+ rect.size := V2(frame.Width - (cornerSize * 2), frame.Height - (cornerSize * 2));
+ rect.origin := V2(frame.MinX + cornerSize, frame.MinY + cornerSize);
+ DrawTexture(texture, rect);
+end;
+
+{ DRAGGING SESSION }
+
+var
+  SharedDraggingSession: TDraggingSession = nil;
+
+procedure TDraggingSession.TrackDrag(view: TView; event: TEvent);
+var
+  destination: IDraggingDestination;
+begin
+  if dragTarget = nil then
+    begin
+      if not Supports(view, IDraggingDestination, destination) then
+        exit;
+      m_operation := destination.HandleDraggingEntered(self);
+      if operation <> TDragOperation.None then
+        begin
+          dragTarget := view;
+          event.Accept(self);
+        end;
+    end
+  else if dragTarget = view then
+    begin
+      if not Supports(view, IDraggingDestination, destination) then
+        exit;
+      event.Accept(self);
+      m_operation := destination.HandleDraggingUpdated(self);
+    end
+  else if (dragTarget <> nil) and (dragTarget <> view) and not dragTarget.InputHit(event) then
+    begin
+      if not Supports(dragTarget, IDraggingDestination, destination) then
+        exit;
+      event.Accept(self);
+      destination.HandleDraggingExited(self);
+      dragTarget := nil;
+    end;
+end;
+
+class function TDraggingSession.IsDragging: boolean;
+begin
+  result := SharedDraggingSession <> nil;
+end;
+
+procedure TDraggingSession.HandleInputEnded(event: TEvent);
+var
+  destination: IDraggingDestination;
+begin
+  writeln('ended drag');
+  if source <> nil then
+    source.HandleDraggingSessionEndedAtPoint(self, frame.origin, operation);
+  
+  if assigned(dragTarget) and (operation <> TDragOperation.None) and Supports(dragTarget, IDraggingDestination, destination) then
+    begin
+      if destination.HandlePerformDragOperation(self) then
+        begin
+          // TODO: if we don't accept then snap back
+        end;
+      dragTarget := nil;
+    end;
+
+  event.Accept(self);
+  Close;
+end;
+
+procedure TDraggingSession.HandleInputDragged(event: TEvent);
+begin
+  SetLocation(event.Location(nil) - offset);
+  if source <> nil then
+    source.HandleDraggingSessionMovedToPoint(self, frame.origin);
+  event.Accept(self);
+end;
+
+procedure TDraggingSession.Draw;
+begin
+  //FillRect(Bounds, RGBA(1,0,0,0.5));
+  DrawTexture(dragImage, Bounds, RGBA(1, 0.5));
+  inherited;
+end;
+
+procedure TDraggingSession.SetImage(size: TVec2; image: TTexture);
+begin
+  dragImage := image;
+  SetContentSize(size);
+end;
+
+constructor TDraggingSession.Create(dragEvent: TEvent; _offset: TVec2; _source: IDraggingSource);
+begin
+  SharedDraggingSession := self;
+  Initialize;
+
+  source := _source;
+  offset := _offset;
+  items := TDraggingItems.Create;
+  windowLevel := TWindowLevel.Drag;
+  freeWhenClosed := true;
+  SetContentSize(V2(32, 32));
+
+  SetLocation(dragEvent.Location(nil) - offset);
+  OrderFront;
+
+  if source <> nil then
+    source.HandleDraggingSessionWillBeginAtPoint(self, frame.origin);
+end;
+
+destructor TDraggingSession.Destroy;
+begin
+  items.Free;
+  SharedDraggingSession := nil;
+  inherited;
+end;
+
+{ APPLICATION }
+
+function TApplication.FrontWindowOfAnyLevel: TWindow;
+var
+  level: TWindowLevel;
   window: TWindow;
 begin
   result := nil;
-  for level := 0 to kWindowLevels - 1 do
+  for level in TWindowLevel do
     begin
       window := GetWindow(level, 0);
       if assigned(window) then
@@ -1488,42 +2125,71 @@ begin
     end;
 end;
 
-function TWindowManifest.FrontWindow: TWindow;
+function TApplication.FrontWindowOfLevel(level: TWindowLevel): TWindow;
 begin
-  if list[kWindowLevelNormal].Count > 0 then
-    result := list[kWindowLevelNormal][0]
+  if list[level].Count > 0 then
+    result := list[level][0]
   else
     result := nil;
 end;
 
-function TWindowManifest.FindWindow(window: TWindow): boolean;
+{ Returns the frontmost normal window (not including utilty/overlay windows)}
+function TApplication.FrontWindow: TWindow;
+begin
+  if list[TWindowLevel.Normal].Count > 0 then
+    result := list[TWindowLevel.Normal][0]
+  else
+    result := nil;
+end;
+
+function TApplication.FindWindowOfClass(ofClass: TWindowClass): TWindow;
 var
-  level, index: integer;
+  level: TWindowLevel;
+  index: integer;
+  window: TWindow;
+begin
+  result := nil;
+  for level in TWindowLevel do
+    for index := 0 to list[level].Count - 1 do
+      begin
+        window := GetWindow(level, index);
+        if window.IsMember(ofClass) then
+          exit(window);
+      end;
+end;
+
+function TApplication.FindWindow(window: TWindow): boolean;
+var
+  level: TWindowLevel;
+  index: integer;
 begin
   result := false;
-  for level := 0 to kWindowLevels - 1 do
+  for level in TWindowLevel do
     for index := 0 to list[level].Count - 1 do
       if GetWindow(level, index) = window then
         exit(true);
 end;
 
-function TWindowManifest.AvailableWindows: TWindowArray;
+function TApplication.AvailableWindows: TWindowArray;
 var
-  level, window: integer;
+  level: TWindowLevel;
+  window: integer;
 begin
   result := nil;
-  for level := 0 to kWindowLevels - 1 do
+  for level in TWindowLevel do
     for window := list[level].Count - 1 downto 0 do
       result += [GetWindow(level, window)];
 end;
 
-procedure TWindowManifest.Update;
+procedure TApplication.Update;
 var
-  level, index: integer;
+  level: TWindowLevel;
+  index: integer;
   window: TWindow;
 begin
   // TODO: push/pop view transform
-  for level := 0 to kWindowLevels - 1 do
+  locked := true;
+  for level in TWindowLevel do
     for index := list[level].Count - 1 downto 0 do
       begin
         window := self[level, index];
@@ -1532,69 +2198,205 @@ begin
         window.LayoutRoot;
         window.Update;
         // TODO: we can kill this once we make a render backend that doesn't need shaders
-        SetViewTransform(0, 0, 1);
-        window.DrawInternal(V2(0, 0));
-        SetViewTransform(0, 0, 1);
+        PushViewTransform(0, 0, PlatformScreenScale);
+        window.DrawInternal(0);
+        PopViewTransform;
       end;
+  locked := false;
 end;
 
-function TWindowManifest.PollEvents(constref event: pGLPT_MessageRec): boolean;
+function TApplication.GetNextEvent(constref msg: pGLPT_MessageRec): TEvent;
+begin
+  result := TEvent.Create(msg);
+  if currentEvent <> nil then
+    currentEvent.Free;
+  currentEvent := result;
+end;
+
+procedure TApplication.ResizeScreen(constref msg: pGLPT_MessageRec);
+begin
+  PostNotification(kNotificationScreenWillResize);
+  ResizeCanvas(msg^.params.rect.width, msg^.params.rect.height);
+  MainScreen.SetSize(V2(msg^.params.rect.width, msg^.params.rect.height));
+end;
+
+function TApplication.PollEvent(constref msg: pGLPT_MessageRec): boolean;
 var
   window: TWindow;
   level: integer;
+  didResize: boolean;
+  event: TEvent;
+label
+  Finished;
 begin
   result := false;
-  for level := kWindowLevels - 1 downto 0 do
-    for window in list[level] do
-      if not window.IsHidden then
+  locked := true;
+  didResize := false;
+  event := GetNextEvent(msg);
+
+  // handle application level events outside main loop
+  case msg^.mcode of
+    GLPT_MESSAGE_KEYPRESS:
+      begin
+        // get key combinations and propogate through "HandleKeyEquivalent(event)/HandleKeyEquivalent"
+        // also see NSMenuItemValidation to enabling menu items based
+        if event.IsKeyboardCommand then
+          begin
+            //writeln('perform key equivalent: ', event.KeyCode);
+            HandleKeyEquivalent(event);
+            if event.IsAccepted then
+              goto Finished;
+          end;
+      end;
+    GLPT_MESSAGE_RESIZE:
+      begin
+        ResizeScreen(msg);
+        didResize := true;
+      end;
+  end;
+
+  // handle other events in the window list
+  for level := ord(high(TWindowLevel)) downto 0 do
+    for window in list[TWindowLevel(level)] do
+      if not window.IsHidden and window.PollEvent(event) then
         begin
-          if window.PollEvent(event) then
-            exit(true);
+          result := true;
+          goto Finished;
+        end
+      else
+        begin
+          // the event may been accepted so clear it manually for next pass
+          event.m_accepted := false;
         end;
+
+  Finished:
+  locked := false;
+  
+  if didResize then
+    PostNotification(kNotificationScreenDidResize);
+
+  // clear the pending window list
+  for window in pendingClose do
+    Remove(window);
+  pendingClose.Clear;
 end;
 
-procedure TWindowManifest.Add(window: TWindow);
+procedure TApplication.Add(window: TWindow);
 begin
+  if locked then
+    begin
+      writeln('🔥 warning trying to create new window while manifest is locked');
+      //HALT(-1);
+    end;
   list[window.GetWindowLevel].Add(window);
 end;
 
-procedure TWindowManifest.Remove(window: TWindow);
+procedure TApplication.Remove(window: TWindow);
+var
+  level: TWindowLevel;
+  i: integer;
+  win: TWindow;
 begin
+  if locked then
+    begin
+      pendingClose.Add(window);
+      exit;
+    end;
+
   if KeyWindow = window then
     KeyWindow := nil;
-  list[window.GetWindowLevel].Remove(window);
-  if (KeyWindow = nil) and (FrontWindow <> nil) then
-    KeyWindow := FrontWindow;
+
+  level := window.GetWindowLevel;
+  list[level].Remove(window);
+  
+  // restore the key window
+  if KeyWindow = nil then
+    begin
+      //search down from current level
+      for i := integer(level) downto 0 do
+        begin
+          win := GetWindow(TWindowLevel(i), 0);
+          if assigned(win) then
+            begin
+              win.MakeKey;
+              break;
+            end;
+        end;
+      win := FrontWindowOfLevel(level);
+      if win <> nil then
+        win.MakeKey;
+    end;
+
+  window.FinalizeClose;
 end;
 
-function TWindowManifest.GetWindow(level, index: integer): TWindow;
+function TApplication.GetWindow(level: TWindowLevel; index: integer): TWindow;
 begin
-  result := list[level].Get(index);
+  if index < list[level].Count then
+    result := list[level].Get(index)
+  else
+    result := nil;
 end;
 
-procedure TWindowManifest.MoveToFront(window: TWindow);
+procedure TApplication.MoveToFront(window: TWindow);
 var
-  level: integer;
+  level: TWindowLevel;
 begin
   level := window.GetWindowLevel;
   list[level].Move(list[level].IndexOf(window), 0);
 end;
 
-procedure TWindowManifest.AfterConstruction;
+procedure TApplication.HandleKeyEquivalent(event: TEvent);
 var
-  i: integer;
+  level: integer;
+  window: TWindow;
 begin
-  for i := 0 to kWindowLevels - 1 do
-    list[i] := TWindowList.Create;
+  //for level := kWindowLevels - 1 downto 0 do
+  for level := ord(high(TWindowLevel)) downto 0 do
+    for window in list[TWindowLevel(level)] do
+      if not window.IsHidden then
+        begin
+          window.HandleKeyEquivalent(event);
+          if event.IsAccepted then
+            exit;
+        end;
 end;
 
-//#########################################################
-// EVENT
-//#########################################################
+procedure TApplication.HandleCommand(command: string);
+begin
+  if command = 'closeWindow:' then
+    begin
+      if FrontWindow <> nil then
+        FrontWindow.Close;
+    end;
+end;
+
+procedure TApplication.AfterConstruction;
+var
+  level: TWindowLevel;
+begin
+  Assert(SharedApp = nil, 'only one app is allowed!');
+  SharedApp := self;
+  pendingClose := TWindowList.Create;
+  for level in TWindowLevel do
+    list[level] := TWindowList.Create;
+end;
+
+class function TApplication.FirstResponder: TObject;
+begin
+  result := SharedApp;
+end;
+
+{ EVENT }
 
 function TEvent.KeyCode: GLPT_Keycode;
 begin
   result := msg^.params.keyboard.keycode;
+end;
+
+function TEvent.IsKeyboardCommand: boolean;
+begin
+  result := KeyboardModifiers <> [];
 end;
 
 function TEvent.KeyboardModifiers: TShiftState;
@@ -1607,37 +2409,45 @@ begin
   result := msg^.params.mouse.shiftstate;
 end;
 
-function TEvent.KeyboardCharacter: char;
+function TEvent.KeyboardCharacter: TFontChar;
 begin
-  result := char(msg^.params.keyboard.keycode);
+  result := TFontChar(msg^.params.keyboard.keycode);
 end;
 
 function TEvent.ScrollWheel: TVec2;
 begin
   result := V2(msg^.params.mouse.deltaX, msg^.params.mouse.deltaY);
+
+  // scale amount to screen scale
+  result *= PlatformScreenScale;
 end;
 
 function TEvent.ClickCount: integer;
 begin
-  result := msg^.params.mouse.buttons;
+  result := msg^.params.mouse.clicks;
 end;
 
 function TEvent.Location(system: TObject = nil): TPoint;
 begin
   result := CanvasMousePosition(msg);
+
+  // scale location from screen scale
+  result.x := trunc(result.x / PlatformScreenScale);
+  result.y := trunc(result.y / PlatformScreenScale);
+
   if system <> nil then
-    result := TView(system).ConvertPointFrom(result, RootWindow);
+    result := TView(system).ConvertPointFrom(result, MainScreen);
 end;
 
 procedure TEvent.Reject;
 begin
-  accepted := false;
+  m_accepted := false;
   acceptedObject := nil;
 end;
 
 procedure TEvent.Accept(obj: TObject = nil);
 begin
-  accepted := true;
+  m_accepted := true;
   acceptedObject := obj;
 end;
 
@@ -1646,15 +2456,7 @@ begin
   msg := raw;
 end;
 
-//#########################################################
-// VIEW
-//#########################################################
-
-function TView.StartDrag(face: TTexture; event: TEvent; offset: TVec2; data: TVariantMap): TDraggingSession;
-begin
-  // TODO: drag and drop needs to be implemented in GLPT
-  //result := TDraggingSession.StartDrag(self, face, event, offset, data);
-end;  
+{ VIEW }
 
 function TView.InputHit(event: TEvent): boolean;
 begin
@@ -1696,7 +2498,7 @@ var
   delegate: ICoordinateConversion;
 begin   
   if system = nil then
-    system := RootWindow;
+    system := MainScreen;
 
   if system = self then
     exit(rect)
@@ -1706,8 +2508,8 @@ begin
   if Supports(system, ICoordinateConversion, delegate) then
     if delegate.GetParentCoordinateSystem <> GetParentCoordinateSystem then
       begin
-        result.origin.x := rect.origin.x + (GetLocation.x);
-        result.origin.y := rect.origin.y + (GetLocation.y);
+        result.origin.x := rect.origin.x + GetLocation.x;
+        result.origin.y := rect.origin.y + GetLocation.y;
         result.size := rect.size;
 
         if Supports(GetParentCoordinateSystem, ICoordinateConversion, delegate) then
@@ -1720,7 +2522,7 @@ var
   delegate: ICoordinateConversion;
 begin
   if system = nil then
-    system := RootWindow;
+    system := MainScreen;
 
   if system = self then
     exit(rect)
@@ -1730,9 +2532,10 @@ begin
   if Supports(system, ICoordinateConversion, delegate) then
     if delegate.GetParentCoordinateSystem <> GetParentCoordinateSystem then
       begin
-        result.origin.x := rect.origin.x - (GetLocation.x * GetResolution);
-        result.origin.y := rect.origin.y - (GetLocation.y * GetResolution);
-        result.size := rect.size * GetResolution;
+        result.origin.x := rect.origin.x - GetLocation.x;
+        result.origin.y := rect.origin.y - GetLocation.y;
+        result.size := rect.size;
+
         if Supports(GetParentCoordinateSystem, ICoordinateConversion, delegate) then
           result := delegate.ConvertRectFrom(result, system);
       end;
@@ -1792,7 +2595,6 @@ begin
       subviews.Insert(index, view);
       view.SetParent(self);
       view.HandleDidAddToParent(self);
-      //view.LayoutSubviews;
       HandleSubviewsChanged;
     end;
   DisplayNeedsUpdate;
@@ -1854,19 +2656,37 @@ begin
     end;
 end;
 
+procedure TView.InternalLayoutSubviews;
+var
+  oldSize: TVec2;
+begin
+  oldSize := GetSize;
+
+  // it's important to layout first so view can set
+  // their size before autoresize is called
+  LayoutSubviews;
+  
+  // call autoresize outside of the layout method
+  // so that subviews can not override this behavior
+  if (GetParent <> nil) and (GetAutoresizingOptions <> []) then
+    begin
+      AutoResize;
+      
+      // we need to follow after AutoResize because subviews may have changed
+      if GetSize <> oldSize then
+        LayoutSubviews;
+    end;
+end;
+
 procedure TView.LayoutSubviews;
 var
   child: TView;
 begin
-  if (GetParent <> nil) and (GetAutoresizingOptions <> []) then
-    AutoResize;
-
   for child in subviews do
     begin
-      child.LayoutSubviews;
+      child.InternalLayoutSubviews;
       child.m_needsLayoutSubviews := false;
     end;
-
   m_needsLayoutSubviews := false;
 end;
 
@@ -1875,6 +2695,7 @@ procedure TView.LayoutRoot;
 var
   child: TView;
 begin
+  LayoutIfNeeded;
   for child in subviews do
     begin
       child.LayoutIfNeeded;
@@ -2062,7 +2883,7 @@ end;
 procedure TView.PostFrameChangedNotification;
 begin
   postingFrameChangeNotification := true;
-  TNotificationCenter.DefaultCenter.PostNotification(kNotificationFrameChanged, self);
+  PostNotification(kNotificationFrameChanged, self);
   postingFrameChangeNotification := false;
 end;
 
@@ -2084,7 +2905,10 @@ begin
       savedFrame := m_frame;
       m_frame := newValue;
       DisplayNeedsUpdate;
-      //NeedsLayoutSubviews;
+      if GetParent <> nil then
+        LayoutSubviews
+      else
+        NeedsLayoutSubviews;
 
       HandleFrameDidChange(savedFrame);
             
@@ -2240,63 +3064,65 @@ begin
   newFrame := GetFrame;
   resizedFrame := newFrame;
   enclosingFrame := GetParent.GetFrame;
-
+  
   if not didAutoResize then
     begin
-      initialMargin.left := newFrame.MinX;
-      initialMargin.top := newFrame.MinY;
-      initialMargin.right := enclosingFrame.Width - newFrame.MaxX;
-      initialMargin.bottom := enclosingFrame.Height - newFrame.MaxY;
+      initialState.margin.left := newFrame.MinX;
+      initialState.margin.top := newFrame.MinY;
+      initialState.margin.right := enclosingFrame.Width - newFrame.MaxX;
+      initialState.margin.bottom := enclosingFrame.Height - newFrame.MaxY;
 
-      initialRelative.origin.x := initialMargin.left / enclosingFrame.Width;
-      initialRelative.origin.y := initialMargin.top / enclosingFrame.Height;
+      initialState.relativeMid.x := (newFrame.MidX) / enclosingFrame.Width;
+      initialState.relativeMid.y := (newFrame.MidY) / enclosingFrame.Height;
+      //writeln(ClassName, ': ', initialState.relativeMid.tostr, ' from ', newFrame.tostr, ' of ', enclosingFrame.tostr);
 
-      initialRelative.size.x := newFrame.Width / enclosingFrame.Width;
-      initialRelative.size.y := newFrame.Height / enclosingFrame.Height;
+      initialState.relativeSize.x := newFrame.Width / enclosingFrame.Width;
+      initialState.relativeSize.y := newFrame.Height / enclosingFrame.Height;
 
-      //writeln(classname, ' margin: ', initialMargin.tostr, ' initialRelativeMargin: ', initialRelativeMargin.tostr);
       didAutoResize := true;
     end;
 
   // relative origins
-  if TAutoresizingOption.RelativeXMargin in GetAutoresizingOptions then
-    resizedFrame.origin.x := initialRelative.origin.x * enclosingFrame.Width;
-
-  if TAutoresizingOption.RelativeYMargin in GetAutoresizingOptions then
-    resizedFrame.origin.y := initialRelative.origin.y * enclosingFrame.Height;
+  if not (TAutoresizingOption.MinXMargin in GetAutoresizingOptions) and 
+    not (TAutoresizingOption.MaxXMargin in GetAutoresizingOptions) then
+    resizedFrame.origin.x := (initialState.relativeMid.x * enclosingFrame.Width) - (newFrame.Width / 2);
+  
+  if not (TAutoresizingOption.MinYMargin in GetAutoresizingOptions) and 
+    not (TAutoresizingOption.MaxYMargin in GetAutoresizingOptions) then
+    resizedFrame.origin.y := (initialState.relativeMid.y * enclosingFrame.Height) - (newFrame.Height / 2);
 
   // x margins
   if TAutoresizingOption.MinXMargin in GetAutoresizingOptions then
-    resizedFrame.origin.x := initialMargin.left
+    resizedFrame.origin.x := initialState.margin.left
   else if(TAutoresizingOption.MaxXMargin in GetAutoresizingOptions) and
           not (TAutoresizingOption.WidthSizable in GetAutoresizingOptions) then
-    resizedFrame.origin.x := enclosingFrame.width - initialMargin.right - newFrame.width;
+    resizedFrame.origin.x := enclosingFrame.width - initialState.margin.right - newFrame.width;
 
   // y margins
   if TAutoresizingOption.MinYMargin in GetAutoresizingOptions then
-    resizedFrame.origin.y := initialMargin.top
+    resizedFrame.origin.y := initialState.margin.top
   else if(TAutoresizingOption.MaxYMargin in GetAutoresizingOptions ) and
           not (TAutoresizingOption.HeightSizable in GetAutoresizingOptions) then
-    resizedFrame.origin.y := enclosingFrame.height - initialMargin.bottom - newFrame.height;
+    resizedFrame.origin.y := enclosingFrame.height - initialState.margin.bottom - newFrame.height;
 
   // width
   if TAutoresizingOption.WidthSizable in GetAutoresizingOptions then
     begin
       if TAutoresizingOption.MaxXMargin in GetAutoresizingOptions then
-        resizedFrame.size.x := (enclosingFrame.Width - resizedFrame.MinX) - initialMargin.right
+        resizedFrame.size.x := (enclosingFrame.Width - resizedFrame.MinX) - initialState.margin.right
       else
-        resizedFrame.size.x := initialRelative.size.x * enclosingFrame.Width;
+        resizedFrame.size.x := initialState.relativeSize.x * enclosingFrame.Width;
     end;
   
   // height
   if TAutoresizingOption.HeightSizable in GetAutoresizingOptions then
     begin
       if TAutoresizingOption.MaxYMargin in GetAutoresizingOptions then
-        resizedFrame.size.y := (enclosingFrame.Height - resizedFrame.MinY) - initialMargin.bottom
+        resizedFrame.size.y := (enclosingFrame.Height - resizedFrame.MinY) - initialState.margin.bottom
       else
-        resizedFrame.size.y := initialRelative.size.y * enclosingFrame.Height;
+        resizedFrame.size.y := initialState.relativeSize.y * enclosingFrame.Height;
     end;
-
+    
   SetFrame(resizedFrame);
 end;
 
@@ -2365,7 +3191,7 @@ begin
     HandleWillAddToWindow(TWindow(view));
 end;
 
-procedure TView.HandleWillAddToWindow(window: TWindow);
+procedure TView.HandleWillAddToWindow(win: TWindow);
 begin
 end;
 
@@ -2393,6 +3219,18 @@ begin
       child.HandleKeyDown(event);
       if event.IsAccepted then
         exit;
+    end;
+end;
+
+procedure TView.HandleKeyEquivalent(event: TEvent);
+var
+  child: TView;
+begin
+  for child in subviews do
+    begin
+      child.HandleKeyEquivalent(event);
+      if event.IsAccepted then
+        break;
     end;
 end;
 
@@ -2468,7 +3306,7 @@ var
 begin
   if InputHit(event) then
     begin
-      if GetWindow <> TWindow.FrontWindow then
+      if GetWindow <> SharedApp.FrontWindow then
         exit;
       
       for child in subviews do
@@ -2480,6 +3318,10 @@ begin
     end;
 end;
 
+{ HandleMouseMoved is called when the mouse is moving within the view. To receive this event you must:
+  1) Override AcceptsMouseMovedEvents and return true.
+  2) Accept the event by overriding HandleMouseEntered. }
+
 procedure TView.HandleMouseMoved(event: TEvent);
 begin
 end;
@@ -2490,6 +3332,24 @@ begin
     result := GetWindow.AcceptsMouseMovedEvents
   else
     result := false;
+end;
+
+procedure TView.TestDragTracking(event: TEvent);
+var
+  child: TView;
+begin 
+  if InputHit(event) then
+    begin
+      for child in subviews do
+        begin
+          child.TestDragTracking(event);
+          if event.IsAccepted then
+            exit;
+        end;
+      SharedDraggingSession.TrackDrag(self, event);
+      if event.IsAccepted then
+        exit;
+    end;
 end;
 
 procedure TView.TestMouseTracking(event: TEvent);
@@ -2505,17 +3365,14 @@ begin
             exit;
         end;
 
+      // mouse tracking
       if SharedCursor.hover <> self then
         begin
           HandleMouseEntered(event);
           if event.IsAccepted then
             begin
               if assigned(SharedCursor.hover) then
-                begin
-                  //writeln('exited: ', SharedCursor.hover.classname);  
-                  SharedCursor.hover.HandleMouseExited(event);
-                end;
-              //writeln('entered: ', classname);
+                SharedCursor.hover.HandleMouseExited(event);
               SharedCursor.hover := self;
             end;
         end;
@@ -2566,15 +3423,14 @@ end;
 
 function TView.GetClipRect: TRect; 
 begin
-  if m_clipRect.size = 0 then
-    result := GetBounds
-  else
-    result := m_clipRect;
+  result := GetBounds;
 end;
 
 procedure TView.PushClipRect(rect: TRect);
 begin
-  rect := ConvertRectTo(rect, RootWindow);
+  rect := ConvertRectTo(rect, MainScreen);
+  rect *= PlatformScreenScale;
+
   rect := RectFlipY(rect, GetViewPort);
   GLCanvas.PushClipRect(rect);
 end;
@@ -2606,7 +3462,7 @@ end;
 
 function TView.ShouldDrawSubview(view: TView): boolean;
 begin
-  result := true;
+  result := not IsHidden;
 end;
 
 procedure TView.DrawInternal(parentOrigin: TVec2);
@@ -2616,7 +3472,7 @@ procedure TView.DrawInternal(parentOrigin: TVec2);
     if assigned(GetParent) then
       result := GetParent.ShouldDrawSubview(self)
     else
-      result := true;
+      result := not IsHidden;
   end;
 
 var
@@ -2626,19 +3482,28 @@ begin
   // TODO: we need to flush for SetViewTransform since it's a shader property
   // once we have a render backend for GUI's we can add the view transform into the root functions
   savedOrigin := parentOrigin;
-  renderOrigin := GetFrame.origin + parentOrigin;
+  renderOrigin := GetFrame.origin * PlatformScreenScale + parentOrigin;
   FlushDrawing;
+
   if not IsHidden then
     begin
+      PushViewTransform(renderOrigin.x, renderOrigin.y, PlatformScreenScale);
+
       if enableClipping then
         PushClipRect(GetClipRect);
-      SetViewTransform(renderOrigin.x, renderOrigin.y, 1);
       if ShouldDraw then
         Draw;
       FlushDrawing;
-      SetViewTransform(savedOrigin.x, savedOrigin.y, 1);
       if enableClipping then
         PopClipRect;
+
+      // draw outside of clip rect
+      {$ifdef GLGUI_DEBUG}
+      DrawDebugWidgets;
+      FlushDrawing;
+      {$endif}
+
+      PopViewTransform;
     end
   else
     begin
@@ -2648,13 +3513,15 @@ begin
     end;
 end;
 
+procedure TView.DrawDebugWidgets;
+begin
+  StrokeRect(GetBounds, RGBA(0, 0, 1, 1));
+end;
+
 procedure TView.Draw;
 var
   child: TView;
 begin
-  {$ifdef GLGUI_DEBUG}
-  StrokeRect(GetBounds, RGBA(0,1));
-  {$endif}
   if assigned(subviews) then
     for child in subviews do
       child.DrawInternal(renderOrigin);
@@ -2682,88 +3549,45 @@ begin
   inherited;
 end;
 
-//#########################################################
-// WINDOW
-//#########################################################
+{ TResponder }
 
-function TWindow.GetDelegate: TObject;
+procedure TResponder.HandleKeyEquivalent(event: TEvent);
 begin
-  result := delegate;
 end;
 
-function TWindow.GetParentCoordinateSystem: TObject;
+procedure TResponder.HandleCommand(command: string);
 begin
-  result := RootWindow;
 end;
 
-function TWindow.GetContentFrame: TRect;
+procedure TResponder.DefaultHandlerStr(var message);
+var
+  callback: TInvocationCallbackDispatch absolute message;
 begin
-  result := RectMake(0, 0, contentSize.Width, contentSize.Height);
+  writeln('default: ', callback.method);
+  {
+    we should re-send the message using the dispatch system!
+  }
+  HandleCommand(callback.method);
 end;
 
-function TWindow.GetFocusedView: TView;
+{ SCREEN }
+
+function TScreen.GetVisibleFrame: TRect;
 begin
-  result := focusedView;
+  result := GetViewPort;
+  if TMenuBar.MainMenu <> nil then
+    begin
+      result.origin.y += TMenuBar.MainMenu.Frame.Height;
+      result.size.y -= TMenuBar.MainMenu.Frame.Height;
+    end;
 end;
 
-function TWindow.GetContentSize: TVec2;
+class function TScreen.MainScreen: TScreen;
 begin
-  result := contentSize;
+  result := GLUI.MainScreen;
 end;
 
-procedure TWindow.SetFocusedView(newValue: TView);
-begin
-  if focusedView <> nil then
-    focusedView.HandleWillResignFocus;
-  newValue.HandleWillBecomeFocused;
-  focusedView := newValue;
-  newValue.HandleDidBecomeFocused;
-  TNotificationCenter.DefaultCenter.PostNotification(kNotificationFocusChanged, newValue);
-end;
-
-procedure TWindow.SetContentSize(newValue: TVec2);
-begin
-  contentSize := newValue;
-  SetSize(V2(contentSize.width, contentSize.height));
-end;
-
-procedure TWindow.SetContentView(newValue: TView);
-begin
-  newValue.SetAutoresizingOptions([TAutoresizingOption.MinXMargin, TAutoresizingOption.MinYMargin, TAutoresizingOption.WidthSizable, TAutoresizingOption.HeightSizable]);
-  newValue.SetFrame(GetContentFrame);
-  AddSubview(newValue);
-end;
-
-procedure TWindow.SetDelegate(newValue: TObject);
-begin
-  delegate := newValue;
-end;
-
-procedure TWindow.SetMoveableByBackground(newValue: boolean);
-begin
-  moveableByBackground := newValue;
-end;
-
-procedure TWindow.SetWindowLevel(newValue: integer);
-begin
-  windowLevel := newValue;
-end;
-
-procedure TWindow.SetModal(newValue: boolean);    
-begin
-  modal := newValue;
-end;
-
-function TWindow.GetWindowLevel: integer;
-begin
-  result := windowLevel;
-end;
-
-procedure TWindow.PerformClose(params: TInvocationParams);
-begin
-  // TODO: ask delegate to close
-  Close;
-end;
+{ LAYOUT TABLE }
 
 function TLayoutTable.AddView(view: TView): TRect;
 var
@@ -2785,6 +3609,89 @@ destructor TLayoutTable.Destroy;
 begin
   FreeAndNil(views);
   inherited;
+end;
+
+{ WINDOW }
+
+function TWindow.GetDelegate: TObject;
+begin
+  result := delegate;
+end;
+
+function TWindow.GetParentCoordinateSystem: TObject;
+begin
+  result := MainScreen;
+end;
+
+function TWindow.GetContentFrame: TRect;
+begin
+  result := RectMake(0, 0, GetWidth, GetHeight);
+end;
+
+function TWindow.GetFocusedView: TView;
+begin
+  result := focusedView;
+end;
+
+function TWindow.GetContentSize: TVec2;
+begin
+  result := GetContentFrame.size;
+end;
+
+procedure TWindow.SetFocusedView(newValue: TView);
+begin
+  if focusedView <> nil then
+    focusedView.HandleWillResignFocus;
+  newValue.HandleWillBecomeFocused;
+  focusedView := newValue;
+  newValue.HandleDidBecomeFocused;
+  PostNotification(kNotificationFocusChanged, newValue);
+end;
+
+procedure TWindow.SetContentSize(newValue: TVec2);
+var
+  newFrame: TRect;
+begin
+  newFrame := GetFrameForContentFrame(RectMake(0, newValue));
+  SetSize(newFrame.size);
+end;
+
+procedure TWindow.SetContentView(newValue: TView);
+begin
+  newValue.SetAutoresizingOptions(TAutoresizingStretchToFill);
+  newValue.SetFrame(GetContentFrame);
+  AddSubview(newValue);
+end;
+
+procedure TWindow.SetDelegate(newValue: TObject);
+begin
+  delegate := newValue;
+end;
+
+procedure TWindow.SetMoveableByBackground(newValue: boolean);
+begin
+  moveableByBackground := newValue;
+end;
+
+procedure TWindow.SetWindowLevel(newValue: TWindowLevel);
+begin
+  windowLevel := newValue;
+end;
+
+procedure TWindow.SetModal(newValue: boolean);    
+begin
+  modal := newValue;
+end;
+
+function TWindow.GetWindowLevel: TWindowLevel;
+begin
+  result := windowLevel;
+end;
+
+procedure TWindow.PerformClose(params: TInvocationParams);
+begin
+  // TODO: ask delegate to close
+  Close;
 end;
 
 procedure TWindow.BeginLayout(position: TVec2; rowHeight: integer);
@@ -2836,26 +3743,30 @@ end;
 
 procedure TWindow.MakeKey; 
 begin
+  if KeyWindow = self then
+    exit;
   if assigned(KeyWindow) then
     KeyWindow.HandleWillResignKeyWindow;
   HandleWillbecomeKeyWindow;
-  GLGUI.KeyWindow := self;
+  GLUI.KeyWindow := self;
   HandleDidbecomeKeyWindow;
   OrderFront;
 end;
 
 procedure TWindow.MakeKeyAndOrderFront; 
 begin
+  if KeyWindow = self then
+    exit;
   MakeKey;
   OrderFront;
 end;
 
 procedure TWindow.OrderFront;
 var
-  window: TWindow;
+  win: TWindow;
 begin
   
-  if not WindowManifest.FindWindow(self) then
+  if not SharedApp.FindWindow(self) then
     HandleDidAddToScreen;
 
   // already ordered front
@@ -2867,23 +3778,27 @@ begin
       
   if not IsFloating then
     begin
-      window := TWindow.FrontWindow;
-      if window <> nil then
-        window.HandleWillResignFrontWindow;
+      win := SharedApp.FrontWindow;
+      if win <> nil then
+        win.HandleWillResignFrontWindow;
 
       SetHidden(false);
+
+      if win <> nil then
+        win.HandleDidResignFrontWindow;
+
       HandleWillBecomeFrontWindow;
-      WindowManifest.MoveToFront(self);
+      SharedApp.MoveToFront(self);
       HandleDidBecomeFrontWindow;
     end;
 
-  if assigned(CurrentEvent) then
-    TestMouseTracking(CurrentEvent);
+  if assigned(SharedApp.CurrentEvent) then
+    TestMouseTracking(SharedApp.CurrentEvent);
 end;
 
 function TWindow.IsFront: boolean;
 begin
-  result := TWindow.FrontWindow = self;
+  result := SharedApp.FrontWindow = self;
 end;
 
 function TWindow.IsKey: boolean;
@@ -2898,7 +3813,7 @@ end;
 
 function TWindow.IsFloating: boolean;
 begin
-  result := windowLevel > kWindowLevelNormal;
+  result := windowLevel > TWindowLevel.Normal;
 end;
 
 procedure TWindow.HandleWillResignKeyWindow;
@@ -2910,6 +3825,10 @@ begin
 end;
 
 procedure TWindow.HandleDidBecomeKeyWindow;
+begin
+end;
+
+procedure TWindow.HandleDidResignFrontWindow;
 begin
 end;
 
@@ -2925,33 +3844,16 @@ procedure TWindow.HandleDidBecomeFrontWindow;
 begin
 end;
 
+procedure TWindow.HandleScreenDidResize;
+begin
+end;
+
 procedure TWindow.HandleWillClose;
 var
   windowDelegate: IWindowDelegate;
 begin
   if Supports(delegate, IWindowDelegate, windowDelegate) then
     windowDelegate.HandleWindowWillClose(self);
-end;
-
-function TWindow.HandleDraggingEntered(session: TDraggingSession): integer;
-begin
-  // NOTE: this is kind of hack for now since dragging requires the parent
-  // implement dragging so children can be checked for
-  result := kDragOperationNone;
-end;
-
-function TWindow.HandleDraggingUpdated(session: TDraggingSession): integer;
-begin
-  result := kDragOperationNone;
-end;
-
-procedure TWindow.HandleDraggingExited(session: TDraggingSession);
-begin
-end;
-
-function TWindow.HandlePerformDragOperation(session: TDraggingSession): boolean;
-begin
-  result := false;
 end;
 
 function TWindow.AcceptsKeyboardEvents: boolean;
@@ -2984,15 +3886,36 @@ var
 begin
   result.origin := 0;
   result.size := 0;
+
   GLPT_GetFrameBufferSize(MainPlatformWindow, width, height);
 
-  result.size.x := width;
-  result.size.y := height;
+  result.size.x := width / PlatformScreenScale;
+  result.size.y := height / PlatformScreenScale;
 end;
 
 function TWindow.ShouldMoveByBackground(event: TEvent): boolean;
 begin
-  result := moveableByBackground and IsKey{(WindowManifest.FrontWindowOfAnyLevel <> self)};
+  result := moveableByBackground and IsKey;
+end;
+
+function TWindow.ShouldResize(event: TEvent): boolean;
+begin
+  result := false;
+end;
+
+function TWindow.ShouldClose: boolean;
+var
+  windowDelegate: IWindowDelegate;
+begin
+  if Supports(delegate, IWindowDelegate, windowDelegate) then
+    result := windowDelegate.HandleWindowShouldClose(self)
+  else
+    result := true;
+end;
+
+function TWindow.GetFrameForContentFrame(_contentFrame: TRect): TRect;
+begin
+  result := _contentFrame;
 end;
 
 // alternate method to send default action by invocation
@@ -3022,6 +3945,18 @@ begin
       end;
 end;
 
+procedure TWindow.HandleKeyEquivalent(event: TEvent);
+begin
+  // pass to focused view first
+  if focusedView <> nil then
+    begin
+      focusedView.HandleKeyEquivalent(event);
+      if event.IsAccepted then
+        exit;
+    end;
+  inherited HandleKeyEquivalent(event);
+end;
+
 procedure TWindow.HandleMouseMoved(event: TEvent);
 var
   child: TView;
@@ -3031,9 +3966,10 @@ begin
     exit;
   
   // block events that are from a window behind the front window
-  if (self <> TWindow.FrontWindow) and TWindow.FrontWindow.InputHit(event) then
+  if (self <> SharedApp.FrontWindow) and 
+    (assigned(SharedApp.FrontWindow) and SharedApp.FrontWindow.InputHit(event)) then
     exit;
-    
+
   if (mouseInsideView <> nil) and 
      (mouseInsideView.GetParent = nil) then
     begin
@@ -3052,6 +3988,7 @@ begin
       outView := nil;
       if InputHit(event) then
         FindSubviewForMouseEvent(event, self, outView);
+
       // if the event was accepted then set view
       if (outView <> nil) and event.IsAccepted then
         mouseInsideView := outView;
@@ -3123,8 +4060,9 @@ begin
   if pressOrigin = where then
     HandleInputPress(event);
     
-  pressOrigin := V2(-1, -1);
-  dragOrigin := V2(-1, -1);
+  pressOrigin := -1;
+  dragOrigin := -1;
+  resizeOrigin := -1;
 end;
 
 procedure TWindow.HandleInputDragged(event: TEvent);
@@ -3133,11 +4071,21 @@ var
 begin 
   pressOrigin := V2(-1, -1);
 
-  if not event.IsAccepted and(dragOrigin <> -1) then
+  if not event.IsAccepted and (dragOrigin <> -1) then
     begin
       where := event.Location(self);
       newPos := GetLocation + V2(where.x - dragOrigin.x, where.y - dragOrigin.y);
       SetLocation(newPos);
+      event.Accept(self);
+    end
+  else if not event.IsAccepted and (resizeOrigin <> -1) then
+    begin
+      where := event.Location(self);
+      newPos := resizeOriginalSize + V2(where.x - resizeOrigin.x, where.y - resizeOrigin.y);
+      SetContentSize(newPos);
+      //GetBounds.show;
+      // we need to force resize windows
+      LayoutSubviews;
       event.Accept(self);
     end;
     
@@ -3149,7 +4097,7 @@ var
   front: TWindow;
 begin   
   pressOrigin := event.Location;
-  front := TWindow.FrontWindow;
+  front := SharedApp.FrontWindow;
 
   // block clicks outside the window if the front window is modal
   if not InputHit(event) and (front <> nil) and front.IsModal then
@@ -3168,6 +4116,18 @@ begin
       
   inherited HandleInputStarted(event);
 
+  // resize window
+  if InputHit(event) and not event.IsAccepted then
+    begin
+      if ShouldResize(event) then
+        begin
+          resizeOrigin := event.Location(self);
+          resizeOriginalSize := GetContentSize;
+          event.Accept(self);
+          exit;
+        end;
+    end;
+
   // drag window by background
   if InputHit(event) and not event.IsAccepted then
     begin
@@ -3180,14 +4140,24 @@ end;
 
 procedure TWindow.HandleDidAddToScreen;
 begin
-  TNotificationCenter.DefaultCenter.PostNotification(kNotificationWindowWillOpen, self);
+  PostNotification(kNotificationWindowWillOpen, self);
         
-  WindowManifest.Add(self);
+  SharedApp.Add(self);
   
   if wantsCenter then
     Center; 
   
-  TNotificationCenter.DefaultCenter.PostNotification(kNotificationWindowDidOpen, self);
+  PostNotification(kNotificationWindowDidOpen, self);
+end;
+
+procedure TWindow.HandleFrameWillChange(var newFrame: TRect);
+begin
+  // keep windows in visible screen frame (except the menu bar)
+  if ShouldConstrainToSafeArea then
+    begin
+      if newFrame.origin.y < MainScreen.VisibleFrame.MinY then
+        newFrame.origin.y := MainScreen.VisibleFrame.MinY;
+    end;
 end;
 
 procedure TWindow.HandleFrameDidChange(previousFrame: TRect);
@@ -3196,24 +4166,33 @@ begin
   inherited HandleFrameDidChange(previousFrame);
 end;
 
-procedure TWindow.HandleWillRemoveFromScreen;
-begin 
-  TNotificationCenter.DefaultCenter.PostNotification(kNotificationWindowWillClose, nil, pointer(self));
-  WindowManifest.Remove(self);
-  TNotificationCenter.DefaultCenter.PostNotification(kNotificationWindowDidClose, nil, pointer(self));
+function TWindow.ShouldConstrainToSafeArea: boolean;
+begin
+  result := not InheritsFrom(TMenuBar) and not (windowLevel = TWindowLevel.Drag);
+end;
+
+function TWindow.IsOpen: boolean;
+begin
+  result := SharedApp.FindWindow(self);
 end;
 
 procedure TWindow.Close;
 begin 
-  HandleWillClose;
-  HandleWillRemoveFromScreen;
+  if ShouldClose then
+    begin
+      PostNotification(kNotificationWindowWillClose, self);
+      HandleWillClose;
+      SharedApp.Remove(self);
+    end;
 end;
 
 procedure TWindow.Initialize;
 begin
   inherited Initialize;
   
+  freeWhenClosed := false;
   dragOrigin := -1;
+  resizeOrigin := -1;
 end;
 
 destructor TWindow.Destroy;
@@ -3241,25 +4220,34 @@ begin
       end;
 end;
 
-function TWindow.PollEvent(constref raw: pGLPT_MessageRec): boolean;
-var
-  event: TEvent;
+function TWindow.ShouldAllowEnabling: boolean;
 begin
-  event := TEvent.Create(raw);
-  result := false;
-  if CurrentEvent <> nil then
-    CurrentEvent.Free;
-  CurrentEvent := event;
+  result := IsFront or IsFloating;
+end;
+
+procedure TWindow.FinalizeClose; 
+begin
+  PostNotification(kNotificationWindowDidClose, self);
+
+  // free the window now that's it's safe
+  if freeWhenClosed then
+    Free;
+end;
+
+function TWindow.PollEvent(event: TEvent): boolean;
+begin
+  // if the window is modal then we need to block other events
+  result := IsModal;
 
   ScreenMouseLocation := event.Location;
 
-  case raw^.mcode of
+  case event.msg.mcode of
     GLPT_MESSAGE_RESIZE:
-      begin
-        RootWindow.SetSize(V2(raw^.params.rect.width, raw^.params.rect.height));
-      end;
+      HandleScreenDidResize;
     GLPT_MESSAGE_MOUSEDOWN:
       begin
+        Assert(SharedCursor.inputStarted = nil, 'mouse up wasn''t processed');
+
         SharedCursor.mouseDown := true;
         HandleMouseDown(event);
         if event.IsAccepted then
@@ -3267,10 +4255,16 @@ begin
 
         HandleInputStarted(event);
         if event.IsAccepted then
-          exit(true);
+          begin
+            SharedCursor.inputStarted := event.acceptedObject as TView;
+            exit(true);
+          end;
       end;
     GLPT_MESSAGE_MOUSEUP:
       begin
+        event.m_inputSender := SharedCursor.inputStarted;
+
+        SharedCursor.inputStarted := nil;
         SharedCursor.mouseDown := false;
         HandleMouseUp(event);
         if event.IsAccepted then
@@ -3282,31 +4276,54 @@ begin
       end;
     GLPT_MESSAGE_MOUSEMOVE:
       begin
+        { don't accpet the mouse moved event during dragging sessions
+          the reason for this is so that the event falls through and
+          can can be processed on any windows below }
+        if SharedDraggingSession <> nil then
+          begin
+            result := false;
+            if SharedDraggingSession <> self then
+              begin
+                TestDragTracking(event);
+                if event.IsAccepted then
+                  exit(true);
+              end;
+          end;
+
         if SharedCursor.mouseDown then
           begin
+            event.m_inputSender := SharedCursor.inputStarted;
+
             HandleMouseDragged(event);
             if event.IsAccepted then
-              exit(true);
+              exit;
           
             HandleInputDragged(event);
             if event.IsAccepted then
-              exit(true);
+              exit;
           end
         else if AcceptsMouseMovedEvents then
           begin
             HandleMouseMoved(event);
             if event.IsAccepted then
-              exit(true);
+              exit;
           end;
 
         TestMouseTracking(event);
 
-        // mouse went outside of hover targert
+        // mouse went outside of hover target
         if assigned(SharedCursor.hover) and not SharedCursor.hover.InputHit(event) then
           begin
             SharedCursor.hover.HandleMouseExited(event);
             SharedCursor.hover := nil;
           end;
+
+        // mouse went outside of drag target
+        //if assigned(SharedCursor.dragTarget) and not SharedCursor.dragTarget.InputHit(event) then
+        //  begin
+        //    SharedCursor.dragTarget.HandleMouseExited(event);
+        //    SharedCursor.dragTarget := nil;
+        //  end;
       end;
     GLPT_MESSAGE_SCROLL:
       begin
@@ -3321,13 +4338,6 @@ begin
         exit(true);
       end;
    end;
-  
-
-  // if the window is modal then we need to block other events
-  result := IsModal;
-    
-  //event.Free;
-  //CurrentEvent := nil;
 end;
 
 class function TWindow.MouseLocation: TPoint;
@@ -3335,41 +4345,36 @@ begin
   result := ScreenMouseLocation;
 end;
 
-class function TWindow.AvailableWindows: TWindowArray;
-begin
-  result := WindowManifest.AvailableWindows;
-end;
-
 class function TWindow.FindWindow(ofClass: TWindowClass): TWindow;
 var
-  window: TWindow;
+  win: TWindow;
 begin
   result := nil;
-  for window in AvailableWindows do
-    if window.IsMember(ofClass) then
-      exit(window);
+  for win in SharedApp.AvailableWindows do
+    if win.IsMember(ofClass) then
+      exit(win);
 end;
 
 class function TWindow.FindWindowAtMouse: TWindow;
 var
-  window: TWindow;
+  win: TWindow;
 begin
   result := nil;
-  for window in AvailableWindows do
-    if window.GetFrame.Contains(TWindow.MouseLocation) then
-      exit(window);
+  for win in SharedApp.AvailableWindows do
+    if win.GetFrame.Contains(TWindow.MouseLocation) then
+      exit(win);
 end;
 
 class function TWindow.IsFrontWindowBlockingInput(event: TEvent = nil): boolean;
 var
-  window: TWindow;
+  win: TWindow;
 begin
-  window := FrontWindow;
-  if window <> nil then
+  win := SharedApp.FrontWindow;
+  if win <> nil then
     begin
-      result := not window.IsFloating;
+      result := not win.IsFloating;
       if event <> nil then
-        result := window.InputHit(event);
+        result := win.InputHit(event);
     end
   else
     result := false;
@@ -3377,28 +4382,23 @@ end;
 
 class function TWindow.DoesFrontWindowHaveKeyboardFocus: boolean;
 var
-  window: TWindow;
+  win: TWindow;
 begin
-  window := FrontWindow;
-  if window <> nil then
-    result := window.focusedView <> nil
+  win := SharedApp.FrontWindow;
+  if win <> nil then
+    result := win.focusedView <> nil
   else
     result := false;
 end;
 
 class function TWindow.KeyWindow: TWindow;
 begin
-  result := GLGUI.KeyWindow;
+  result := GLUI.KeyWindow;
 end;
 
-class function TWindow.FrontWindow: TWindow;
-begin
-  result := WindowManifest.FrontWindow;
-end;
 
-//#########################################################
-// CONTEXTUAL WINDOW
-//#########################################################
+{ POPOVER }
+
 constructor TPopover.Create(inDelegate: TWindow; inContentSize: TVec2i);
 begin
   SetContentSize(inContentSize);
@@ -3406,50 +4406,57 @@ begin
   Initialize;
 end;
 
+procedure TPopover.HandlePositioningFrameWillChange(var newFrame: TRect);
+begin
+end;
+
 procedure TPopover.UpdatePosition;
 var
   rect, newFrame: TRect;
-  margin: float;
 begin
   if positioningView <> nil then
     rect := positioningView.ConvertRectTo(positioningRect, nil)
   else
     rect := positioningRect;
     
-  margin := 8;
-
   case preferredEdge of
     TRectEdge.MinX:
       begin
         newFrame := GetFrame;
-        newFrame.origin.x := rect.origin.x - (self.GetWidth + margin);
+        newFrame.origin.x := rect.origin.x - (self.GetWidth + positioningEdgeMargin);
         newFrame.origin.y := rect.origin.y + (rect.height / 2 - self.GetHeight / 2);
+        HandlePositioningFrameWillChange(newFrame);
         SetFrame(newFrame);
       end;
     TRectEdge.MaxX:
       begin
         newFrame := GetFrame;
-        newFrame.origin.x := rect.MaxX + margin;
+        newFrame.origin.x := rect.MaxX + positioningEdgeMargin;
         newFrame.origin.y := rect.origin.y + (rect.height / 2 - self.GetHeight / 2);
+        HandlePositioningFrameWillChange(newFrame);
         SetFrame(newFrame);
       end;
     TRectEdge.MinY:
       begin
         newFrame := GetFrame;
         newFrame.origin.x := rect.origin.x + (rect.width / 2 - self.GetWidth / 2);
-        newFrame.origin.y := rect.origin.y - (self.GetHeight + margin);
+        newFrame.origin.y := rect.origin.y - (self.GetHeight + positioningEdgeMargin);
+        HandlePositioningFrameWillChange(newFrame);
         SetFrame(newFrame);
       end;
     TRectEdge.MaxY:
       begin
         newFrame := GetFrame;
         newFrame.origin.x := rect.origin.x + (rect.width / 2 - self.GetWidth / 2);
-        newFrame.origin.y := rect.maxY + margin;
+        newFrame.origin.y := rect.maxY + positioningEdgeMargin;
+        HandlePositioningFrameWillChange(newFrame);
         SetFrame(newFrame);
       end;
     TRectEdge.Any:
       begin
-        SetLocation(rect.origin);
+        newFrame := rect;
+        HandlePositioningFrameWillChange(newFrame);
+        SetLocation(newFrame.origin);
       end;
     otherwise
       Assert(false, 'Invalid popover edge.');
@@ -3484,10 +4491,11 @@ procedure TPopover.Initialize;
 begin
   inherited;
   
+  positioningEdgeMargin := 8;
+  freeWhenClosed := true;
   behavior := TPopoverBehavior.ApplicationDefined;
-  windowLevel := kWindowLevelUtility;
-  // TODO: kill these dumb ass singltons
-  TNotificationCenter.DefaultCenter.ObserveNotification(kNotificationWindowWillOpen, @self.HandleWindowWillOpen, pointer(self));
+  windowLevel := TWindowLevel.Utility;
+  ObserveNotification(kNotificationWindowWillOpen, @self.HandleWindowWillOpen, pointer(self));
 end;
 
 procedure TPopover.HandleCloseEvent(event: TEvent);
@@ -3537,9 +4545,7 @@ begin
   inherited;
 end;
 
-//#########################################################
-// TAB VIEW ITEM
-//#########################################################
+{ TAB VIEW ITEM }
 
 function TTabViewItem.IsSelected: boolean;
 begin
@@ -3572,13 +4578,11 @@ begin
   // TODO: height-only constructor?
   button := TButton.Create(RectMake(0, 0, 0, 16), title, GetActiveFont);
   button.SetResizeByWidth(true);
-  button.SizeToFit;
+  button.LayoutSubviews;
   SetView(button);
 end;
 
-//#########################################################
-// TAB VIEW
-//#########################################################
+{ TAB VIEW }
 
 function TTabView.GetDelegate: TObject;
 begin
@@ -3679,9 +4683,7 @@ begin
   inherited;
 end;
 
-//#########################################################
-// STATUS BAR
-//#########################################################
+{ STATUS BAR }
 
 procedure TStatusBar.SetCurrentValue(newValue: TScalar);
 begin
@@ -3698,9 +4700,7 @@ begin
   
 end;
 
-//#########################################################
-// MATRIX VIEW
-//#########################################################
+{ MATRIX VIEW }
 
 function TMatrixView.GetColumns: integer;
 begin
@@ -3834,18 +4834,50 @@ begin
   SetColumns(3);
 end;
 
-//#########################################################
-// MENU ITEM
-//#########################################################
+{ MENU ITEM }
+
+function TMenuItem.PopupSubmenu(sender: TMenu): TMenu;
+var
+  screenPoint: TVec2;
+begin
+  Assert(submenu <> nil, 'must have submenu to popup.');
+
+  screenPoint := ConvertPointTo(V2(bounds.maxX, bounds.minY), nil);
+  submenu.parentMenu := sender;
+  submenu.Popup(screenPoint);
+
+  result := submenu;
+end;
 
 function TMenuItem.GetMenu: TMenu;
 begin
   result := TMenu(GetParent);
 end;
 
+procedure TMenuItem.SetHilighted(newValue: boolean);
+var
+  color: TColor;
+begin
+  if newValue then
+    color := TColor.White
+  else
+    color := TColor.Black;
+
+  cell.SetTextColor(color);
+  if keyEquivalentCell <> nil then
+    keyEquivalentCell.SetTextColor(color);
+end;
+
+procedure TMenuItem.SetImage(newValue: TTexture);
+begin
+  cell.SetImageValue(newValue);
+end;
+
 procedure TMenuItem.SetFont(newValue: IFont);
 begin
   cell.SetFont(newValue);
+  if keyEquivalentCell <> nil then
+    keyEquivalentCell.SetFont(newValue);
 end;
 
 procedure TMenuItem.SetChecked(newValue: boolean);
@@ -3858,9 +4890,20 @@ begin
   result := checked;
 end;
 
+function TMenuItem.IsSubmenuOpen: boolean;
+begin
+  if submenu <> nil then
+    result := submenu.IsOpen
+  else
+    result := false;
+end;
+
 function TMenuItem.IsSelected: boolean;
 begin
-  result := selected;
+  if menu <> nil then
+    result := menu.GetSelectedItem = self
+  else
+    result := false;
 end;
 
 function TMenuItem.GetTitle: string;
@@ -3873,6 +4916,13 @@ begin
   result := cell.textView.GetTextSize;
 end;
 
+function TMenuItem.GetItemIndex: integer;
+begin
+  if menu = nil then
+    exit(-1);
+  result := menu.IndexOfItem(self);
+end;
+
 procedure TMenuItem.HandleInputEnded(event: TEvent);
 var
   delegate: IMenuDelegate;
@@ -3881,79 +4931,100 @@ begin
     begin
       if Supports(menu.GetDelegate, IMenuDelegate, delegate) then
         delegate.HandleMenuWillSelectItem(Menu, self);
-
       InvokeAction;
       event.Accept(self);
-      menu.Close;
+      menu.CloseAll;
     end;
   
   inherited HandleInputEnded(event);
 end;
 
-procedure TMenuItem.HandleMouseEntered(event: TEvent);
-begin 
-  selected := true;
-  event.Accept(self);
-end;
-
-procedure TMenuItem.HandleMouseExited(event: TEvent);
-begin 
-  selected := false;
-end;
-
-procedure TMenuItem.DrawAccessory(rect: TRect);
-begin
-  if IsChecked then
-    FillOval(RectCenter(RectMake(0,0,4,4), rect), RGBA(0, 0, 0, 0.9));
-end;
-
-function TMenuItem.GetAccessoryFrame: TRect;
-begin
-  result.origin := 0;
-  result.size := V2(GetHeight, GetHeight);
-end;
-
 procedure TMenuItem.Draw;
 begin
-  if selected then
+  if IsSelected then
     menu.DrawSelection(GetBounds);
-  DrawAccessory(GetAccessoryFrame);
-
   inherited;
 end;
 
-procedure TMenuItem.LayoutSubviews;
+procedure TMenuItem.SizeToFit;
 var
   newFrame: TRect;
-  accessorWidth: float;
-begin 
-  inherited;
-
+begin
   if menu <> nil then
     begin
       cell.SizeToFit;
 
-      // TODO: use this for indents
-      accessorWidth := GetAccessoryFrame.Width;
-
-      // resize cell
-      newFrame := cell.GetFrame;
-      newFrame.origin.x := {menu.margin.x}accessorWidth;
-      newFrame.size.y := GetHeight;
-      cell.SetFrame(newFrame);
+      if keyEquivalentCell <> nil then
+        keyEquivalentCell.SizeToFit;
 
       // resize menu item to fit cell
       newFrame := GetFrame;
-      newFrame.size.width := cell.GetWidth + accessorWidth + menu.margin.x;
+      newFrame.size.width := cell.GetWidth + menu.margin.x * 2;
+      if keyEquivalentCell <> nil then
+        newFrame.size.x += keyEquivalentCell.frame.width + { use margin to separate items } menu.margin.x;
       newFrame.size.height := cell.GetHeight;
       SetFrame(newFrame);
     end;
 end;
 
+procedure TMenuItem.LayoutSubviews;
+var
+  newFrame: TRect;
+begin 
+  inherited;
+
+  if menu <> nil then
+    begin
+      newFrame := cell.GetFrame;
+      newFrame.origin.x := menu.margin.x;
+      newFrame.size.y := GetHeight;
+      cell.SetFrame(newFrame);
+
+      if keyEquivalentCell <> nil then
+        begin
+          newFrame := keyEquivalentCell.GetFrame;
+          newFrame.origin.x := bounds.maxX - (newFrame.width + menu.margin.x);
+          newFrame.size.y := GetHeight;
+          keyEquivalentCell.SetFrame(newFrame);
+        end;
+    end;
+end;
+
+procedure TMenuItem.SetSubmenu(newValue: TMenu);
+begin
+  SetKeyEquivalentCellValue('>');
+  m_submenu := newValue;
+end;
+
+procedure TMenuItem.SetKeyEquivalentCellValue(value: string);
+begin
+  if keyEquivalentCell = nil then
+    begin
+      keyEquivalentCell := TTextAndImageCell.Create;
+      AddSubview(keyEquivalentCell);
+    end;
+
+  keyEquivalentCell.SetStringValue(value);
+end;
+
+procedure TMenuItem.SetKeyEquivalent(keycode: GLPT_Keycode; modifiers: TShiftState);
+var
+  codeName: string;
+begin
+  inherited SetKeyEquivalent(keycode, modifiers);
+
+  codeName := UpperCase(TFontChar(keycode));
+  if modifiers <> [] then
+    codeName := '- '+codeName;
+  SetKeyEquivalentCellValue(codeName);
+end;
+
 procedure TMenuItem.Initialize;
 begin
   inherited;
+
   cell := TTextAndImageCell.Create;
+  cell.SetImageTitleMargin(4);
   AddSubview(cell);
 end;
 
@@ -3961,15 +5032,15 @@ constructor TMenuItem.Create(_title: string; _action: TInvocation);
 begin
   Initialize;
   cell.SetStringValue(_title);
-  SetAction(_action);
+  if _action <> nil then
+    SetAction(_action);
 end;
 
-//#########################################################
-// MENU
-//#########################################################
+{ MENU }
 
-constructor TMenu.Create;
+constructor TMenu.Create(_title: string = '');
 begin
+  m_title := _title;
   SetDelegate(self);
   Initialize;
 end;
@@ -3992,6 +5063,17 @@ begin
   AddItem(result);
 end;
 
+function TMenu.AddItem(title: string; action: TInvocation; keycode: GLPT_Keycode; modifiers: TShiftState = []): TMenuItem;
+begin
+  result := AddItem(title, action);
+  result.SetKeyEquivalent(keycode, modifiers);
+end;
+
+function TMenu.AddItem(title: string; method: string; keycode: GLPT_Keycode; modifiers: TShiftState = []): TMenuItem;
+begin
+  result := AddItem(title, TInvocation.Create(TApplication.FirstResponder, method), keycode, modifiers);
+end;
+
 procedure TMenu.InsertItem(index: integer; item: TMenuItem);
 begin
   items.Insert(index, item);
@@ -4010,27 +5092,123 @@ begin
   NeedsLayoutSubviews;
 end;
 
+procedure TMenu.ValidateMenuItems;
+var
+  item: TMenuItem;
+  target: TObject;
+  validation: IMenuItemValidation;
+  valid: boolean;
+begin
+  // TODO: make an option "autoenablesItems"
+  for item in items do
+    if item.HasActions and item.Actions[0].HasTarget then
+      begin
+        target := item.Actions[0].Target;
+        if (target <> nil) and Supports(target, validation) then
+          begin
+            valid := validation.HandleValidateMenuItem(item);
+            item.SetEnabled(valid);
+          end;
+      end;
+end;
+
+procedure TMenu.Popup(_positioningRect: TRect; _positioningView: TView; edge: TRectEdge);
+
+  // TODO: make an app level method for this
+  procedure SimulateMouseEvent(where: TVec2i);
+  var
+    params: GLPT_MessageParams;
+    msg: GLPT_MessageRec;
+  begin
+    params := Default(GLPT_MessageParams);
+    params.mouse.x := where.x;
+    params.mouse.y := where.y;
+    params.mouse.timestamp := GLPT_GetTime;
+
+    msg := Default(GLPT_MessageRec);
+    msg.win := MainPlatformWindow;
+    msg.mcode := GLPT_MESSAGE_MOUSEMOVE;
+    msg.params := params;
+
+    PendingEvents += [msg];
+    //SharedApp.PollEvents(@msg);
+    //TApplication.Active.PostEvent(event);
+  end;
+
+var
+  menu: TMenu;
+begin
+
+  // there is already a window open!
+  menu := TMenu(SharedApp.FindWindowOfClass(TMenu));
+  if (menu <> nil) and (parentMenu <> menu) then
+    menu.Close;
+
+  LayoutSubviews;
+  ValidateMenuItems;
+  Show(_positioningRect, _positioningView, edge);
+  UpdatePosition;
+
+  popupOrigin := TWindow.MouseLocation;
+
+  // TODO: simulate a mouse moved event to select item under the mouse
+  // broken for now for some reason...
+  //SimulateMouseEvent(popupOrigin);
+end;
+
 procedure TMenu.Popup(where: TPoint);
 begin
-  LayoutSubviews;
-  Show(RectMake(where, 0, 0), nil, TRectEdge.Any);
-  UpdatePosition;
-  popupOrigin := TWindow.MouseLocation;
+  Popup(RectMake(where, 0, 0), nil, TRectEdge.Any);
 end;
 
 procedure TMenu.Popup(parentView: TView);
 begin
   Assert(parentView <> nil, 'parent view must not be nil');
-  LayoutSubviews;
-  Show(parentView.GetBounds, parentView, TRectEdge.MaxY);
-  UpdatePosition;
-  popupOrigin := TWindow.MouseLocation;
+  Popup(parentView.GetBounds, parentView, TRectEdge.MaxY);
+end;
+
+{ Closes all open menus up the chain }
+procedure TMenu.CloseAll;
+begin
+  writeln('close all ', title);
+  Close;
+  if parentMenu <> nil then
+    parentMenu.CloseAll;
+end;
+
+procedure TMenu.HandleWillClose;
+begin
+  writeln('will close ', title);
+
+  inherited;
+
+  { restore the parent menu key
+    and clear the parents reference to us }
+  if parentMenu <> nil then
+    begin
+      parentMenu.MakeKey;
+      parentMenu.childMenu := nil;
+    end;
+
+  if childMenu <> nil then
+    begin
+      childMenu.Close;
+      childMenu := nil;
+    end;
+
+  // make sure the menu doesn't retain its selection
+  selectedItem := nil;
 end;
 
 procedure TMenu.HandleCloseEvent(event: TEvent);
 begin
   Close;
   event.Accept(self);
+end;
+
+function TMenu.AcceptsMouseMovedEvents: boolean;
+begin
+  result := IsOpen;
 end;
 
 function TMenu.GetItemFrame(item: TMenuItem): TRect;
@@ -4041,15 +5219,234 @@ begin
     result := RectMake(0, margin.y, 0, itemHeight);
 end;
 
+function TMenu.GetSelectedItem: TMenuItem;
+begin
+  result := m_selectedItem;
+end;
+
+function TMenu.IndexOfItem(item: TMenuItem): integer;
+var
+  i: integer;
+begin
+  result := -1;
+  for i := 0 to items.Count - 1 do
+    if items[i] = item then
+      exit(i);
+end;
+
+function TMenu.IndexOfItemWithTitle(_title: string): integer;
+var
+  i: integer;
+begin
+  result := -1;
+  for i := 0 to items.Count - 1 do
+    if items[i].Title = _title then
+      exit(i);
+end;
+
+function TMenu.IndexOfItemWithTag(_tag: integer): integer;
+var
+  i: integer;
+begin
+  result := -1;
+  for i := 0 to items.Count - 1 do
+    if items[i].Tag = _tag then
+      exit(i);
+end;
+
+function TMenu.ItemWithTitle(_title: string): TMenuItem;
+var
+  i: integer;
+begin
+  result := nil;
+  for i := 0 to items.Count - 1 do
+    if items[i].Title = _title then
+      exit(items[i]);
+end;
+
+function TMenu.ItemWithTag(_tag: integer): TMenuItem;
+var
+  i: integer;
+begin
+  result := nil;
+  for i := 0 to items.Count - 1 do
+    if items[i].Tag = _tag then
+      exit(items[i]);
+end;
+
 procedure TMenu.DrawSelection(rect: TRect); 
 begin
   FillRect(rect, RGBA(0, 0, 0.7, 0.4));
+end;
+
+procedure TMenu.SetSelectedItem(newValue: TMenuItem); 
+begin
+  HandleSelectionWillChange(newValue);
+  //if (m_selectedItem <> nil) and (m_selectedItem <> newValue) then
+  //  m_selectedItem.SetHilighted(false);
+  m_selectedItem := newValue;
+  //if m_selectedItem <> nil then
+  //  m_selectedItem.SetHilighted(true);
+  HandleSelectionDidChange;
+end;
+
+procedure TMenu.HandleSelectionWillChange(newItem: TMenuItem);
+begin
+  if (m_selectedItem <> nil) and (m_selectedItem <> newItem) then
+    m_selectedItem.SetHilighted(false);
+end;
+
+procedure TMenu.HandleSelectionDidChange;
+begin
+  if m_selectedItem <> nil then
+    m_selectedItem.SetHilighted(true);
+end;
+
+procedure TMenu.TrackSelection(event: TEvent);
+var
+  item: TMenuItem;
+begin 
+  if IsOpen then
+    begin
+      // remove selection outside of menu
+      if not InputHit(event) then
+        begin
+          // if there is a selected item with an open submenu
+          // then don't deselect the item
+          if (selectedItem <> nil) and not selectedItem.IsSubmenuOpen then
+            selectedItem := nil;
+          exit;
+        end;
+      for item in items do
+        begin
+          if item.InputHit(event) then
+            begin
+              selectedItem := item;
+              event.Accept(item);
+              // popup the submenu for the item
+              if item.submenu <> nil then
+                childMenu := item.PopupSubmenu(self)
+              else if childMenu <> nil then
+                begin
+                  childMenu.Close;
+                  childMenu := nil;
+                end;
+              exit;
+            end
+        end;
+    end;
+end;
+
+procedure TMenu.HandleMouseDragged(event: TEvent);
+begin 
+  TrackSelection(event);
+  if not event.IsAccepted then
+    inherited HandleMouseDragged(event);
+end;
+
+procedure TMenu.HandleMouseMoved(event: TEvent);
+begin 
+  TrackSelection(event);
+  if not event.IsAccepted then
+    inherited HandleMouseMoved(event);
+end;
+
+procedure TMenu.HandleKeyDown(event: TEvent);
+var
+  index: integer;
+  item: TMenuItem;
+begin
+  //writeln(event.KeyCode);
+  case event.KeyCode of
+    GLPT_KEY_ESCAPE:
+      begin
+        writeln('close menu!');
+        Close;
+        event.Accept(self);
+      end;
+    GLPT_KEY_RETURN:
+      begin
+        if selectedItem <> nil then
+          begin
+            selectedItem.InvokeAction;
+            InvokeAfterDelay(0.0, @self.CloseAll);
+          end;
+        event.Accept(self);
+      end;
+    GLPT_KEY_LEFT:
+      begin
+        // if the menu has a parent then close us
+        if parentMenu <> nil then
+          begin
+            Close;
+            event.Accept(self);
+            exit;
+          end
+        else
+          begin
+            index := MainMenuBar.IndexOfMenu(self);
+            index -= 1;
+            if index >= 0 then
+              writeln(index);
+            MainMenuBar.Items[index].OpenMenu;
+            event.Accept(self);
+          end;
+      end;
+    GLPT_KEY_RIGHT:
+      begin
+        if (selectedItem <> nil) and (selectedItem.submenu <> nil) then
+          begin
+            Assert(childMenu = nil, 'submenu already open');
+            childMenu := selectedItem.PopupSubmenu(self);
+            childMenu.SetSelectedItem(childMenu.Items[0]);
+            event.Accept(self);
+          end
+        else
+          begin
+            index := MainMenuBar.IndexOfMenu(self);
+            index += 1;
+            if index < MainMenuBar.itemBar.Items.Count then
+              writeln(index);
+
+            MainMenuBar.Items[index].OpenMenu;
+            event.Accept(self);            
+          end;
+      end;
+    GLPT_KEY_UP:
+      begin
+        item := GetSelectedItem;
+        if item = nil then
+          selectedItem := items[0]
+        else
+          begin
+            index := items.IndexOf(item) - 1;
+            if index >= 0 then
+              selectedItem := items[index];
+          end;
+        event.Accept(self);
+      end;
+    GLPT_KEY_DOWN:
+      begin
+        writeln('down');
+        item := GetSelectedItem;
+        if item = nil then
+          selectedItem := items[0]
+        else
+          begin
+            index := items.IndexOf(item) + 1;
+            if index < items.Count then
+              selectedItem := items[index];
+          end;
+        event.Accept(self);
+      end;
+  end;
 end;
 
 procedure TMenu.LayoutSubviews;
 var
   item: TMenuItem;
   widestItem: integer = 0;
+  hasRightColumn: boolean = false;
   itemFrame: TRect;
 begin 
   inherited;
@@ -4063,7 +5460,10 @@ begin
       Assert(font <> nil, 'Menu must set font before LayoutSubviews.');
       item.SetFont(font);
 
-      item.LayoutSubviews;
+      item.SizeToFit;
+      
+      if item.cell.IsImageVisible then
+        hasRightColumn := true;
 
       if widestItem < item.GetWidth then
         widestItem := trunc(item.GetWidth);
@@ -4072,11 +5472,16 @@ begin
   if widestItem < minimumWidth then
     widestItem := minimumWidth;
 
+  // resize all items to fit largest width
   itemFrame := GetItemFrame(item);
   itemFrame.size.width := widestItem;
 
   for item in items do
     begin     
+      // if the menu has a right accessory column then
+      // make sure all items are showing their image view
+      if hasRightColumn and not item.cell.IsImageVisible then
+        item.SetImage(nil);
       item.SetFrame(itemFrame);
       itemFrame.origin.y += itemFrame.height;
     end;
@@ -4087,12 +5492,16 @@ end;
 
 procedure TMenu.Initialize;
 begin
-  inherited Initialize;
+  inherited;
   
   itemHeight := 0;
   margin := V2(8, 8);
   minimumWidth := 0;
-  items := TMenuItemList.Create;
+  m_items := TMenuItemList.Create;
+  freeWhenClosed := false;
+  windowLevel := TWindowLevel.Menu;
+  positioningEdgeMargin := 0;
+
   SetBackgroundColor(RGBA(1.0, 0.75));
 end;
 
@@ -4103,15 +5512,203 @@ begin
   inherited;
 end;
 
-//#########################################################
-// BAR ITEM
-//#########################################################
+{ MENUBAR ITEM }
+
+procedure TMenuBarItem.OpenMenu;
+begin
+  if not menu.IsOpen then
+    begin
+      menu.SetBehavior(TPopoverBehavior.Transient);
+      menu.Popup(self);
+    end;
+end;
+
+procedure TMenuBarItem.HandleKeyEquivalent(event: TEvent);
+var
+  item: TMenuItem;
+begin
+  inherited HandleKeyEquivalent(event);
+  if event.IsAccepted then
+    exit;
+
+  for item in menu.Items do
+    begin
+      item.HandleKeyEquivalent(event);
+      if event.IsAccepted then
+        break;
+    end;
+end;
+
+procedure TMenuBarItem.HandleMouseEntered(event: TEvent);
+begin
+  if InputHit(event) and IsEnabled and not menu.IsOpen and MainMenuBar.HasOpenMenus then
+    begin
+      writeln('over ', menu.title);
+      OpenMenu;
+    end;
+end;
+
+procedure TMenuBarItem.HandleInputStarted(event: TEvent);
+begin 
+  if InputHit(event) and IsEnabled then
+    begin
+      if menu.IsOpen then
+        menu.Close;
+      OpenMenu;
+      HandleStateChanged;
+      event.Accept(self);
+    end
+  else
+    inherited HandleInputStarted(event);
+end;
+
+constructor TMenuBarItem.Create(_view: TView; _menu: TMenu);
+begin
+  inherited Create(_view);
+
+  m_menu := _menu;
+  m_menu.m_menuBarItem := self;
+end;
+
+{ MENUBAR }
+
+type
+  TMenuBarItemCell = class(TTextAndImageCell)
+  end;
+
+function TMenuBar.GetItems: TMenuBarItemList;
+begin
+  result := TMenuBarItemList(itemBar.items);
+end;
+
+procedure TMenuBar.HandleWillAddToParent(view: TView);
+begin
+  Assert(false, 'menubar should not be managed manually.');
+end;
+
+procedure TMenuBar.HandleScreenDidResize;
+begin
+  SetFrame(RectMake(0, 0, TWindow.ScreenRect.Size.Width, MenuBarHeight));
+end;
+
+function TMenuBar.HasOpenMenus: boolean;
+var
+  item: TMenuBarItem;
+begin
+  result := false;
+  for item in Items do
+    if item.menu.IsOpen then
+      exit(true);
+end;
+
+function TMenuBar.IndexOfMenu(menu: TMenu): integer;
+var
+  i: integer;
+begin
+  result := -1;
+  for i := 0 to itemBar.Items.Count - 1 do
+     if TMenuBarItem(itemBar.Items[i]).Menu = menu then
+      exit(i);
+end;
+
+procedure TMenuBar.AddMenu(menu: TMenu);
+var
+  cell: TMenuBarItemCell;
+  item: TMenuBarItem;
+begin
+  cell := TMenuBarItemCell.Create(RectMake(0, 0, 0, frame.height));
+  cell.SetStringValue(menu.title);
+  cell.SetFont(menu.font);
+  cell.SizeToFit;
+
+  item := MenuBarItemClass.Create(cell, menu);
+
+  itemBar.AddItem(item);
+end;
+
+class function TMenuBar.MenuBarItemClass: TMenuBarItemClass;
+begin
+  result := TMenuBarItem;
+end;
+
+class function TMenuBar.MainMenu: TMenuBar;
+begin
+  result := MainMenuBar;
+end;
+
+class function TMenuBar.MenuBarHeight: integer;
+begin
+  result := 20;
+end;
+
+class function TMenuBar.ItemMargin: integer;
+begin
+  result := 0;
+end;
+
+constructor TMenuBar.Create;
+var
+  rect: TRect;
+begin
+  Assert(MainMenuBar = nil, 'Menu bar already exists!');
+
+  inherited;
+
+  //SetAutoresizingOptions([TAutoresizingOption.MinXMargin, TAutoresizingOption.MaxXMargin, TAutoresizingOption.WidthSizable]);
+  windowLevel := TWindowLevel.Menu;
+
+  SetFrame(RectMake(0, 0, TWindow.ScreenRect.Size.Width, MenuBarHeight));
+  
+  rect := Bounds;
+  rect.origin.x += ItemMargin;
+  rect.size.x -= ItemMargin;
+
+  itemBar := TItemBar.Create(rect);
+  itemBar.SetAutoresizingOptions(TAutoresizingStretchToFill);
+  AddSubview(itemBar);
+
+  OrderFront;
+  MainMenuBar := self;
+end;
+
+
+{ BAR ITEM }
+
+function TBarItem.GetCell: TCell;
+begin
+  result := TCell(Subviews[0]);
+end;
+
+procedure TBarItem.LayoutSubviews;
+var
+  newFrame: TRect;
+begin
+  inherited;
+
+  newFrame := cell.Frame;
+  newFrame.origin.x += cellPadding;
+  newFrame.origin.y := frame.MidY - newFrame.Height / 2;
+  cell.SetFrame(newFrame);
+
+  newFrame := Frame;
+  newFrame.size.x := cell.frame.width + (cellPadding * 2);
+  SetFrame(newFrame);
+end;
 
 procedure TBarItem.SetView(newValue: TView);
 begin
-  newValue.SetAutoresizingOptions([TAutoresizingOption.MinXMargin, TAutoresizingOption.MinYMargin, TAutoresizingOption.WidthSizable, TAutoresizingOption.HeightSizable]);
+  Assert(newValue is TCell, 'bar item must be subclass of TCell');
+  //newValue.SetAutoresizingOptions(TAutoresizingStretchToFill);
+  newValue.SetAutoresizingOptions([TAutoresizingOption.MinXMargin, TAutoresizingOption.MinYMargin]);
   SetWidth(newValue.GetWidth);
   AddSubview(newValue);
+end;
+
+procedure TBarItem.Initialize;
+begin
+  inherited;
+
+  cellPadding := 3;
 end;
 
 constructor TBarItem.Create(_view: TView);
@@ -4126,9 +5723,7 @@ begin
   SetFrame(RectMake(0, 0, width, 0));
 end;
 
-//#########################################################
-// ITEM BAR
-//#########################################################
+{ ITEM BAR }
 
 function TItemBar.GetItems: TBarItemList;
 begin
@@ -4175,8 +5770,7 @@ procedure TItemBar.Draw;
 var
   child: TView;
 begin
-  FillRect(GetBounds, RGBA(0,0,0,0.25));
-
+  //FillRect(GetBounds, RGBA(0,0,0,0.25));
   if assigned(subviews) then
     for child in subviews do
       begin
@@ -4212,7 +5806,7 @@ begin
         end;
 
       rect.size.width := item.GetWidth;
-      writeln('item ', rect.tostr);
+      //writeln('item ', rect.tostr, ' cell: ', item.Subviews[0].frame.tostr);
       item.SetFrame(rect);
       
       rect.origin.x += rect.Width + itemMargin;
@@ -4236,6 +5830,8 @@ begin
   itemMargin := 4;
   itemOffset := 0;
   items := TBarItemList.Create;
+
+  SetEnableContentClipping(true);
 end;
 
 destructor TItemBar.Destroy;
@@ -4244,9 +5840,7 @@ begin
 end;
 
 
-//#########################################################
-// CELL
-//#########################################################
+{ CELL }
 
 procedure TCell.SetObjectValue(newValue: pointer);
 begin
@@ -4287,9 +5881,7 @@ begin
   SetAutoresizingOptions([]);
 end;
 
-//#########################################################
-// SECTION CELL
-//#########################################################
+{ SECTION CELL }
 
 class function TSectionCell.Height: integer;
 begin
@@ -4319,14 +5911,12 @@ begin
   SetHeight(TSectionCell.Height);
 end;
 
-//#########################################################
-// TEXT AND IMAGE CELL
-//#########################################################
+{ TEXT AND IMAGE CELL }
 
 procedure TTextAndImageCell.SetStringValue(newValue: string);
 begin
   inherited SetStringValue(newValue);
-  textView.SetStringValue(newValue);
+  textView.SetText(newValue);
 end;
 
 procedure TTextAndImageCell.SetObjectValue(newValue: pointer);
@@ -4365,14 +5955,19 @@ begin
   NeedsLayoutSubviews;
 end;
 
+function TTextAndImageCell.IsImageVisible: boolean;
+begin
+  result := assigned(imageView);
+end;
+
 function TTextAndImageCell.GetImageValue: TTexture;
 begin
-  result := TTexture(imageView.frontImage);
+  result := TTexture(imageView.Image);
 end;
 
 function TTextAndImageCell.GetStringValue: string;
 begin
-  result := textView.GetStringValue;
+  result := textView.Text;
 end;
 
 function TTextAndImageCell.GetFont: IFont;
@@ -4387,19 +5982,22 @@ end;
 
 function TTextAndImageCell.GetTextFrame: TRect;
 var
-  rect,
-  imageFrame: TRect;
+  newFrame: TRect;
+  imageSize: TVec2;
 begin
-  imageFrame := GetImageFrame;
+  imageSize := ImageFrame.Size;
 
-  rect := GetBounds;
-  rect.origin.x += imageFrame.width + imageTitleMargin;
-  rect.size.x -= imageFrame.height;
-  rect.size.height := textView.GetTextSize.height;
-  if GetBounds.size.height > rect.size.height then
-    result := RectCenterY(rect, GetBounds)
+  newFrame := GetBounds;
+  newFrame.origin.x += imageSize.width;
+  if assigned(textView) and assigned(imageView) then
+    newFrame.origin.x += imageTitleMargin;
+  newFrame.size.x -= imageSize.height;
+  newFrame.size.height := textView.GetTextSize.height;
+  if GetBounds.size.height > newFrame.size.height then
+    result := RectCenterY(newFrame, GetBounds)
   else
-    result := rect;
+    result := newFrame;
+
 end;
 
 function TTextAndImageCell.GetImageFrame: TRect;
@@ -4470,9 +6068,7 @@ begin
   AddSubview(textView); 
 end;
 
-//#########################################################
-// SCROLLER
-//#########################################################
+{ SCROLLER }
 
 procedure TScroller.Initialize;
 begin
@@ -4539,15 +6135,21 @@ begin
   //  result := RectMake(0, 0, GetWidth, GetHeight);
 end;
 
-//#########################################################
-// SLIDER
-//#########################################################
+{ SLIDER }
 
-constructor TSlider.Create(min, max: TSliderValue; _frame: TRect);
+constructor TSlider.Create(current, min, max: TSliderValue; _frame: TRect);
 begin
   range := TRangeInt.Create(min, max);
   SetFrame(_frame);
+  SetValue(current);
   Initialize;
+end;
+
+{ Create slider with property binding }
+constructor TSlider.Create(propName: string; controller: TObject; current, min, max: TSliderValue; _frame: TRect);
+begin
+  Create(current, min, max, _frame);
+  SetBinding(propName, controller);
 end;
 
 procedure TSlider.SetValue(newValue: TSliderValue);
@@ -4594,7 +6196,7 @@ begin
       AddSubview(textView);
     end;
 
-  textView.SetStringValue(newValue);
+  textView.SetText(newValue);
   NeedsLayoutSubviews;
   SetIdentifierFromTitle(newValue);
 end;
@@ -4653,7 +6255,7 @@ begin
   FillRect(rect, RGBA(0, 0, 0, 0.3));
 end;
 
-function TSlider.ClosestTickMarkToValue(value: TSliderValue): integer;
+function TSlider.ClosestTickMarkToValue(inValue: TSliderValue): integer;
 begin
   result := Ceil(GetValue / interval);
 end;
@@ -4747,12 +6349,12 @@ begin
 
 
   // show value label
+  // TODO: make this a tooltip window
   if IsDragging and showValueWhileDragging then
     begin
       rect := handleFrame.Inset(-4, 0);
       rect.origin.y -= rect.size.height;
       FillRect(rect, RGBA(244/255,240/255,156/255,0.90));
-
       DrawText(labelFont, GetStringValue, TTextAlignment.Center, rect, RGBA(0, 1));
     end;
 end;
@@ -4760,13 +6362,13 @@ end;
 procedure TSlider.HandleValueChanged; 
 begin
   inherited;
-
   InvokeAction;
 end;
 
 procedure TSlider.HandleInputStarted(event: TEvent);
 var
   where: TPoint;
+  oldValue: variant;
 begin
   inherited;
 
@@ -4789,6 +6391,7 @@ begin
   //    if handleFrame.ContainsPoint(event.Location(self)) then
   //      dragOrigin := event.Location(self) - handleFrame.origin;
   //  end;
+  startValue := m_value;
 
   if handleFrame.Contains(event.Location(self)) then
     begin
@@ -4799,11 +6402,13 @@ begin
   else if InputHit(event) then
     begin
       where := (event.Location(self) - GetTrackFrame.origin);
+      oldValue := m_value;
       if IsVertical then
         m_value := ValueAtRelativePosition(where.y / GetTrackSize.height)
       else
         m_value := ValueAtRelativePosition(where.x / GetTrackSize.width);
-      if liveUpdate then
+      // notify the value changed
+      if liveUpdate and (oldValue <> m_value) then
         HandleValueChanged;
       event.Accept;
       dragging := true;
@@ -4815,17 +6420,19 @@ end;
 procedure TSlider.HandleInputDragged(event: TEvent);
 var
   where: TPoint;
+  oldValue: variant;
 begin
   inherited HandleInputDragged(event);
 
   if IsDragging then
     begin
       where := (event.Location(self) - GetTrackFrame.origin) - dragOrigin;
+      oldValue := m_value;
       if IsVertical then
         m_value := ValueAtRelativePosition(where.y / GetTrackSize.height)
       else
         m_value := ValueAtRelativePosition(where.x / GetTrackSize.width);
-      if liveUpdate then
+      if liveUpdate and (oldValue <> m_value) then
         HandleValueChanged;
       event.Accept;
     end;
@@ -4843,7 +6450,7 @@ begin
         SetValue(GetValue);
 
       //writeln('new value: ', GetValue, ' tick=', ClosestTickMarkToValue(GetValue)+1);
-      if not liveUpdate then
+      if not liveUpdate and (m_value <> startValue) then
         HandleValueChanged;
 
       dragging := false;
@@ -4859,9 +6466,7 @@ begin
   liveUpdate := false;
 end;
 
-//#########################################################
-// SCROLL VIEW
-//#########################################################
+{ SCROLL VIEW }
 
 procedure TScrollView.SetScrollingLimit(newValue: TScalar);
 begin
@@ -4893,6 +6498,10 @@ begin
       contentViewOrigin := contentView.GetFrame.origin;
       contentView.SetPostsFrameChangedNotifications(true);
       AddSubview(contentView);
+
+      // force a layout of subviews so the scrollview
+      // knows the content views real size
+      contentView.LayoutSubviews;
     end;
 end;
 
@@ -5134,7 +6743,7 @@ begin
         amount.y := -scrollingLimit;
 
       if (direction.y > 0) and (direction.y < scrollingLimit) then
-        amount.y := scrollingLimit;       
+        amount.y := scrollingLimit;
     end
   else
     amount := direction;
@@ -5187,25 +6796,19 @@ procedure TScrollView.HandleInputStarted(event: TEvent);
 begin
   inherited HandleInputStarted(event);
 
-  if event.IsAccepted then
-    exit;
-
   if InputHit(event) and enableDragScrolling then
     begin
       dragScrollingDown := event.Location(self);
       dragScrollingOrigin := scrollOrigin;
       // TODO: we need to make an option for this for touch only
       dragScrolling := false;
-      event.Accept;
+      event.Accept(self);
     end;
 end;
 
 procedure TScrollView.HandleInputEnded(event: TEvent);
 begin
   inherited HandleInputEnded(event);
-
-  if event.IsAccepted then
-    exit;
   
   if swipeTimer <> nil then
     begin
@@ -5240,9 +6843,6 @@ var
 begin
   inherited HandleInputDragged(event);
 
-  if event.IsAccepted then
-    exit;
-
   if dragScrolling and InputHit(event) then
     begin
       where := event.Location(self);
@@ -5269,6 +6869,8 @@ begin
       else
         begin
         end;
+
+      event.Accept(self);
     end;
 end;
 
@@ -5304,14 +6906,12 @@ end;
 
 procedure TScrollView.UpdateContentSize;
 begin
+  // TODO: this is a hack, no? maybe we need an interface
+  // to call
   if contentView.IsMember(TTextView) then
     begin
       TTextView(contentView).SetMaximumWidth(Trunc(GetWidth));
       TTextView(contentView).SetWidthTracksContainer(true);
-      SetContentSize(contentView.GetSize);
-    end
-  else if contentView.IsMember(TMatrixView) then
-    begin
       SetContentSize(contentView.GetSize);
     end
   else
@@ -5339,12 +6939,10 @@ begin
   scrollButtonAmount := 20;
   enableContentClipping := true;
 
-  TNotificationCenter.DefaultCenter.ObserveNotification(kNotificationFrameChanged, @self.HandleContentViewFrameChanged);
+  ObserveNotification(kNotificationFrameChanged, @self.HandleContentViewFrameChanged);
 end;
 
-//#########################################################
-// CELL VIEW
-//#########################################################
+{ CELL VIEW }
 
 procedure TCellView.SetDelegate(newValue: TObject);
 begin
@@ -5399,14 +6997,9 @@ end;
 procedure TCellView.SelectCell(cell: TCell; extendSelection: boolean = false; notifyDelegate: boolean = true);
 var
   delegate: ICellViewDelegate;
-  oldCell: TCell;
 begin
   if not cell.IsSelectable or(selectionType = TTableViewSelection.None) then
-    begin
-      //if Supports(GetDelegate, ICellViewDelegate, delegate) then
-      //  delegate.HandleSelectionChanged(self);
-      exit;
-    end;
+    exit;
     
   if not extendSelection then
     ClearSelection(false);
@@ -5660,9 +7253,7 @@ begin
   inherited;
 end;
 
-//#########################################################
-// TABLE VIEW
-//#########################################################
+{ TABLE VIEW }
 
 class operator TTableColumn.= (left: TTableColumn; right: TTableColumn): boolean;
 begin
@@ -5674,9 +7265,10 @@ begin
   lastColumnTracksWidth := newValue;
 end;
 
-procedure TTableView.SetDataSource(newValue: TObject);
+procedure TTableView.SetDataSource(newValue: TObject; cellDelegate: boolean);
 begin
   m_dataSource := newValue;
+  m_cellDelegate := cellDelegate;
 end;
 
 procedure TTableView.SetCellHeight(newValue: integer);
@@ -5712,6 +7304,23 @@ begin
   result := cellSpacing;
 end;
 
+function TTableView.GetVisibleRange: TRangeInt;
+var
+  scrollView: TScrollView;
+begin
+  scrollView := EnclosingScrollView;
+  if assigned(scrollView) then
+    begin
+      result.min := trunc(abs(scrollView.GetVisibleRect.minY) / (cellHeight + cellSpacing));
+      result.max := RoundUp(scrollView.GetClipRect.Height / (cellHeight + cellSpacing)) + 1;
+    end
+  else
+    begin
+      result.min := 0;
+      result.max := RoundUp(GetHeight / (cellHeight + cellSpacing)) + 1;
+    end;
+end;
+
 function TTableView.ColumnAtIndex(index: integer): PTableColumn;
 begin
   result := PTableColumn(TFPSList(columns)[index]);
@@ -5740,12 +7349,6 @@ end;
 function TTableView.GetCell(index: integer): TCell;
 begin
   result := cells[index];
-end;
-
-function TTableView.EnclosingScrollView: TScrollView;
-begin
-  // TODO: cache this
-  result := FindParent(TScrollView) as TScrollView;
 end;
 
 procedure TTableView.SizeLastColumnToFit;
@@ -5811,13 +7414,16 @@ var
 begin
   totalRows := dataSource.TableViewNumberOfRows(self);
   rowCount := Min(totalRows, maxRows);
-  writeln('reload ', firstRow,' to ', rowCount, ' total=',totalRows);
+  //writeln('reload ', firstRow,' to ', rowCount, ' total=',totalRows, ' cells=', cells.Count);
 
-  // TODO: update if rows change(from datasoure or frame change)
   if rowCount <> cells.Count then
     begin
-      writeln('allocate new cells -> ', rowCount);
 
+      // add default column if user didn't add one yet
+      if columns.Count = 0 then
+        AddColumn(0, '');
+
+      // free old cells
       for cell in cells do
         cell.RemoveFromParent;
       cells.Free;
@@ -5826,10 +7432,6 @@ begin
       for i := 0 to rowCount - 1 do
         begin
           cell := nil;
-
-          // TODO: add default column if user didn't add one yet
-          Assert(columns.Count > 0, 'Must add a valid column');
-
           for column := 0 to columns.Count - 1 do
             begin
               if cell = nil then 
@@ -5842,12 +7444,12 @@ begin
                   child.next := cellClass.Create;
                   child := child.next;
                 end;
-              
               AddSubview(child);
             end;
-
           cells.Add(cell);
         end;
+
+      writeln('allocated new cells -> ', cells.Count);
 
       // resize table view to fit
       rect := GetFrame;
@@ -5873,7 +7475,12 @@ begin
               child.selectionState -= [TCellState.Selected];
 
             child.SetFont(cellFont);
-            child.SetObjectValue(value);
+
+            // if the tableview uses cell delegates then call the delegate on the object
+            if m_cellDelegate then
+              ITableViewCellDelegate(value).TableViewPrepareCell(self, columns[column], child)
+            else
+              child.SetObjectValue(value);
 
             child := child.next;
             column += 1;
@@ -5888,33 +7495,22 @@ var
   cell, child: TCell;
   i: integer;
   dataSource: ITableViewDataSource;
-  firstRow, 
-  maxRows: integer;
-  scrollView: TScrollView;
+  range: TRangeInt;
   column: integer;
 begin
-  
-  // TODO: save this as the visible range. not sure what the other idea I had was...
-  // determine the visible cell range
-  scrollView := EnclosingScrollView;
-  if assigned(scrollView) then
-    begin
-      firstRow := trunc(abs(scrollView.GetVisibleRect.minY) / (cellHeight + cellSpacing));
-      maxRows := RoundUp(scrollView.GetClipRect.Height / (cellHeight + cellSpacing)) + 1;
-    end
-  else
-    begin
-      firstRow := 0;
-      maxRows := RoundUp(GetHeight / (cellHeight + cellSpacing)) + 1;
-    end;
+  if arrangingCells then
+    exit;
 
+  arrangingCells := true;
+
+  range := VisibleRange;
 
   // load cells from data source
   if Supports(m_dataSource, ITableViewDataSource, dataSource) then
     begin
-      ReloadCellsFromDataSource(dataSource, firstRow, maxRows);
+      ReloadCellsFromDataSource(dataSource, range.Min, range.Max);
 
-      cellFrame := RectMake(0, firstRow * (cellHeight + cellSpacing), GetWidth, 0);
+      cellFrame := RectMake(0, range.Min * (cellHeight + cellSpacing), GetWidth, 0);
 
       for i := 0 to cells.Count - 1 do
         begin
@@ -5937,13 +7533,8 @@ begin
     end
   else if assigned(cells) and cellsNeedArranging then
     begin
-
-      cellsNeedArranging := false;
-      arrangingCells := true;
       totalHeight := 0;
-
       cellFrame := RectMake(0, 0, GetWidth, 0);
-
       for i := 0 to cells.Count - 1 do
         begin
           cell := cells[i];
@@ -5954,13 +7545,7 @@ begin
           if cell.GetParent = nil then
             AddSubview(cell);
           
-          // TODO: this doesn't work
-          //if cell.GetHeight = 0 then  
-          //  cellFrame.size.height := cellHeight
-          //else
-          //  cellFrame.size.height := cell.GetHeight;
           cellFrame.size.height := cellHeight;
-
           cell.SetFrame(cellFrame);
 
           cellFrame.origin.y += cellFrame.size.height + cellSpacing;
@@ -5974,9 +7559,10 @@ begin
       rect := GetFrame;
       rect.size.height := totalHeight;
       SetFrame(rect);
-
-      arrangingCells := false;
     end;
+
+  arrangingCells := false;
+  cellsNeedArranging := false;
 end;
 
 function TTableView.ShouldDrawSubview(view: TView): boolean;
@@ -6004,7 +7590,7 @@ var
   cell, child: TCell;
   rect: TRect;
 begin
-  FillRect(GetBounds, RGBA(0,0.6,0,0.2));
+  //FillRect(GetBounds, RGBA(0,0.6,0,0.2));
 
   for cell in cells do
     if TCellState.Selected in cell.selectionState then
@@ -6027,36 +7613,34 @@ procedure TTableView.HandleKeyDown(event: TEvent);
 var
   index: integer;
 begin
-  writeln(event.KeyCode);
   case event.KeyCode of
     GLPT_KEY_UP:
       begin
-        //if selection.Count > 0 then
-        //  index := cells.IndexOf(selection[0]) - 1
-        //else
-        //  index := 0;
-        //if index < 0 then
-        //  index := 0;
-        //SelectCell(index);
-        //if not visibleRange.Contains(index) then
-        //  begin
-        //    //ScrollUp;
-        //  end;
+        {
+          TODO: this fails because rowIndex is not global to the data source
+        }
+        if selection.Count > 0 then
+          index := cells[selection[0]].rowIndex - 1
+        else
+          index := 0;
+        if index < 0 then
+          index := 0;
+        SelectCell(cells[index]);
+        if not VisibleRange.Contains(index) then
+          ScrollUp;
         event.Accept(self);
       end;
     GLPT_KEY_DOWN:
       begin
-        //if selection.Count > 0 then
-        //  index := cells.IndexOf(selection[0]) + 1
-        //else
-        //  index := 0;
-        //if index > cells.Count - 1 then
-        //  index := cells.Count - 1;
-        //SelectCell(index);
-        //if not visibleRange.Contains(index) then
-        //  begin
-        //    //ScrollDown;
-        //  end;
+        if selection.Count > 0 then
+          index := cells[selection[0]].rowIndex + 1
+        else
+          index := 0;
+        if index > cells.Count - 1 then
+          index := cells.Count - 1;
+        SelectCell(cells[index]);
+        if not VisibleRange.Contains(index) then
+          ScrollDown;
         event.Accept(self);
       end;
   end;
@@ -6066,8 +7650,7 @@ procedure TTableView.HandleFrameDidChange(previousFrame: TRect);
 begin
   inherited HandleFrameDidChange(previousFrame);
   
-  if not arrangingCells then
-    ArrangeCells;
+  ArrangeCells;
 end;
 
 procedure TTableView.HandleDidAddToParent(sprite: TView);
@@ -6078,11 +7661,22 @@ begin
 end;
 
 procedure TTableView.ScrollUp;
+var
+  scrollView: TScrollView;
 begin
+  writeln('ScrollUp');
+  scrollView := EnclosingScrollView;
+  if scrollView <> nil then
+    scrollView.Scroll(V2(0, cellHeight));
 end;
 
 procedure TTableView.ScrollDown;
+var
+  scrollView: TScrollView;
 begin
+  scrollView := EnclosingScrollView;
+  if scrollView <> nil then
+    scrollView.Scroll(V2(0, -cellHeight));
 end;
 
 function TTableView.GetColumns: TTableColumnList;
@@ -6111,10 +7705,7 @@ end;
 procedure TTableView.Initialize;
 begin
   inherited Initialize;
-  
-  //RegisterMethod('ScrollUp', @TTableView.ScrollUp);
-  //RegisterMethod('ScrollDown', @TTableView.ScrollDown);
-  
+    
   SetCellHeight(18);
   SetCellSpacing(0);
 
@@ -6129,17 +7720,55 @@ begin
   inherited;
 end;
 
-//#########################################################
-// TEXT VIEW
-//#########################################################
+{ TImageAndTextCellDataSource }
+
+function TImageAndTextCellDataSource.TableViewValueForRow(tableView: TTableView; column: TTableColumn; row: integer): pointer;
+begin
+  result := data[row];
+end;
+
+function TImageAndTextCellDataSource.TableViewNumberOfRows(tableView: TTableView): integer;
+begin
+  result := data.Count;
+end;
+
+procedure TImageAndTextCellDataSource.Add(item: ITableViewCellDelegate);
+begin
+  data.Add(item);
+end;
+
+destructor TImageAndTextCellDataSource.Destroy;
+var
+  item: ITableViewCellDelegate;
+begin
+  for item in data do
+    TObject(item).Free;
+  data.Free;
+  inherited;
+end;
+
+constructor TImageAndTextCellDataSource.Create;
+begin
+  data := TDataList.Create;
+end;
+
+{ TEXT VIEW }
 
 constructor TTextView.Create(inFrame: TRect; text: string; inWidthTracksContainer: boolean = true; inFont: IFont = nil);
 begin
   Initialize;
   SetFrame(inFrame);
-  SetStringValue(text);
+  SetText(text);
   SetFont(inFont);
   SetWidthTracksContainer(inWidthTracksContainer);
+end;
+
+procedure TTextView.SetText(newValue: TTextViewString);
+begin
+  // TODO: update cursor!
+  m_text := newValue;
+  MoveCursor(Length(text));
+  TextLayoutChanged;
 end;
 
 procedure TTextView.SetFont(newValue: IFont);
@@ -6147,27 +7776,37 @@ begin
   textFont := newValue;
   if assigned(textFont) and (textColor.a = 0) then
     SetTextColor(textFont.PreferredTextColor);
-  NeedsLayoutSubviews;
+  TextLayoutChanged;
 end;
 
+procedure TTextView.ToggleOption(newValue: boolean; option: TTextViewOption);
+begin
+  if newValue then
+    Include(options, option)
+  else
+    Exclude(options, option);
+end;
+
+{ The height of the view tracks the height of the container }
 procedure TTextView.SetHeightTracksContainer(newValue: boolean);
 begin
-  heightTracksContainer := newValue;
+  ToggleOption(newValue, TTextViewOption.HeightTracksContainer);
 end;
 
-// The width of the view tracks the width of the container(i.e. view scales by width and constrained by maximumWidth)
+{ The width of the view tracks the width of the container i.e.,
+  view resizes by width of text and constrained by maximumWidth. }
 procedure TTextView.SetWidthTracksContainer(newValue: boolean);
 begin
-  widthTracksContainer := newValue;
-  widthTracksView := false;
+  ToggleOption(newValue, TTextViewOption.WidthTracksContainer);
+  ToggleOption(false, TTextViewOption.WidthTracksView);
   NeedsLayoutSubviews;
 end;
 
-// The width of the container tracks the width of the view(text wraps to container)
+{ The width of the container tracks the width of the view (text wraps to container) }
 procedure TTextView.SetWidthTracksView(newValue: boolean);
 begin
-  widthTracksView := newValue;
-  widthTracksContainer := false;
+  ToggleOption(newValue, TTextViewOption.WidthTracksView);
+  ToggleOption(false, TTextViewOption.WidthTracksContainer);
   NeedsLayoutSubviews;
 end;
 
@@ -6178,7 +7817,8 @@ end;
 
 procedure TTextView.SetEditable(newValue: boolean);
 begin
-  editable := newValue;
+  //editable := newValue;
+  ToggleOption(newValue, TTextViewOption.Editable);
   canAcceptFocus := newValue;
 end;
 
@@ -6193,11 +7833,33 @@ begin
   NeedsLayoutSubviews;
 end;
 
+function TTextView.IsEditable: boolean;
+begin
+  result := TTextViewOption.Editable in options;
+end;
+
+function TTextView.IsSelectable: boolean;
+begin
+  // TODO: for now selectable is editable
+  result := IsEditable;
+end;
+
 function TTextView.GetTextSize: TVec2;
+var
+  layout: TTextLayoutOptions;
 begin
   // TODO: cache this result, only update if text changes
   Assert(IsReadyToLayout, 'text view must set font');
-  result := MeasureText(textFont, GetStringValue, maximumWidth);
+
+  if IsEditable then
+    begin
+      layout := TextLayout;
+      layout.draw := false;
+      LayoutText(layout);
+      result := layout.textSize;
+    end
+  else
+    result := MeasureText(textFont, Text, maximumWidth);
 end;
 
 function TTextView.GetFont: IFont;
@@ -6205,71 +7867,497 @@ begin
   result := textFont;
 end;
 
-function TTextView.HandleWillInsertCharacter(var c: char): boolean;
+function TTextView.HandleWillInsertText(var newText: TTextViewString): boolean;
 begin
   result := true;
 end;
 
+{ Called before any text deletion event }
 function TTextView.HandleWillDelete: boolean;
 begin
   result := true;
 end;
 
-procedure TTextView.HandleKeyDown(event: TEvent);
+{ Moves the cursor to a single location and reverts the selection }
+procedure TTextView.MoveCursor(location: TTextOffset; grow: boolean); 
 var
-  c: char;
+  oldLocation: TTextOffset;
 begin
-  if editable then
+  location := Clamp(location, 0, Length(text));
+
+  if grow then
     begin
-      if event.KeyCode = GLPT_KEY_RETURN then
+
+      // grow left
+      if location < cursor.location then
         begin
-          if assigned(actions) then
-            InvokeAction
-          else
-            SetStringValue(GetStringValue + LineEnding);
+          oldLocation := cursor.location;
+          cursor.location := location;
+          cursor.length += abs(cursor.location - oldLocation);
+          cursor.insertion := location;
         end
-      else if(event.KeyCode = GLPT_KEY_BACKSPACE) or 
-              (event.KeyCode = GLPT_KEY_DELETE) and 
-              HandleWillDelete then
+      else // grow right
         begin
-          // TODO: delete entire line
-          if ssSuper in event.KeyboardModifiers then
-            begin
-              SetStringValue('')
-            end
-          else if(ssAlt in event.KeyboardModifiers) or (ssCtrl in event.KeyboardModifiers) then 
-            begin
-              {$ifdef DARWIN}
-              SetStringValue('')
-              {$else}
-              SetStringValue('')
-              {$endif}
-            end
-          else
-            SetStringValue(AnsiLeftStr(GetStringValue, Length(GetStringValue) - 1));
-        end
-      else
-        begin
-          c := event.KeyboardCharacter;
-          if HandleWillInsertCharacter(c) then
-            SetStringValue(GetStringValue + c);
+          cursor.length := abs(cursor.location - location);
+          cursor.insertion := location;
         end;
+    end
+  else
+    begin
+      cursor.insertion := location;
+      cursor.location := location;
+      cursor.length := 0;
+    end;
+
+  cursor.location := Clamp(cursor.location, 0, Length(text));
+  cursor.length := Clamp(cursor.length, 0, Length(text));
+end;
+
+procedure TTextView.SelectRange(location, length: TTextOffset);
+begin
+  cursor.location := location;
+  cursor.length := length;
+  cursor.insertion := cursor.location + cursor.length;
+  cursor.location := Clamp(cursor.location, 0, System.Length(text));
+  cursor.length := Clamp(cursor.length, 0, System.Length(text));
+end;
+
+procedure TTextView.InsertText(newText: TTextViewString);
+begin
+  InsertText(cursor.location + 1, cursor.length, newText)
+end;
+
+procedure TTextView.InsertText(location, length: TTextOffset; newText: TTextViewString);
+begin
+  if HandleWillInsertText(newText) then
+    begin
+      if length > 0 then
+        Delete(m_text, location, length);
+      Insert(newText, m_text, location);
+      MoveCursor(location + (System.Length(newText) - 1));
+      TextLayoutChanged;
+    end;
+end;
+
+procedure TTextView.DeleteText(location, length: TTextOffset);
+begin
+  Delete(m_text, location, length);
+  TextLayoutChanged;
+end;
+
+procedure TTextView.TextLayoutChanged;
+begin
+  dirty := true;
+  NeedsLayoutSubviews;
+end;
+
+
+{$macro on}
+{$define TCharSetLineEnding:=#10, #12, #13}
+{$define TCharSetWhiteSpace:=#32, #9, TCharSetLineEnding}
+{$define TCharSetWord:='a'..'z','A'..'Z','_'}
+{$define TCharSetInteger:='0'..'9'}
+
+function AdvanceNextWord(text: UnicodeString; location: LongWord): LongWord;
+var
+  offset: LongWord;
+begin
+  offset := location + 1;
+
+  while offset < Length(text) do
+    begin
+      if text[offset] in [TCharSetWhiteSpace] then
+        inc(offset)
+      else
+        break
+    end;
+
+  location := offset;
+
+  for offset := location to High(text) do
+    case text[offset] of
+      TCharSetWord, TCharSetInteger:
+        continue;
+      otherwise
+        exit(offset - 1);
+    end;
+  result := High(text);
+end;
+
+function AdvancePreviousWord(text: UnicodeString; location: LongWord): LongWord;
+var
+  offset: LongInt;
+begin
+  offset := location;
+
+  while offset >= 0 do
+    begin
+      if text[offset] in [TCharSetWhiteSpace] then
+        dec(offset)
+      else
+        break
+    end;
+
+  location := offset;
+
+  for offset := location downto 0 do
+    case text[offset] of
+      TCharSetWord, TCharSetInteger:
+        continue;
+      otherwise
+        exit(offset);
+    end;
+  result := 0;
+end;
+
+function AdvanceLineStart(text: UnicodeString; location: LongWord): LongWord;
+var
+  offset: LongWord;
+begin
+  for offset := location downto 0 do
+    case text[offset] of
+      TCharSetLineEnding:
+        exit(offset);
+    end;
+  result := 0;
+end;
+
+function TTextView.FindPointAtLocation(location: LongInt): TVec2i;
+var
+  layout: TTextLayoutOptions;
+begin
+  layout := TextLayout;
+  layout.draw := false;
+  layout.testOffset := location;
+  layout.hitPoint := 0;
+  LayoutText(layout);
+  result := layout.hitPoint;
+end;
+
+function TTextView.FindCharacterAtPoint(point: TVec2i): LongInt;
+var
+  layout: TTextLayoutOptions;
+begin
+  layout := TextLayout;
+  layout.draw := false;
+  layout.testPoint := point;
+  layout.hitOffset := 0;
+  LayoutText(layout);
+  result := layout.hitOffset;
+end;
+
+function TTextView.FindWordAtPoint(point: TVec2i): TTextRange;
+var
+  start, 
+  offset: LongInt;
+begin
+  start := FindCharacterAtPoint(point);
+
+  result.location := 0;
+  result.length := 0;
+
+  for offset := start downto 0 do
+    case text[offset] of
+      TCharSetWord, TCharSetInteger:
+        continue;
+      otherwise
+        begin
+          result.location := offset;
+          break;
+        end;
+    end;
+
+  for offset := start to high(text) do
+    begin
+      if offset = high(text) then
+        begin
+          result.length := (offset - 1) - result.location;
+          break;
+        end;
+
+      case text[offset] of
+        TCharSetWord, TCharSetInteger:
+          continue;
+        otherwise
+          begin
+            result.length := (offset - 1) - result.location;
+            break;
+          end;
+      end;
+    end;
+
+  result.insertion := result.location + result.length;
+end;
+
+function TTextView.FindLineAtPoint(point: TVec2i): TTextRange;
+var
+  start, 
+  offset: LongInt;
+begin
+  start := FindCharacterAtPoint(point);
+
+  result.location := 0;
+  result.length := 0;
+
+  for offset := start downto 0 do
+    if (offset = 0) or (text[offset] in [TCharSetLineEnding]) then
+      begin
+        result.location := offset;
+        break;
+      end;
+
+  for offset := start to high(text) do
+    if (offset = high(text)) or (text[offset] in [TCharSetLineEnding]) then
+      begin
+        result.length := (offset - 1) - result.location;
+        break;
+      end;
+
+  result.insertion := result.location + result.length;
+end;
+
+procedure TTextView.HandleKeyEquivalent(event: TEvent);
+begin
+  if (event.KeyCode = GLPT_KEY_v) and (event.KeyboardModifiers = [ssSuper]) then
+    begin
+      InsertText(GLPT_GetClipboard);
+      event.Accept(self);
+    end
+  else if (event.KeyCode = GLPT_KEY_c) and (event.KeyboardModifiers = [ssSuper]) then
+    begin
+      if cursor.length > 0 then
+        GLPT_SetClipboard(System.Copy(Text, cursor.location + 1, cursor.length));
       event.Accept(self);
     end;
 end;
 
-procedure TTextView.HandleValueChanged;
+procedure TTextView.HandleInputStarted(event: TEvent);
+var
+  range: TTextRange;
+  grow: boolean;
 begin
-  inherited;
-  NeedsLayoutSubviews;
+  inherited HandleInputStarted(event);
+
+  if InputHit(event) then
+    begin
+      // TODO: this enables a selection mode also: char,word,line
+
+      if event.ClickCount = 3 then
+        begin
+          selMode := TTextViewSelectionMode.Line;
+          range := FindLineAtPoint(event.Location(self));
+          SelectRange(range.location, range.length);
+          event.Accept(self);
+        end
+      else if event.ClickCount = 2 then
+        begin
+          selMode := TTextViewSelectionMode.Word;
+          range := FindWordAtPoint(event.Location(self));
+          SelectRange(range.location, range.length);
+          event.Accept(self);
+        end
+      else if IsSelectable then
+        begin
+          dragStart := cursor.insertion;
+          selMode := TTextViewSelectionMode.Character;
+          grow := ssShift in event.MouseModifiers;
+          MoveCursor(FindCharacterAtPoint(event.Location(self)), grow);
+          event.Accept(self);
+        end;
+    end;
+end;
+
+procedure TTextView.HandleInputDragged(event: TEvent);
+var
+  offset: longint;
+begin
+  inherited HandleInputStarted(event);
+
+  if InputHit(event) and (event.InputSender = self) then
+    begin
+
+      case selMode of
+        TTextViewSelectionMode.Character:
+          offset := FindCharacterAtPoint(event.Location(self));
+        TTextViewSelectionMode.Word:
+          begin
+            // TODO: this can deselect the initial word
+            // because the insertion point will be the same
+            offset := FindWordAtPoint(event.Location(self)).insertion;
+          end;
+        TTextViewSelectionMode.Line:
+          offset := FindLineAtPoint(event.Location(self)).insertion;
+      end;
+
+      if offset < dragStart then
+        cursor.location := offset
+      else
+        cursor.location := dragStart;
+
+      cursor.insertion := offset;
+      cursor.length := abs(offset - dragStart);
+
+      cursor.location := Clamp(cursor.location, 0, Length(text));
+      cursor.length := Clamp(cursor.length, 0, System.Length(text));
+      //writeln('start: ',cursor.location, ' end:', cursor.location+cursor.length);
+
+      event.Accept(self);
+    end
+  else if event.InputSender = self then
+    begin
+      writeln('scroll drag');
+    end;
+end;
+
+procedure TTextView.HandleInputEnded(event: TEvent);
+begin
+  inherited HandleInputEnded(event);
+
+  if event.InputSender = self then
+    begin
+      //writeln('selection ended');
+      dragStart := -1;
+      event.Accept(self);
+    end;
+end;
+
+
+procedure TTextView.HandleKeyDown(event: TEvent);
+var
+  newLocation, 
+  deleteLength,
+  offset: longint;
+  point: TVec2;
+  grow: boolean;
+begin
+  if IsEditable then
+    begin
+      grow := ssShift in event.KeyboardModifiers;
+
+      case event.KeyCode of
+        GLPT_KEY_RETURN:
+          InsertText(LineEnding);
+        GLPT_KEY_BACKSPACE, GLPT_KEY_DELETE:
+          if HandleWillDelete then
+            begin
+              if ssSuper in event.KeyboardModifiers then
+                begin
+                  // delete line
+                  newLocation := AdvanceLineStart(text, cursor.location);
+
+                  // always delete at least 1 character
+                  if newLocation = cursor.location then
+                    newLocation := Clamp(newLocation - 1, 0, MaxInt);
+
+                  deleteLength := cursor.location - newLocation;
+                  if deleteLength > high(text) then
+                    deleteLength := high(text);
+                  DeleteText(newLocation + 1, deleteLength);
+                  MoveCursor(newLocation);
+                end
+              else if ssAlt in event.KeyboardModifiers then 
+                begin
+                  // delete word
+                  newLocation := AdvancePreviousWord(text, cursor.location);
+                  deleteLength := cursor.location - newLocation;
+                  if deleteLength > high(text) then
+                    deleteLength := high(text);
+                  DeleteText(newLocation + 1, deleteLength);
+                  MoveCursor(newLocation);
+                end
+              else
+                begin
+                  if cursor.length = 0 then
+                    begin
+                      DeleteText(cursor.location, 1);
+                      MoveCursor(cursor.location - 1);
+                    end
+                  else
+                    begin
+                      DeleteText(cursor.location + 1, cursor.length);
+                      MoveCursor(cursor.location);
+                    end;
+                end;
+            end;
+        GLPT_KEY_PAGEUP:
+          ;
+        GLPT_KEY_PAGEDOWN:
+          ;
+        GLPT_KEY_RIGHT:
+          begin
+            if ssSuper in event.KeyboardModifiers then
+              MoveCursor(MaxInt, grow)
+            else if ssAlt in event.KeyboardModifiers then
+              MoveCursor(AdvanceNextWord(text, cursor.location), grow)
+            else
+              MoveCursor(cursor.insertion + 1, grow);
+          end;
+        GLPT_KEY_LEFT:
+          begin
+            if ssSuper in event.KeyboardModifiers then
+              MoveCursor(0, grow)
+            else if ssAlt in event.KeyboardModifiers then
+              MoveCursor(AdvancePreviousWord(text, cursor.location), grow)
+            else
+              MoveCursor(cursor.insertion - 1, grow);
+          end;
+        GLPT_KEY_DOWN:
+          begin
+            point := FindPointAtLocation(cursor.location);
+            point.y += textFont.LineHeight;
+            offset := FindCharacterAtPoint(point);
+            MoveCursor(offset);
+          end;
+        GLPT_KEY_UP:
+          begin
+            point := FindPointAtLocation(cursor.location);
+            point.y -= textFont.LineHeight;
+            offset := FindCharacterAtPoint(point);
+            MoveCursor(offset);
+          end;
+        otherwise
+          begin
+            InsertText(event.KeyboardCharacter);
+          end;
+
+        event.Accept(self);
+      end;
+    end;
+end;
+
+function TTextView.GetTextFrame: TRect;
+begin
+  result := Bounds;
+end;
+
+function TTextView.GetTextLayout: TTextLayoutOptions;
+begin
+  result.font := textFont;
+  result.text := text;
+  result.range := TTextRange.Create(0, length(result.text));
+  result.where := TextFrame.origin;
+  result.color := textColor;
+  result.scale := 1.0;
+  result.textAlignment := textAlignment;
+  result.wrap := TTextWrapping.Word;
+  result.hitPoint := 0;
+  result.draw := true;
+  result.cursor := cursor;
 end;
 
 procedure TTextView.Draw;
-begin     
+var
+  layout: TTextLayoutOptions;
+begin
   inherited;
 
-  if GetStringValue <> '' then
-    DrawText(textFont, GetStringValue, textAlignment, GetBounds, textColor);
+  if IsEditable then
+    begin
+      layout := TextLayout;
+      LayoutText(layout);
+    end
+  else if Text <> '' then
+    DrawText(textFont, text, textAlignment, TextFrame, textColor)
 end;
 
 function TTextView.IsReadyToLayout: boolean;
@@ -6280,19 +8368,51 @@ end;
 procedure TTextView.LayoutSubviews;
 var
   newSize: TVec2;
-begin   
+  textSize: TVec2;
+  scrollView: TScrollView;
+begin
   // no font was set so we can't update the container
   if textFont = nil then
     exit;
-    
-  if widthTracksContainer then
-    SetSize(GetTextSize);
-  
-  if widthTracksView and heightTracksContainer then
+
+  scrollView := EnclosingScrollView;
+
+  if dirty and ((TTextViewOption.WidthTracksContainer in options) or (TTextViewOption.HeightTracksContainer in options)) then
     begin
-      newSize.width := GetWidth;
-      newSize.height := GetTextSize.height;
+      textSize := GetTextSize;
+      newSize := Bounds.size;
+
+      // resize to fit text
+      if (TTextViewOption.WidthTracksContainer in options) {and (newSize.width < textSize.width)} then
+        newSize.width := textSize.width;
+
+      // fill to fit scrollview size
+      //if (scrollView <> nil) and (GetParent = scrollView) and (newSize.width < scrollView.ClipRect.Width) then
+      //  newSize.width := scrollView.ClipRect.width;
+
+      // note: this was "text wraps to view" but not sure how it's going to be
+      //if TTextViewOption.WidthTracksView in options then
+      //  newSize.width := newSize.width;
+
+      if TTextViewOption.HeightTracksContainer in options then
+        newSize.height := textSize.height;
+
       SetSize(newSize);
+      dirty := false;
+    end;
+
+  if (scrollView <> nil) and (GetParent = scrollView) then
+    begin
+      //writeln('bounds: ', scrollView.Bounds.tostr);
+      //writeln('visible rect: ', scrollView.GetVisibleRect.tostr);
+      //writeln('clip rect: ', scrollView.GetClipRect.tostr);
+      //firstRow := trunc(abs(scrollView.GetVisibleRect.minY) / (cellHeight + cellSpacing));
+      //maxRows := RoundUp(scrollView.GetClipRect.Height / (cellHeight + cellSpacing)) + 1;
+    end
+  else
+    begin
+      //firstRow := 0;
+      //maxRows := RoundUp(GetHeight / (cellHeight + cellSpacing)) + 1;
     end;
   
   inherited;
@@ -6308,16 +8428,141 @@ end;
 procedure TTextView.Initialize;
 begin
   inherited;
+  
+  dirty := true;
 
   SetWidthTracksContainer(true);
+  SetHeightTracksContainer(true);
   SetMaximumWidth(0);
   SetTextAlignment(TTextAlignment.Left);
   SetTextColor(RGBA(0, 0));
 end;
 
-//#########################################################
-// IMAGE VIEW
-//#########################################################
+procedure TTextField.AdjustFrame;
+begin
+  textFrame := GetBounds.Inset(BorderWidth, BorderWidth);
+  m_text.SetFrame(textFrame);
+end;
+
+procedure TTextField.SetBorderWidth(newValue: integer);
+begin
+  m_borderWidth := newValue;
+  if m_text <> nil then
+    AdjustFrame;
+end;
+
+procedure TTextField.SetFont(newValue: IFont);
+begin
+  m_font := newValue;
+  if m_text <> nil then
+    AdjustFrame;
+end;
+
+procedure TTextField.SetLabelString(newValue: string);
+begin
+  if LabelView = nil then
+    m_labelView := TTextView.Create();
+end;
+
+procedure TTextField.HandleInputStarted(event: TEvent);
+begin
+  // clicked outside the text view
+  if not m_text.InputHit(event)  then
+    begin
+      m_text.MoveCursor(MaxInt);
+    end;
+
+  inherited HandleInputStarted(event);
+end;
+
+procedure TTextField.HandleViewFocusChanged(notification: TNotification);
+begin
+  GiveFocus;
+end;
+
+procedure TTextField.HandleViewFrameChanged(notification: TNotification);
+var
+  newFrame,
+  parentFrame: TRect;
+  rightMargin: single;
+begin
+  textFrame := GetBounds.Inset(BorderWidth, BorderWidth);
+
+  parentFrame := m_text.ConvertRectTo(m_text.GetBounds, self);
+  newFrame := m_text.GetFrame;
+
+  rightMargin := GetBounds.width - 2;
+  if parentFrame.Width > rightMargin then
+    newFrame.origin.x := trunc(rightMargin - newFrame.Width)
+  else
+    newFrame.origin.x := textFrame.MinX;
+
+  //rightMargin := GetBounds.height - 2;
+  //if parentFrame.Height > rightMargin then
+  //  newFrame.origin.y := trunc(rightMargin - newFrame.height)
+  //else
+  //  newFrame.origin.y := textFrame.MinY;
+
+  m_text.SetFrame(newFrame);  
+end;
+
+procedure TTextField.HandleKeyDown(event: TEvent);
+begin
+  case event.KeyCode of
+    GLPT_KEY_TAB:
+      begin
+        Window.AdvanceFocus;
+        event.Accept(self);
+      end;
+    GLPT_KEY_RETURN:
+      begin
+        InvokeAction;
+        event.Accept(self);
+      end;
+    otherwise
+      inherited HandleKeyDown(event);
+  end;  
+end;
+
+procedure TTextField.HandleWillAddToParent(view: TView);
+begin
+  inherited HandleWillAddToParent(view);
+
+  BorderWidth := 4;
+  SetCanAcceptFocus(true);
+
+  textFrame := GetBounds.Inset(BorderWidth, BorderWidth);
+
+  m_text := TTextView.Create(textFrame);
+  m_text.SetEditable(true);
+  m_text.SetWidthTracksContainer(true);
+  m_text.SetText(GetStringValue);
+  m_text.SetFont(TextFont);
+  m_text.SetPostsFrameChangedNotifications(true);
+  AddSubview(m_text);
+
+  ObserveNotification(kNotificationFocusChanged, @self.HandleViewFocusChanged, pointer(m_text));
+  ObserveNotification(kNotificationFrameChanged, @self.HandleViewFrameChanged, pointer(m_text));
+end;
+
+procedure TTextField.Draw;
+begin   
+  // TODO: Testing!
+  if not IsFocused then
+    FillRect(GetBounds, RGBA(0.1, 0.1, 1, 0.5))
+  else
+    FillRect(GetBounds, RGBA(0.1, 1, 0.1, 0.5));
+
+  StrokeRect(Bounds, TColor.Black);
+
+  FlushDrawing;
+  // TODO: we need to add some margin for cursors/selection range
+  PushClipRect(textFrame.Inset(-2, -2));
+  inherited;
+  PopClipRect;
+end;
+
+{ IMAGE VIEW }
 
 procedure TImageView.Draw;
 var
@@ -6336,12 +8581,12 @@ begin
   //    scrollView.GetVisibleRect.show;
   //  end;
 
-  if assigned(frontImage) then
+  if assigned(Image) then
     begin
       if TImageViewOption.ScaleProportionately in options then
         begin
           destSize := GetSize;
-          srcSize := frontImage.GetSize;
+          srcSize := Image.GetSize;
           if destSize.width > srcSize.width then
             destSize.width := srcSize.width;
           if destSize.height > srcSize.height then
@@ -6352,15 +8597,15 @@ begin
       else if TImageViewOption.ScaleToFit in options then
         scaledSize := GetSize
       else
-        scaledSize := frontImage.GetSize; // don't scale
+        scaledSize := Image.GetSize; // don't scale
 
       if TImageViewOption.Center in options then
         imageFrame := RectMake((GetWidth / 2) - (scaledSize.width / 2), (GetHeight / 2) - (scaledSize.height / 2), scaledSize.width, scaledSize.height)
       else
         imageFrame := RectMake(0, 0, scaledSize.width, scaledSize.height);
 
-      textureFrame := frontImage.TextureFrame;
-      DrawTexture(frontImage, imageFrame, textureFrame);
+      textureFrame := Image.TextureFrame;
+      DrawTexture(Image, imageFrame, textureFrame);
     end;
 
   inherited;
@@ -6378,13 +8623,7 @@ end;
 
 procedure TImageView.SetImage(newValue: TTexture);
 begin
-  frontImage := newValue;
-end;
-
-destructor TImageView.Destroy;
-begin
-  backgroundImage := nil;
-  inherited;
+  m_frontImage := newValue;
 end;
 
 constructor TImageView.Create(inFrame: TRect; image: TTexture);
@@ -6394,21 +8633,19 @@ begin
   Initialize;
 end;
 
-//#########################################################
-// BUTTON
-//#########################################################
+{ BUTTON }
 
-constructor TButton.Create(frame: TRect; _title: string; _font: IFont = nil);
+constructor TButton.Create(_frame: TRect; _title: string; _font: IFont = nil);
 begin
   Initialize;
   SetTitle(_title);
   SetFont(_font);
-  SetFrame(frame);
+  SetFrame(_frame);
 end;
 
 procedure TButton.SetTitle(newValue: string);
 begin
-  textView.SetStringValue(newValue);
+  textView.SetText(newValue);
   SetIdentifierFromTitle(newValue);
 end;
 
@@ -6479,7 +8716,7 @@ end;
 function TButton.GetImage: TTexture;
 begin
   if imageView <> nil then
-    result := TTexture(imageView.frontImage)
+    result := TTexture(imageView.image)
   else
     result := nil;
 end;
@@ -6492,13 +8729,13 @@ procedure TButton.HandleAction;
 var
   action: TInvocation;
 begin
-  if assigned(actions) then
+  if HasActions then
     for action in actions do
       action.Invoke(self);
 end;
 
 procedure TButton.HandleInputEnded(event: TEvent);
-begin     
+begin
   if pressed then
     begin
       // TODO: sounds and timers
@@ -6509,8 +8746,7 @@ begin
       HandlePressed;
       HandleAction;
     end;
-  
-  DepressButton;    
+  DepressButton;
 end;
 
 procedure TButton.HandleInputDragged(event: TEvent);
@@ -6518,7 +8754,7 @@ var
   previous: boolean;
 begin
   if tracking then
-    begin     
+    begin
       previous := pressed;
       pressed := InputHit(event);
       if previous <> pressed then
@@ -6548,13 +8784,13 @@ end;
 
 procedure TButton.RecalculateText;
 begin
-  textView.HandleValueChanged;
+  textView.NeedsLayoutSubviews;
   HandleValueChanged;
 end;
 
 function TButton.GetTitle: string;
 begin
-  result := textView.GetStringValue;
+  result := textView.Text;
 end;
 
 function TButton.GetTitleFrame: TRect;
@@ -6604,7 +8840,7 @@ begin
   if GetTitle <> '' then
     begin 
       Assert(textView <> nil, 'text view has not been initialized(set string value before init was called).');
-      textView.SetStringValue(GetTitle);
+      textView.SetText(GetTitle);
       textView.LayoutSubviews;
 
       newFrame := GetContainerFrame;
@@ -6621,16 +8857,17 @@ end;
 
 procedure TButton.HandleValueChanged;
 begin
+  inherited;
   NeedsLayoutSubviews;
 end;
 
-procedure TButton.HandleWillAddToWindow(window: TWindow);
+procedure TButton.HandleWillAddToWindow(win: TWindow);
 begin
-  inherited HandleWillAddToWindow(window);
+  inherited HandleWillAddToWindow(win);
 
   if wantsDefault then
     begin
-      window.defaultButton := self;
+      win.defaultButton := self;
       wantsDefault := false;
     end;
 end;
@@ -6661,9 +8898,7 @@ begin
   AddSubview(imageView);
 end;
 
-//#########################################################
-// CHECK BOX
-//#########################################################
+{ CHECK BOX }
 
 procedure TCheckBox.Initialize;
 begin
@@ -6710,9 +8945,7 @@ begin
     result.size.x += GetButtonFrame.Width + 2;
 end;
 
-//#########################################################
-// RADIO BUTTON
-//#########################################################
+{ RADIO BUTTON }
 
 function TRadioButton.GetRadioGroup: TRadioGroup;
 begin
@@ -6737,9 +8970,7 @@ begin
     state := TControlState.On;
 end;
 
-//#########################################################
-// RADIO GROUP
-//#########################################################
+{ RADIO GROUP }
 
 class function TRadioGroup.ButtonClass: TRadioButtonClass;
 begin
@@ -6868,9 +9099,7 @@ begin
 end;
 
 
-//#########################################################
-// POPUP BUTTON
-//#########################################################
+{ POPUP BUTTON }
 
 procedure TPopupButton.SelectItem(item: TMenuItem);
 var
@@ -6892,7 +9121,7 @@ begin
     end;
 
   HandleWillSelectItem;
-  m_selectedItem := menu.items[index];
+  SelectedItem := menu.items[index];
   HandleDidSelectItem;
   NeedsLayoutSubviews;
 
@@ -6903,7 +9132,7 @@ begin
     end;
 end;
 
-procedure TPopupButton.SelectItemWithTag(tag: integer);
+procedure TPopupButton.SelectItemWithTag(_tag: integer);
 var
   i: integer;
   item: TMenuItem;
@@ -6911,7 +9140,7 @@ begin
   for i := 0 to menu.items.Count - 1 do
     begin
       item := menu.items[i];
-      if item.GetTag = tag then
+      if item.GetTag = _tag then
         begin
           SelectItemAtIndex(i);
           break;
@@ -6935,9 +9164,13 @@ begin
     end;
 end;
 
-function TPopupButton.SelectedItem: TMenuItem;
+procedure TPopupButton.SetSelectedItem(newValue: TMenuItem);
 begin
-  result := m_selectedItem;
+  // toggle check mark for selected item
+  if (selectedItem <> newValue) and (selectedItem <> nil) then
+    selectedItem.SetImage(nil);
+  m_selectedItem := newValue;
+  selectedItem.SetImage(CheckmarkImage);
 end;
 
 function TPopupButton.TitleOfSelectedItem: string;
@@ -6961,6 +9194,11 @@ end;
 function TPopupButton.GetMinimumMenuWidth: integer;
 begin
   result := trunc(GetWidth);
+end;
+
+function TPopupButton.GetCheckmarkImage: TTexture;
+begin
+  result := nil;
 end;
 
 procedure TPopupButton.SetPullsdown(newValue: boolean);
@@ -7004,10 +9242,15 @@ begin
     SelectItem(item);
 end;
 
-procedure TPopupButton.HandleWindowWillClose(window: TWindow);
+procedure TPopupButton.HandleWindowWillClose(win: TWindow);
 begin
-  if window = menu then
+  if win = menu then
     DepressButton;
+end;
+
+function TPopupButton.HandleWindowShouldClose(win: TWindow): boolean;
+begin
+  result := true;
 end;
 
 procedure TPopupButton.LayoutSubviews;
@@ -7086,9 +9329,27 @@ begin
   Popup;
 end;
 
-//#########################################################
-// CONTROL
-//#########################################################
+{ BINDING }
+
+procedure TControlBinding.Apply(control: TControl);
+begin
+  case PropType(controller, prop) of
+    tkInteger:
+      SetOrdProp(controller, prop, control.GetIntegerValue);
+    tkBool:
+      SetOrdProp(controller, prop, Int64(control.GetBoolValue));
+    tkChar, tkSString, tkAString:
+      SetStrProp(controller, prop, control.GetStringValue);
+    tkFloat:
+      SetFloatProp(controller, prop, control.GetFloatValue);
+    tkVariant:
+      SetVariantProp(controller, prop, control.GetValue);
+    otherwise
+      Assert(false, 'Binding type '+prop+' isn''t supported.');
+  end;
+end;
+
+{ CONTROL }
 
 function TControl.GetControlState: TControlState;
 begin
@@ -7125,22 +9386,39 @@ begin
   result := m_value;
 end;
 
+function TControl.GetBoolValue: boolean;
+begin
+  result := m_value;
+end;
+
 function TControl.GetAction: TInvocation;
 begin
-  if assigned(actions) then
-    result := actions.Last
+  if assigned(m_actions) then
+    result := m_actions.Last
   else
     result := nil;
 end;
 
 function TControl.IsEnabled: boolean;
 begin
-  result := enabled;
+  result := m_enabled;
+  if assigned(Window) and not Window.ShouldAllowEnabling then
+    result := false;
+end;
+
+function TControl.HasActions: boolean;
+begin
+  result := assigned(m_actions);
 end;
 
 procedure TControl.SetEnabled(newValue: boolean);
+var
+  changed: boolean;
 begin
-  enabled := newValue;
+  changed := IsEnabled <> newValue;
+  m_enabled := newValue;
+  if changed then
+    HandleActivityChanged;
 end;
 
 { Transforms title string to camel_case as the
@@ -7182,7 +9460,7 @@ begin
   NeedsLayoutSubviews;
 end;
 
-procedure TControl.SetKeyEquivalent(keycode: GLPT_Keycode; modifiers: TShiftState = []);
+procedure TControl.SetKeyEquivalent(keycode: GLPT_Keycode; modifiers: TShiftState);
 begin
   keyEquivalent.keycode := keycode;
   keyEquivalent.modifiers := modifiers;
@@ -7193,13 +9471,26 @@ begin
   identifier := newValue;
 end;
 
+procedure TControl.SetBinding(prop: string; controller: TObject);
+begin
+  binding.prop := prop;
+  binding.controller := controller;
+end;
+
+procedure TControl.SetController(controller: TObject);
+begin
+  binding.controller := controller;
+end;
+
 procedure TControl.AddAction(newValue: TInvocation);
 begin
+  Assert(newValue <> nil, 'trying to add nil action.');
   actions.Add(newValue);
 end;
 
 procedure TControl.InsertAction(index: integer; newValue: TInvocation);
 begin
+  Assert(newValue <> nil, 'trying to insert nil action.');
   actions.Insert(index, newValue);
 end;
 
@@ -7207,6 +9498,11 @@ procedure TControl.SetAction(newValue: TInvocation);
 begin
   actions.Clear;
   AddAction(newValue);
+end;
+
+procedure TControl.SetAction(newValue: string);
+begin
+  SetAction(TInvocation.Create(TInvocationCallbackDispatch.Create(self, newValue)));
 end;
 
 function TControl.GetActions: TInvocationList;
@@ -7220,7 +9516,7 @@ procedure TControl.InvokeAction;
 var
   action: TInvocation;
 begin
-  if m_actions <> nil then
+  if HasActions then
     for action in actions do
       begin
         if action.params = nil then
@@ -7230,9 +9526,18 @@ begin
       end;
 end;
 
+{ Resize the control so that it encloses its subviews.
+  This is different from LayoutSubviews in which the control
+  should resize its subviews to fit within its bounds }
+
 procedure TControl.SizeToFit;
 begin
-  LayoutSubviews;
+end;
+
+procedure TControl.Bind;
+begin
+  if binding.controller <> nil then
+    binding.Apply(self);
 end;
 
 destructor TControl.Destroy;
@@ -7241,12 +9546,31 @@ begin
   inherited;
 end;
 
+procedure TControl.HandleKeyEquivalent(event: TEvent);
+begin
+  inherited HandleKeyEquivalent(event);
+  if event.IsAccepted then
+    exit;
+
+  if (keyEquivalent.keycode = event.KeyCode) and 
+    (keyEquivalent.modifiers = event.KeyboardModifiers) then
+    begin
+      InvokeAction;
+      event.Accept(self);
+    end;
+end;
+
+procedure TControl.HandleActivityChanged;
+begin
+end;
+
 procedure TControl.HandleStateChanged;
 begin
 end;
 
 procedure TControl.HandleValueChanged;
 begin
+  Bind;
 end;
 
 procedure TControl.Initialize;
@@ -7259,13 +9583,11 @@ begin
   SetControlState(TControlState.Off);
 end;
 
-//#########################################################
-// NAVIGATION BAR
-//#########################################################
+{ NAVIGATION BAR }
 
 procedure TNavigationBar.SetTitle(newValue: string);
 begin
-  titleView.SetStringValue(newValue);
+  titleView.SetText(newValue);
 end;
 
 procedure TNavigationBar.HandleDidAddToParent(sprite: TView);
@@ -7298,9 +9620,7 @@ begin
   titleView.SetFrame(GetBounds);
 end;
 
-//#########################################################
-// NAVIGATION VIEW
-//#########################################################
+{ NAVIGATION VIEW }
 
 procedure TNavigationView.SetTitle(newValue: string);
 begin
@@ -7381,9 +9701,11 @@ begin
 end;
 
 begin
-  WindowManifest := TWindowManifest.Create;
-  RootWindow := TView.Create;
+  MainApp := TApplication.Create;
+  MainScreen := TScreen.Create;
   ScreenMouseLocation := V2(-1, -1);
+  PlatformScreenScale := 1.0;
+  PendingEvents := [];
 
   {$define INITIALIZATION}
   {$include include/NotificationCenter.inc}

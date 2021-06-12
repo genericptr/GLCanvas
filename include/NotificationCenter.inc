@@ -22,12 +22,14 @@ type
 type 
 	TNotificationHandler = class (TInvocation)
 		strict private
+			m_notification: string;
 			function GetTarget: TObject;
 		public
-			notification: string;
-			property Target: TObject read GetTarget;
-			property Obj: TInvocationParams read m_params;
 			constructor Create(callback: TNotificationCallback; _notification: string; _object: pointer);
+
+			property Target: TObject read GetTarget;
+			property Notification: string read m_notification;
+			property Obj: TInvocationParams read m_params;
 	end;
 	TNotificationHandlerList = specialize TFPGList<TNotificationHandler>;
 
@@ -46,12 +48,12 @@ type
 			class function DefaultCenter: TNotificationCenter;
 			
 			{ Posting Notifications }
-			procedure PostNotification(name: string; objct: pointer = nil); overload;
-			procedure PostNotification(name: string; objct: pointer; userInfo: variant); overload;
-			procedure PostNotification(notification: TNotification); overload;
+			procedure Post(name: string; objct: pointer = nil); overload;
+			procedure Post(name: string; objct: pointer; userInfo: variant); overload;
+			procedure Post(notification: TNotification); overload;
 			
 			{ Observing Notifications }
-			procedure ObserveNotification(name: string; action: TNotificationCallback; objct: pointer = nil); overload;
+			procedure Observe(name: string; action: TNotificationCallback; objct: pointer = nil);
 			
 			procedure RemoveObserver(observer: TObject; notification: string); overload;
 			procedure RemoveEveryObserver(observer: TObject);
@@ -66,6 +68,11 @@ type
 			handlers: TNotificationHandlerList;
 	end;
 
+procedure ObserveNotification(name: string; action: TNotificationCallback; objct: pointer = nil);
+
+procedure PostNotification(name: string; objct: pointer = nil); overload;
+procedure PostNotification(name: string; objct: pointer; userInfo: variant); overload;
+
 {$endif}
 
 {$ifdef IMPLEMENTATION}
@@ -76,6 +83,21 @@ const
 
 var
 	GlobalDefaultCenter: TNotificationCenter = nil;
+
+procedure ObserveNotification(name: string; action: TNotificationCallback; objct: pointer = nil);
+begin
+	TNotificationCenter.DefaultCenter.Observe(name, action, objct);
+end;
+
+procedure PostNotification(name: string; objct: pointer = nil);
+begin
+	TNotificationCenter.DefaultCenter.Post(name, objct);
+end;
+
+procedure PostNotification(name: string; objct: pointer; userInfo: variant);
+begin
+	TNotificationCenter.DefaultCenter.Post(name, objct, userInfo);
+end;
 
 function TNotificationHandler.GetTarget: TObject;
 begin
@@ -88,7 +110,7 @@ end;
 constructor TNotificationHandler.Create(callback: TNotificationCallback; _notification: string; _object: pointer);
 begin
 	callbackClass := TInvocationCallbackClass(callback);
-	notification := _notification;
+	m_notification := _notification;
 	m_params := _object;
 end;
 
@@ -160,28 +182,29 @@ begin
 	removedHandlers.Free;
 end;
 
-procedure TNotificationCenter.PostNotification(name: string; objct: pointer = nil); overload;
+procedure TNotificationCenter.Post(name: string; objct: pointer = nil); overload;
 begin
-	PostNotification(name, objct, 0);
+	Post(name, objct, 0);
 end;
 
-procedure TNotificationCenter.PostNotification(name: string; objct: pointer; userInfo: variant);
+procedure TNotificationCenter.Post(name: string; objct: pointer; userInfo: variant);
 var
 	handler: TNotificationHandler;
 	notification: TNotification;
 begin
 	notification := TNotification.Notification(name, objct, userInfo);
 	for handler in handlers do
-		if (handler.notification = name) and (handler.obj = objct) then
+		if (handler.notification = name) and ((handler.obj = objct) or (handler.obj = nil)) then
 			handler.Invoke(notification);
+	notification.Free;
 end;
 
-procedure TNotificationCenter.PostNotification(notification: TNotification);
+procedure TNotificationCenter.Post(notification: TNotification);
 begin
-	PostNotification(notification.GetName, notification.GetObject, pointer(notification));
+	Post(notification.GetName, notification.GetObject, pointer(notification));
 end;
 
-procedure TNotificationCenter.ObserveNotification(name: string; action: TNotificationCallback; objct: pointer = nil);
+procedure TNotificationCenter.Observe(name: string; action: TNotificationCallback; objct: pointer = nil);
 var
 	handler: TNotificationHandler;
 begin

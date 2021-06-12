@@ -4,6 +4,8 @@
 
 {$include include/targetos.inc}
 
+{$codepage utf8}
+
 unit GLFreeType;
 interface
 uses
@@ -13,7 +15,7 @@ uses
   {$ifdef API_OPENGLES}
   GLES30,
   {$endif}
-  FreeTypeH, FGL;
+  CWString, FreeTypeH, FGL;
 
 const
   FREETYPE_ANSI_CHARSET = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ!;%:?*()<>_+-=.,/|"''@#$^&{}[]0123456789';
@@ -40,17 +42,17 @@ type
 type
   TFreeTypeFont = class
     private type
-      TAnsiChar = char;
-      TFaceMap = specialize TFPGMap<TAnsiChar, TFreeTypeFace>;
+      TFontChar = UnicodeChar;
+      TFontString = UnicodeString;
+      TFaceMap = specialize TFPGMap<TFontChar, TFreeTypeFace>;
     private
       m_faces: TFaceMap;
       m_face: PFT_Face;
       m_textureWidth,
       m_textureHeight: integer;
-      m_charAdvance: integer;
       m_maxLineHeight: integer;
-      function GetFace(c: TAnsiChar): TFreeTypeFace;
-      procedure AddTexture(c: TAnsiChar; posX, posY: integer); 
+      function GetFace(c: TFontChar): TFreeTypeFace;
+      procedure AddTexture(c: TFontChar; posX, posY: integer); 
     protected
       m_texture: integer;
 
@@ -62,12 +64,12 @@ type
       constructor Create(path: ansistring); overload;
       class procedure FreeLibrary;
 
-      procedure Render(pixelSize: integer; charset: string = FREETYPE_ANSI_CHARSET; minFilter: GLuint = GL_LINEAR; magFilter: GLuint = GL_LINEAR); 
+      procedure Render(pixelSize: integer; const charset: TFontString = FREETYPE_ANSI_CHARSET; minFilter: GLuint = GL_LINEAR; magFilter: GLuint = GL_LINEAR); 
 
       { Accessors }
-      function HasGlyph(c: char): boolean;
+      function HasGlyph(c: TFontChar): boolean;
 
-      property Face[c: TAnsiChar]: TFreeTypeFace read GetFace; default;
+      property Face[c: TFontChar]: TFreeTypeFace read GetFace; default;
       property TextureWidth: integer read m_textureWidth;
       property TextureHeight: integer read m_textureHeight;
       property TextureID: integer read m_texture;
@@ -124,34 +126,18 @@ begin
   SharedLibrary := nil;
 end;
 
-constructor TFreeTypeFont.Create(path: ansistring);
-begin
-  if SharedLibrary = nil then
-    Assert(FT_Init_FreeType(SharedLibrary) = 0, 'FT_Init_FreeType');
-  Create(SharedLibrary, path);
-end;
-
-constructor TFreeTypeFont.Create(lib: PFT_Library; path: ansistring);
-var
-  err: integer;
-begin
-  err := FT_New_Face(lib, pchar(path+#0), 0, m_face);
-  Assert(err = 0, 'FT_New_Face');
-  m_faces := TFaceMap.Create;
-end;
-
-function TFreeTypeFont.GetFace(c: TAnsiChar): TFreeTypeFace;
+function TFreeTypeFont.GetFace(c: TFontChar): TFreeTypeFace;
 begin
   Assert(m_faces <> nil, 'must render faces first');
   result := m_faces[c];
 end;
 
-function TFreeTypeFont.HasGlyph(c: char): boolean;
+function TFreeTypeFont.HasGlyph(c: TFontChar): boolean;
 begin
   result := m_faces.IndexOf(c) > -1;
 end;
 
-procedure TFreeTypeFont.AddTexture(c: TAnsiChar; posX, posY: integer); 
+procedure TFreeTypeFont.AddTexture(c: TFontChar; posX, posY: integer); 
 var
   f: TFreeTypeFace;
 begin
@@ -173,13 +159,13 @@ begin
   glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
 end;
 
-procedure TFreeTypeFont.Render(pixelSize: integer; charset: string = FREETYPE_ANSI_CHARSET; minFilter: GLuint = GL_LINEAR; magFilter: GLuint = GL_LINEAR); 
+procedure TFreeTypeFont.Render(pixelSize: integer; const charset: TFontString; minFilter: GLuint; magFilter: GLuint); 
 var
   bitmap: FT_Bitmap;
   data: PGLubyte;
   value: GLubyte;
   x, y: integer;
-  glyph: TAnsiChar;
+  glyph: TFontChar;
   err: integer;
   width,
   height,
@@ -190,6 +176,7 @@ var
   channels: integer;
 begin
   Assert(m_face <> nil, 'freetype face is nil.');
+  Assert(TextureID = 0, 'font has already been rendered');
 
   // https://learnopengl.com/In-Practice/Text-Rendering
   // https://stackoverflow.com/questions/24799090/opengl-freetype-weird-texture
@@ -208,7 +195,7 @@ begin
 
   m_maxLineHeight := m_face^.size^.metrics.y_ppem;
   padding := 1;
-
+  
   for glyph in charset do
     begin
       err := FT_Load_Char(m_face, ord(glyph), FT_LOAD_RENDER);
@@ -238,7 +225,6 @@ begin
     end;
 
   GenerateTexture(data, width, height, minFilter, magFilter);
-
   FreeMem(data);
 end;
 
@@ -247,6 +233,23 @@ begin
   FT_Done_Face(m_face);
   m_faces.Free;
   inherited;
+end;
+
+constructor TFreeTypeFont.Create(path: ansistring);
+begin
+  if SharedLibrary = nil then
+    Assert(FT_Init_FreeType(SharedLibrary) = 0, 'FT_Init_FreeType');
+  Create(SharedLibrary, path);
+end;
+
+constructor TFreeTypeFont.Create(lib: PFT_Library; path: ansistring);
+var
+  err: integer;
+begin
+  Assert(lib <> nil, 'FreeType library can''t be nil');
+  err := FT_New_Face(lib, pchar(path+#0), 0, m_face);
+  Assert(err = 0, 'FT_New_Face');
+  m_faces := TFaceMap.Create;
 end;
 
 end.

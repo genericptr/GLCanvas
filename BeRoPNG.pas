@@ -67,12 +67,26 @@ type PPNGPixel=^TPNGPixel;
      TPNGPixel=packed record
       r,g,b,a: TPNGPixelType;
       constructor Create(_r,_g,_b,_a: TPNGPixelType);
+      function ToString: string;
       class operator = (left: TPNGPixel; right: TPNGPixel): boolean;
+      class operator := (right: TPNGPixel): string;
      end;
 
 function LoadPNG(DataPointer:pointer;DataSize:longword;var ImageData:pointer;var ImageWidth,ImageHeight:longint;HeaderOnly:boolean):boolean;
 
 implementation
+uses
+  SysUtils;
+
+function TPNGPixel.ToString: string;
+begin
+  result := '{'+r.ToString+','+g.ToString+','+b.ToString+','+a.ToString+'}';
+end;
+
+class operator TPNGPixel.:= (right: TPNGPixel): string;
+begin
+  result := right.ToString;
+end;
 
 constructor TPNGPixel.Create(_r,_g,_b,_a: TPNGPixelType);
 begin

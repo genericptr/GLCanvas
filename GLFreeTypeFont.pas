@@ -26,7 +26,7 @@ type
       function IsLocked: boolean;
 
       { IFont }
-      function CharacterRenderFrame(c: char): TFontRenderFrame;
+      function CharacterRenderFrame(c: TFontChar): TFontRenderFrame;
       function LineHeight: integer;
       function SpaceWidth: integer;
       function TabWidth: integer;
@@ -103,7 +103,7 @@ begin
   result := m_locked;
 end;
 
-function TGLFreeTypeFont.CharacterRenderFrame(c: char): TFontRenderFrame;
+function TGLFreeTypeFont.CharacterRenderFrame(c: TFontChar): TFontRenderFrame;
 var
   f: TFreeTypeFace;
 begin

@@ -1,13 +1,12 @@
 
 {$ifdef INTERFACE}
 
-{$scopedenums on}
 type
   TTextureImage = ( { Filters }
                     Linear, 
                     NearestNeighbor,
                     
-                    { wrapping }
+                    { Wrapping }
                     _Repeat,
                     MirroredRepeat,
                     ClampToEdge,
@@ -19,16 +18,13 @@ type
                     { Pixel Type }
                     Float,
                     UnsignedByte
-                    );
-  {$scopedenums off}
+                    ); 
   TTextureImageOptions = set of TTextureImage; 
 
 type
-	// TODO: what are we doing for image data now? we have png and tga loaders
-	TImagePixel = TPNGPixel;
-	PImagePixel = PPNGPixel;
-	TImagePixelArray = array[0..0] of TImagePixel;
-	TImage = ^TImagePixelArray;
+	TImage = TImage4b;
+	TImagePixel = TImage4b.TPixel;
+	PImagePixel = ^TImagePixel;
 
 type
 	TTextureFrame = record
@@ -51,14 +47,15 @@ type
 		procedure Unload;
 		function IsLoaded: boolean;
 		function IsLocked: boolean;
-	end;	
+	end;
 
 type
 	TTextureSource = class(ITexture)
-		public	
+		public
 			function GetTexture: integer;
 			function GetTextureUnit: integer;
 			function GetFrame: TTextureFrame; inline;
+			function HasOwner: boolean; inline;
 
 			function TextureToPixel(textureRect: TRect): TRect;
 			function PixelToTexture(pixelRect: TRect): TRect;
@@ -100,8 +97,10 @@ type
 	TTexture = class;
 	TTextureSheet = class;
 	TTextureList = specialize TFPGObjectList<TTexture>;
+	TTextureMap = specialize TFPGMapObject<String, TTexture>;
+	TTextureArray = array of TTexture;
 
-	TTexture = class (TTextureSource, ITexture)
+	TTexture = class(TTextureSource, ITexture)
 		public
 			
 			{ Constructors }
@@ -109,6 +108,7 @@ type
 			constructor Create(texture: integer; width: integer = 0; height: integer = 0; options: TTextureImageOptions = DefaultTextureOptions); overload;
 			constructor Create(width, height: integer; data: pointer; options: TTextureImageOptions = DefaultTextureOptions); overload;
 			constructor Create(frameBuffer: TFrameBuffer); overload;
+			constructor Create(image: TImage; copyImage: boolean = true); overload;
 
 			{ Accessors }
 			procedure SetTextureFrame(newValue: TRect);
@@ -119,22 +119,31 @@ type
 			function GetHeight: integer; inline;
 			function GetWidth: integer; inline;
 
+			{ Properties }
+			property Size: TVec2 read GetSize;
+			property Bounds: TRect read GetBounds;
+			property Width: integer read GetWidth;
+			property Height: integer read GetHeight;
+
 			{ Methods } 
 			procedure Load; override;
 			procedure Reload; overload;
 			procedure Reload(region: TRect; data: pointer); overload;
+			procedure Reload(data: pointer); overload;
 			procedure Lock(inUnit: integer); override;
 			function IsLocked: boolean; override;
 			destructor Destroy; override;
 			function PixelAt(x, y: integer): TImagePixel; override;
-			
+				
+			{ Slicing }
 			function Subdivide(cellSize: TVec2): TTextureSheet;
-			function Splice(rect: TRect): TTexture;
+			function Slice(rect: TRect): TTexture;
+			function Slice(columns: integer; rows: integer = 0): TTextureArray;
 
 		private type
 			{$scopedenums on}
 			TTextureFlag = (DisposeTexture, 		// we own the textureID
-											FreeSourceImage			// we own 
+											FreeSourceImage			// we own internal image data
 											);
 			{$scopedenums off}
 			TTextureFlags = set of TTextureFlag;
@@ -151,10 +160,8 @@ type
 			constructor Create(source: TTextureSource); overload;
 			constructor Create(source: TTextureSource; inPixelFrame, inTextureFrame: TRect; options: TTextureImageOptions = DefaultTextureOptions); overload;
 	end;
-	TTextureMap = specialize TFPGMapObject<String, TTexture>;
-	TTextureArray = array of TTexture;
 
-	TTextureCollection = class (TTexture)
+	TTextureCollection = class(TTexture)
 		protected
 			textures: TTextureList;
 			function GetTexture(index: integer): TTexture; overload;
@@ -162,22 +169,24 @@ type
 			property Texture[index: integer]: TTexture read GetTexture; default;
 	end;
 
-	TTextureSheet = class (TTextureCollection)
+	TTextureSheet = class(TTextureCollection)
 		private
 			m_cellSize: TVec2i;
 			m_tableSize: TVec2i;
 			function GetCellSize: TVec2i; inline;
 			function GetTableSize: TVec2i; inline;
+			function GetColumns: integer; inline;
+			function GetRows: integer; inline;
 		public
 					
 			{ Constructors }
+			constructor Create(inCellSize, inTableSize: TVec2; options: TTextureImageOptions = DefaultTextureOptions); overload;
 			constructor Create(path: ansistring; inCellSize: TVec2i); overload;
 			constructor Create(path: ansistring; inCellSize, inTableSize: TVec2i); overload;
+			constructor Create(_texture: TTexture; inCellSize, inTableSize: TVec2i); overload;
+			constructor Create(_texture: TTexture; inCellSize: TVec2i); overload;
 
 			{ Accessors }
-			function Columns: integer; inline;
-			function Rows: integer; inline;
-
 			function GetCount: integer;
 			function GetTextures: TTextureList;
 
@@ -187,18 +196,24 @@ type
 			function GetTexture(x, y: integer): TTexture; overload;
 			property Texture[x, y: integer]: TTexture read GetTexture; default;
 
+			{ Properties }
+			property Columns: integer read GetColumns;
+			property Rows: integer read GetRows;
 			property TableSize: TVec2i read GetTableSize;
 			property CellSize: TVec2i read GetCellSize;
 
 			procedure Load; override;
 			destructor Destroy; override;
+
+			function Slice(x, y, spanX, spanY: integer): TTexture; overload;
+
 		private
 			procedure Subdivide;
 			constructor Create(inTextureID: integer; inTextureFrame: TTextureFrame; inCellSize, inTableSize: TVec2i); overload;
 	end;
 
 type
-	TTextureSprite = class (TTexture)
+	TTextureSprite = class(TTexture)
 		private
 			m_originalSize: TVec2i;
 			m_offset: TVec2i;
@@ -240,7 +255,7 @@ type
 	end;
 
 type
-	TTextureComposite = class (TTextureSource, ITexture)
+	TTextureComposite = class(TTextureSource, ITexture)
 		private type
 			TImagePathArray = array of string;
 		public
@@ -267,8 +282,6 @@ type
 	end;
 
 { Operators }
-operator := (right: TImagePixel): TVec4;
-operator := (right: TVec4): TImagePixel;
 
 procedure SetMaximumTextureUnits(newValue: integer); 
 procedure ChangeTextureUnit(texture: ITexture; textureUnit: integer); 
@@ -283,7 +296,7 @@ function GetMaximumTextureUnits: integer;
 function GetMaximumVerticies: integer;
 
 procedure GenerateTexture(var texID: integer);
-procedure DeleteTexture(texID: integer);
+procedure DeleteTexture(var texID: integer);
 procedure LoadTexture2D(width, height: GLsizei; data: pointer; options: TTextureImageOptions);
 function BindTexture2D(texID: integer; texUnit: integer = DEFAULT_LOADING_UNIT): boolean;
 procedure ClearTextureUnit(textureUnit: integer); 
@@ -303,6 +316,10 @@ type
 		function IsUsed: boolean; inline;
 	end;
 
+var
+	TextureSlots: array[0..1024] of TTextureSlot;
+	UsedTextureSlots: integer = 0;
+
 class operator TTextureSlot.= (left: TTextureSlot; right: ITexture): boolean;
 begin
 	if right = nil then
@@ -315,6 +332,8 @@ procedure TTextureSlot.SetTexture(newValue: ITexture);
 begin
 	if newValue = nil then
 		begin
+			if IsUsed then
+				Dec(UsedTextureSlots);
 			id := -1;
 			obj := nil;
 		end
@@ -322,21 +341,23 @@ begin
 		begin
 			id := newValue.GetTexture;
 			obj := newValue;
+			Inc(UsedTextureSlots);
 		end;
+	//writeln('slot ', HexStr(obj), ' #', id, ' used ', UsedTextureSlots);
 end;
 
 function TTextureSlot.IsLocked: boolean;
 begin
-	result := obj.IsLocked;
+	if IsUsed then
+		result := obj.IsLocked
+	else
+		result := false;
 end;
 
 function TTextureSlot.IsUsed: boolean;
 begin
 	result := assigned(obj);
 end;
-
-var
-	TextureSlots: array[0..1024] of TTextureSlot;
 
 type
 	TFileParts = record
@@ -353,21 +374,6 @@ begin
 	result.dir := ExtractFileDir(path);
 end;
 
-operator := (right: TVec4): TImagePixel;
-begin
-  result.r := trunc(right.r*255);
-  result.g := trunc(right.g*255);
-  result.b := trunc(right.b*255);
-  result.a := trunc(right.a*255);
-end;
-
-operator := (right: TImagePixel): TVec4;
-begin
-	result.r := right.r/255;
-	result.g := right.g/255;
-	result.b := right.b/255;
-	result.a := right.a/255;
-end;
 
 //#########################################################
 // OPENGL UTILITIES
@@ -418,13 +424,14 @@ var
 procedure GenerateTexture(var texID: integer);
 begin
 	glGenTextures(1, @texID);
-	GLAssert('glGenTextures');	
-end;	
+	GLAssert('glGenTextures');
+end;
 
-procedure DeleteTexture(texID: integer);
+procedure DeleteTexture(var texID: integer);
 begin
 	glDeleteTextures(1, @texID);
 	GLAssert('glDeleteTextures');
+	texID := 0;
 end;
 
 function BindTexture2D(texID: integer; texUnit: integer = DEFAULT_LOADING_UNIT): boolean;
@@ -434,7 +441,7 @@ begin
 
 	glActiveTexture(GL_TEXTURE0 + texUnit);
 	glBindTexture(GL_TEXTURE_2D, texID);
-	GLAssert('glBindTexture');	
+	GLAssert('glBindTexture');
 	CanvasState.bindTextureCount += 1;
 
 	if TextureSlots[texUnit].IsUsed then
@@ -553,7 +560,7 @@ begin
 
 	glTexSubImage2D(GL_TEXTURE_2D, 0, xoffset, yoffset, width, height, pixelFormat, pixelType, data);
 
-	GLAssert('glTexSubImage2D');	
+	GLAssert('glTexSubImage2D');
 end;
 
 procedure ClearTextureUnit(textureUnit: integer); 
@@ -570,6 +577,9 @@ begin
 	BindTexture2D(texture.GetTexture, textureUnit);
 end;
 
+var
+	MaximumTextureSlots: integer = MaxInt;
+
 function PushTexture(texture: ITexture): integer;
 var
 	i: integer;
@@ -579,7 +589,6 @@ begin
 		texture.Load;
 
 	Assert(texture.GetTexture > 0, 'Texture is not loaded (invalid texture ID)');
-
 	//writeln('push texture id ', texture.GetTexture, ' locked=', texture.IsLocked, ' unit=', texture.GetTextureUnit);
 
 	// locked texture can guarantee their texture unit
@@ -658,100 +667,6 @@ end;
 // IMAGES
 //#########################################################
 
-procedure BlockMove(dest, src: pointer; size: SizeInt); 
-begin 
-  Move(src^, dest^, size);
-end; 
-
-function CopyMem(src: pointer; offset: integer; count: integer): pointer;
-begin
-	result := GetMem(count);
-	BlockMove(result, src + offset, count);
-end;
-
-function LoadTGA(fileBytes: pointer; var width, height: integer): pointer;
-{$packrecords c}
-type
-	uint8_t = cuint8;
-	int16_t = cint16;
-	uint16_t = cuint16;
-	TGAHeader = packed record
-		IDSize: uint8_t;         // Size of ID info following header
-		colorMapType: uint8_t;   // Whether this is a paletted image
-		imageType: uint8_t;      // type of image 0=none, 1=indexed, 2=rgb, 3=grey, +8=rle packed
-
-		colorMapStart: int16_t;  // Offset to color map in palette
-		colorMapLength: int16_t; // Number of colors in palette
-		colorMapBpp: uint8_t;    // number of bits per palette entry
-
-		xOffset: uint16_t;        // Number of pixels to the right to start of image
-		yOffset: uint16_t;        // Number of pixels down to start of image
-		width: uint16_t;          // Width in pixels
-		height: uint16_t;         // Height in pixels
-		bitsPerPixel: uint8_t;    // Bits per pixel 8,16,24,32
-		descriptor: uint8_t;      // Descriptor bits (flipping, etc)
-	end;
-	TGAHeaderPtr = ^TGAHeader;
-	BytePtr = ^byte;
-var
-	header: TGAHeaderPtr;
-	dataSize: integer;
-	srcImageData: BytePtr;
-	destImageData: BytePtr;
-	x, y: integer;
-	srcPixelIndex, dstPixelIndex: integer;
-begin
-	header := TGAHeaderPtr(fileBytes);
-	width := header^.width;
-	height := header^.height;
-	dataSize := width * height * 4;
-
-	//writeln('LoadTGAFile: width: ', result.width, ' height: ', result.height);
-
-	Assert(not (header^.imageType <> 2), 'This image loader only supports non-compressed BGR(A) TGA files');
-	Assert(not (header^.colorMapType <> 0), 'This image loader doesn''t support TGA files with a colormap');
-	Assert(not ((header^.xOffset <> 0) or (header^.yOffset <> 0)), 'This image loader doesn''t support TGA files with offsets');
-	Assert(not ((header^.bitsPerPixel <> 32) and (header^.bitsPerPixel <> 24)), 'This image loader only supports 24-bit and 32-bit TGA files');
-	Assert(not ((header^.bitsPerPixel = 32) and ((header^.descriptor and $f) <> 8)), 'Image loader only supports 32-bit TGA files with 8 bits of alpha');
-	Assert(not (header^.descriptor <> 0), 'Image loader only supports 24-bit TGA files with the default descriptor');
-
-	// copy image data after header
-	srcImageData := CopyMem(fileBytes, sizeof(TGAHeader) + header^.IDSize, dataSize);
-
-	if header^.bitsPerPixel = 24 then
-		begin
-			// Metal will not understand an image with 24-bpp format so we must convert our
-			//   TGA data from the 24-bit BGR format to a 32-bit BGRA format that Metal does
-			//   understand (as MTLPixelFormatBGRA8Unorm)
-			destImageData := BytePtr(GetMem(dataSize));
-			//BlockMove(destImageData, srcImageData, dataSize);
-
-			for y := 0 to height - 1 do
-			for x := 0 to width - 1 do
-				begin
-					// Calculate the index for the first byte of the pixel you're
-					// converting in both the source and destination images
-					srcPixelIndex := 3 * (y * width + x);
-					dstPixelIndex := 4 * (y * width + x);
-
-					// Copy BGR channels from the source to the destination
-					// Set the alpha channel of the destination pixel to 255
-					destImageData[dstPixelIndex + 0] := srcImageData[srcPixelIndex + 0];
-					destImageData[dstPixelIndex + 1] := srcImageData[srcPixelIndex + 1];
-					destImageData[dstPixelIndex + 2] := srcImageData[srcPixelIndex + 2];
-					destImageData[dstPixelIndex + 3] := 255;
-				end;
-
-			FreeMem(srcImageData);
-			result := destImageData;
-		end
-	else
-		begin
-			// Metal will understand an image with 32-bpp format
-			result := srcImageData;
-		end;
-end;
-
 function Pow2Size(from: single): integer;
 var
 	i: integer;
@@ -771,39 +686,10 @@ begin
 end;
 
 function LoadImageFromFile(path: ansistring; out width, height: integer): TImage;
-type
-	TPNGDataArray = array[0..0] of TPNGPixel;
-	PPNGDataArray = ^TPNGDataArray;
-var
-	f: file;
-	bytes: pointer;
-	i: integer;
-	extension: string;
 begin
-	try
-		AssignFile(f, path);
-		FileMode := fmOpenRead;
-	  Reset(f, 1);
-	  bytes := GetMem(FileSize(f));
-	  BlockRead(f, bytes^, FileSize(f));
-	  CloseFile(f);
-
-	  extension := ExtractFileExt(path);
-
-	  Assert(extension = '.png', 'only png images are implemented');
-	  if not LoadPNG(bytes, MemSize(bytes), result, width, height, false) then
-	    result := nil;		
-
-	  //Assert((width = Pow2Size(width)) and (height = Pow2Size(height)), 'image must be power of 2');
-	  //writeln('loaded:', ExtractFileName(path), ' ', width, 'x', height);
-		FreeMem(bytes);
-  except
-    on E:Exception do
-      begin
-      	writeln('LoadImageFromFile: ', E.Message, ' ', path);
-      	halt(-1);
-      end;
-  end;
+	result := TPNGImage.Create(path);
+	width := result.width;
+	height := result.height;
 end;
 
 //#########################################################
@@ -812,18 +698,24 @@ end;
 
 function TTextureSource.TextureToPixel(textureRect: TRect): TRect;
 begin
-	result := RectMake(textureRect.MinX * textureSize.width, 
-										 textureRect.MinY * textureSize.height, 
-										 textureRect.width * textureSize.width, 
-										 textureRect.height * textureSize.height);
+	if HasOwner then
+		result := Owner.TextureToPixel(RectMake(textureFrame.origin + textureRect.origin, textureRect.size))
+	else
+		result := RectMake(textureRect.MinX * textureSize.width, 
+											 textureRect.MinY * textureSize.height, 
+											 textureRect.width * textureSize.width, 
+											 textureRect.height * textureSize.height);
 end;
 
 function TTextureSource.PixelToTexture(pixelRect: TRect): TRect;
 begin
-	result := RectMake(pixelRect.MinX / textureSize.width, 
-										 pixelRect.MinY / textureSize.height, 
-										 pixelRect.width / textureSize.width, 
-										 pixelRect.height / textureSize.height);
+	if HasOwner then
+		result := Owner.PixelToTexture(RectMake(PixelFrame.origin + pixelRect.origin, pixelRect.size))
+	else
+		result := RectMake(pixelRect.MinX / textureSize.width, 
+											 pixelRect.MinY / textureSize.height, 
+											 pixelRect.width / textureSize.width, 
+											 pixelRect.height / textureSize.height);
 end;
 
 { Returns a sub-frame of the texture frame using AABB
@@ -856,6 +748,11 @@ end;
 function TTextureSource.GetFrame: TTextureFrame;
 begin
 	result := m_textureFrame;
+end;
+
+function TTextureSource.HasOwner: boolean;
+begin
+	result := owner <> nil;
 end;
 
 function TTextureSource.PixelAt(x, y: integer): TImagePixel;
@@ -894,8 +791,10 @@ procedure TTextureSource.Load;
 begin
 end;
 
+{ Unloads texture memory but keeps source intact }
 procedure TTextureSource.Unload;
 begin
+	DeleteTexture(m_textureID);
 end;
 
 function TTextureSource.IsLoaded: boolean;
@@ -915,7 +814,7 @@ end;
 
 function TTextureSource.GetTextureUnit: integer;
 begin
-	if owner <> nil then
+	if HasOwner then
 		result := owner.GetTextureUnit
 	else
 	result := m_textureUnit;
@@ -994,20 +893,20 @@ end;
 
 procedure TTexturePack.LoadImage(imagePath: ansistring);
 var
-	width, height: integer;
+	imageWidth, imageHeight: integer;
 begin
-	sourceImage := LoadImageFromFile(imagePath, width, height);
+	sourceImage := LoadImageFromFile(imagePath, imageWidth, imageHeight);
 	if assigned(sourceImage) then
 		begin
 			Include(flags, TTextureFlag.FreeSourceImage);
 			GenerateTexture(m_textureID);
 
 			BindTexture2D(textureID);
-			LoadTexture2D(width, height, sourceImage, textureOptions);
+			LoadTexture2D(imageWidth, imageHeight, sourceImage.Data, textureOptions);
 			RestoreLastBoundTexture;
 
 			m_textureFrame.texture := RectMake(0, 0, 1, 1);
-			m_textureFrame.pixel := RectMake(0, 0, width, height);
+			m_textureFrame.pixel := RectMake(0, 0, imageWidth, imageHeight);
 		end;
 end;
 
@@ -1111,25 +1010,7 @@ begin
 			while node <> nil do
 				begin
 					attributes := NodeAttributes(node);
-					
-					//spriteSize := V2(attributes['w'], attributes['h']);
-					
-					//if useOriginalSize and (attributes.Indexof('oW') <> -1) then
-					//	spriteSize := V2(attributes['oW'], attributes['oH']);
-					
-					//if attributes.Indexof('oX') <> -1 then
-					//	offset := V2(attributes['oX'], attributes['oY'])
-					//else
-					//	offset := V2(0, 0);
-
-					//position := V2(attributes['x'], attributes['y']);
-					//pv := V2(attributes['pX'], attributes['pY']);
-					//if useOriginalSize then
-					//	position -= offset;		
-					//AddTexture(ExtractFileParts(attributes['n']).name, spriteSize, offset, position, pv);
-
 					AddSprite(attributes);
-
 					node := node.NextSibling;
 				end;
 		end;
@@ -1193,7 +1074,7 @@ begin
 
 			// TODO: respect texture params for target type
 			glTexSubImage2D(GL_TEXTURE_2D, 0, offset.x, offset.y, width, height, GL_RGBA, GL_UNSIGNED_BYTE, image);
-			GLAssert('glTexSubImage2D');	
+			GLAssert('glTexSubImage2D');
 
 			rect := RectMake(offset, width, height);
 
@@ -1227,7 +1108,7 @@ destructor TTextureComposite.Destroy;
 begin
 	FreeAndNil(textures);
 	if IsLoaded then
-		DeleteTexture(textureID);
+		Unload;
 end;
 
 
@@ -1251,12 +1132,12 @@ begin
 	result := TTexture(textures[GetIndex(trunc(cell.x), trunc(cell.y))]);
 end;
 
-function TTextureSheet.Columns: integer;
+function TTextureSheet.GetColumns: integer;
 begin
 	result := TableSize.width;
 end;
 
-function TTextureSheet.Rows: integer;
+function TTextureSheet.GetRows: integer;
 begin
 	result := TableSize.height;
 end;
@@ -1329,7 +1210,7 @@ begin
 				cellFrame.origin.x := TextureFrame.MinX + (((x - 1) * (spanX / tableSize.width)) * scale.width);
 				cellFrame.origin.y := TextureFrame.MinY + (((spanY - ((spanY / tableSize.height) * y))) * scale.height);
 				cellFrame.size.x := (spanX / tableSize.width) * scale.width;
-				cellFrame.size.y := (spanX / tableSize.height) * scale.height;
+				cellFrame.size.y := (spanY / tableSize.height) * scale.height;
 
 				tex := TTexture.Create(self);
 				tex.SetTextureFrame(cellFrame);
@@ -1339,10 +1220,32 @@ begin
 			end;
 end;
 
+function TTextureSheet.Slice(x, y, spanX, spanY: integer): TTexture;
+begin
+	result := Slice(RectMake(
+		x * CellSize.x, 
+		y * CellSize.y, 
+		spanX * CellSize.x, 
+		spanY * CellSize.y)
+	);
+end;
+
 procedure TTextureSheet.Load;
 begin
 	inherited;
 	Subdivide;
+end;
+
+constructor TTextureSheet.Create(_texture: TTexture; inCellSize, inTableSize: TVec2i);
+begin
+	m_cellSize := inCellSize;
+	m_tableSize := inTableSize;
+	Create(_texture.TextureID, _texture.GetFrame, inCellSize, inTableSize);
+end;
+
+constructor TTextureSheet.Create(_texture: TTexture; inCellSize: TVec2i);
+begin
+	Create(_texture, inCellSize, 0);
 end;
 
 constructor TTextureSheet.Create(path: ansistring; inCellSize, inTableSize: TVec2i);
@@ -1357,6 +1260,50 @@ begin
 	Create(path, inCellSize, 0);
 end;
 
+{ Creates an empty texture sheet }
+constructor TTextureSheet.Create(inCellSize, inTableSize: TVec2; options: TTextureImageOptions = DefaultTextureOptions);
+var
+	componentCount: integer;
+	componentSize: integer;
+	imageSize: TVec2i;
+	data: pointer;
+begin
+	m_cellSize := inCellSize;
+	m_tableSize := inTableSize;
+
+	// get component count
+	componentCount := 0;
+	if TTextureImage.RGBA in options then
+		componentCount := 4
+	else 	if TTextureImage.RGB in options then
+		componentCount := 3;
+
+	if componentCount = 0 then
+		raise Exception.Create('invalid component count');
+
+	// get component size
+	componentSize := 0;
+	if TTextureImage.UnsignedByte in options then
+		componentSize := sizeof(byte)
+	else if TTextureImage.Float in options then
+		componentSize := sizeof(single);
+
+	if componentSize = 0 then
+		raise Exception.Create('invalid component size');
+
+	// allocate pixel memory
+	Include(flags, TTextureFlag.FreeSourceImage);
+	imageSize := inCellSize * inTableSize;
+	data := GetMem(imageSize.width * imageSize.height * componentCount * componentSize);
+	if data = nil then
+		raise Exception.Create('failed to allocate texture memory');
+		
+	inherited Create(imageSize.width, imageSize.height, data, options);
+
+	Subdivide;
+end;
+
+{ Creates a texture sheet from an existing raw texture }
 constructor TTextureSheet.Create(inTextureID: integer; inTextureFrame: TTextureFrame; inCellSize, inTableSize: TVec2i);
 begin
 	inherited Create(inTextureID, trunc(inTextureFrame.pixel.width), trunc(inTextureFrame.pixel.height));
@@ -1380,7 +1327,32 @@ begin
 	m_textureFrame.pixel := newValue;
 end;
 
-function TTexture.Splice(rect: TRect): TTexture;
+
+function TTexture.Slice(columns: integer; rows: integer = 0): TTextureArray;
+var
+	x, y: integer;
+	cellWidth, cellHeight: integer;
+begin
+	LoadIfNeeded;
+
+	result := [];
+	cellWidth := Width div Columns;
+
+	if rows > 0 then
+		begin
+			cellHeight := Height div rows;
+			for y := 0 to rows - 1 do
+			for x := 0 to columns - 1 do
+				result += [Slice(RectMake(x * cellWidth, y * cellHeight, cellWidth, cellHeight))];
+		end
+	else
+		y := 0;
+		cellHeight := Height;
+		for x := 0 to columns - 1 do
+			result += [Slice(RectMake(x * cellWidth, y * cellHeight, cellWidth, cellHeight))];
+end;
+
+function TTexture.Slice(rect: TRect): TTexture;
 begin
 	LoadIfNeeded;
 	result := TTexture.Create(self, rect, PixelToTexture(rect));
@@ -1408,7 +1380,7 @@ begin
 		end;
 	
 	BindTexture2D(textureID);
-	LoadTexture2D(GetWidth, GetHeight, image, textureOptions);
+	LoadTexture2D(GetWidth, GetHeight, image.data, textureOptions);
 	RestoreLastBoundTexture;
 end;
 
@@ -1416,13 +1388,13 @@ function TTexture.PixelAt(x, y: integer): TImagePixel;
 begin
 	// if the texture has an owner then offset to the owners
 	// cooridinate space and sample from the owner
-	if owner <> nil then
+	if HasOwner then
 		result := owner.PixelAt(PixelFrame.origin + V2(x, y))
 	else
 		begin
 			Assert(IsLoaded, 'Texture must be loaded before inspecting pixels.');
 			Assert(sourceImage <> nil, 'Texture image data was freed before inspecting pixels.');
-			result := sourceImage[x + y * trunc(textureSize.width)];
+			result := sourceImage.data[x + y * trunc(textureSize.width)];
 		end;
 end;
 
@@ -1445,9 +1417,14 @@ begin
 	RestoreLastBoundTexture;
 end;
 
+procedure TTexture.Reload(data: pointer);
+begin
+	Reload(PixelFrame, data);
+end;
+
 procedure TTexture.Lock(inUnit: integer);
 begin
-	if owner <> nil then
+	if HasOwner then
 		owner.Lock(inUnit)
 	else
 		inherited Lock(inUnit);
@@ -1455,7 +1432,7 @@ end;
 
 function TTexture.IsLocked: boolean;
 begin
-	if owner <> nil then
+	if HasOwner then
 		result := owner.IsLocked
 	else
 		result := inherited;
@@ -1491,11 +1468,11 @@ destructor TTexture.Destroy;
 begin	
 	// delete the texture if we own it
 	if (TTextureFlag.DisposeTexture in flags) and (textureID <> 0) then
-		DeleteTexture(textureID);					
+		Unload;
 	
 	// free the source image if we own it
 	if (TTextureFlag.FreeSourceImage in flags) and assigned(sourceImage) then
-		FreeMem(sourceImage);
+		sourceImage.Free;
 
 	if assigned(slices) then
 		slices.Free;
@@ -1514,9 +1491,28 @@ begin
 	Create(frameBuffer.Texture, frameBuffer.Width, frameBuffer.Height, options);
 end;
 
+constructor TTexture.Create(image: TImage; copyImage: boolean = true);
+begin
+	Assert(image <> nil, 'texture data must not be nil');
+	if copyImage then
+		begin
+			sourceImage := TImage(image.Copy);
+			Include(flags, TTextureFlag.FreeSourceImage);
+		end
+	else
+		sourceImage := image;
+	SetSize(image.size);
+	SetPixelFrame(RectMake(0, 0, width, height));
+	SetTextureFrame(RectMake(0, 0, 1, 1));
+	// TODO: how do we get the texture options for the image?
+	textureOptions := DefaultTextureOptions;
+end;
+
 constructor TTexture.Create(width, height: integer; data: pointer; options: TTextureImageOptions = DefaultTextureOptions);
 begin
-	sourceImage := data;
+	Assert(data <> nil, 'texture data must not be nil');
+	sourceImage := TImage.Create(width, height, data);
+	Include(flags, TTextureFlag.FreeSourceImage);
 	SetPixelFrame(RectMake(0, 0, width, height));
 	SetTextureFrame(RectMake(0, 0, 1, 1));
 	textureOptions := options;
@@ -1548,11 +1544,11 @@ end;
 
 constructor TTexture.Create(path: ansistring; options: TTextureImageOptions = DefaultTextureOptions);
 var
-	width, height: integer;
+	imageWidth, imageHeight: integer;
 begin
-	sourceImage := LoadImageFromFile(path, width, height);
+	sourceImage := LoadImageFromFile(path, imageWidth, imageHeight);
 	Include(flags, TTextureFlag.FreeSourceImage);
-	SetSize(V2(width, height));
+	SetSize(V2(imageWidth, imageHeight));
 	SetTextureFrame(RectMake(0, 0, 1, 1));
 	textureOptions := options;
 end;

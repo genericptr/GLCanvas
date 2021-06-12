@@ -18,6 +18,7 @@ type
     class function Yellow(alpha: TScalar = 1.0): TVec4; static;
     class function White(alpha: TScalar = 1.0): TVec4; static;
     class function Black(alpha: TScalar = 1.0): TVec4; static;
+    class function Gray(alpha: TScalar = 1.0): TVec4; static;
     class function LightGray(alpha: TScalar = 1.0): TVec4; static;
     class function DarkGray(alpha: TScalar = 1.0): TVec4; static;
     class function Clear: TVec4; static;
@@ -44,6 +45,7 @@ type
 			function PercentOfValue(value: T): single;
 			procedure Show;
       class operator := (right: T): TRange;
+      class operator := (right: array of T): TRange;
 	end;
 	TRangeInt = specialize TRange<Integer>;
 	TRangeFloat = specialize TRange<Single>;
@@ -52,9 +54,9 @@ type
   generic TMutableValue<T> = record
     public
       current: T;
-      total: T;   
+      total: T;
     public
-      constructor Create(_total: T);      
+      constructor Create(_total: T);
       function Percent: single;
       function ToStr: string;
       procedure Show;
@@ -91,6 +93,7 @@ type
       function GetItem(index: integer): T; overload;
       procedure SetItem(x, y: integer; value: T); overload;
       procedure SetItem(index: integer; value: T); overload;
+      procedure SetItem(pos: TVec2i; value: T); overload;
     public type
       TForEachFunction = procedure (matrix: TFPGMatrix; constref src, dest: TVec2i);
       TForEachFunctionNested = procedure (matrix: TFPGMatrix; constref src, dest: TVec2i) is nested;
@@ -190,6 +193,11 @@ end;
 class function TColorHelper.LightGray(alpha: TScalar = 1.0): TVec4;
 begin
   result := V4(0.8, 0.8, 0.8, alpha);
+end;
+
+class function TColorHelper.Gray(alpha: TScalar = 1.0): TVec4;
+begin
+  result := V4(0.4, 0.4, 0.4, alpha);
 end;
 
 class function TColorHelper.DarkGray(alpha: TScalar = 1.0): TVec4;
@@ -357,6 +365,13 @@ end;
 procedure TRange.Show;
 begin
 	writeln(ToStr);
+end;
+
+class operator TRange.:= (right: array of T): TRange;
+begin
+  Assert(length(right) = 2, 'Range constructor must contain only 2 elements');
+  result.min := right[0];
+  result.max := right[1];
 end;
 
 class operator TRange.:= (right: T): TRange;
@@ -547,6 +562,11 @@ begin
   if (index < 0) or (index >= Count) then
     exit;
   items[IndexAt(x, y)] := value;
+end;
+
+procedure TFPGMatrix.SetItem(pos: TVec2i; value: T);
+begin
+  SetItem(pos.x, pos.y, value);
 end;
 
 procedure TFPGMatrix.SetItem(index: integer; value: T);

@@ -161,9 +161,9 @@ type
       class function Create(x, y: TScalar; _radius: TScalar): TCircle; static; inline;
       class function Create(rect: TRect): TCircle; static; inline;
     
-      function Intersects(constref circle: TCircle): boolean; overload;
-      function Intersects(constref circle: TCircle; out hitPoint: TVec2): boolean; overload; 
-      function Intersects(constref rect: TRect): boolean; overload;
+      function Intersects(constref circle: TCircle): boolean; inline; overload;
+      function Intersects(constref circle: TCircle; out hitPoint: TVec2): boolean; inline; overload; 
+      function Intersects(constref rect: TRect): boolean; inline; overload;
       function Distance(constref circle: TCircle; fromDiameter: boolean = true): TScalar;
       
       function ToStr: string;
@@ -176,7 +176,8 @@ type
       origin: TVec3;
       size: TVec3;
     public
-      { Constructor }
+
+      { Constructors }
       class function Create(x, y, z, width, height, depth: TScalar): TCube; overload; static;
       class function Create(_origin, _size: TVec3): TCube; overload; static;
       class function Create(rect: TRect): TCube; overload; static;
@@ -206,40 +207,69 @@ type
         
       { Methods }
       procedure Show;
-      function Str: string; 
+      function ToStr: string; 
       function Rect2D: TRect; 
       function IsEmpty: boolean;
       function Inset(x, y, z: TScalar): TCube;
-      function IntersectsRect(rect: TCube): boolean;
+      function Intersects(rect: TCube): boolean;
       function ContainsPoint(point: TVec3): boolean;
   end;
 
 function CubeMake(x, y, z, width, height, depth: TScalar): TCube; overload; inline;
 function CubeMake(origin, size: TVec3): TCube; overload; inline;
 
-operator explicit (right: TRect): TCircle; inline;
+{ TCylinder }
+type
+  TCylinder = record
+    public
+      pos: TVec3;
+      depth: Float;
+      radius: Float;
+    public
+      { Constructors }
+      class function Create(_pos: TVec3; _depth, _radius: Float): TCylinder; overload; static;
+  end;
 
+{ Operators }
+operator explicit (right: TRect): TCircle; inline;
+operator in (left: TVec2; right: TRect): boolean;
+
+{ Circles }
 function CircleIntersectsRect(origin: TVec2; radius: TScalar; constref rect: TRect): boolean; 
 function CircleIntersectsCircle(originA: TVec2; radiusA: TScalar; originB: TVec2; radiusB: TScalar): boolean; overload;
 function CircleIntersectsCircle(rectA, rectB: TRect): boolean; overload; inline;
+function CircleIntersectsCircle(originA: TVec2; radiusA: TScalar; originB: TVec2; radiusB: TScalar; out hitPoint: TVec2): boolean; 
 
+{ Cylinders }
+function CylinderIntersectsCylinder(originA: TVec3; radiusA, depthA: TScalar; originB: TVec3; radiusB, depthB: TScalar): boolean;
+
+{ Polygons }
 function PolyContainsPoint(const points: TVec2Array; constref point: TVec2): boolean;
 function PolyIntersectsRect(const vertices: TVec2Array; constref rect: TRect): boolean;
 function PolyIntersectsPoly(const p1, p2: TVec2Array): boolean;
 
+{ Lines }
 function PointOnSide(p, a, b: TVec2): integer;
 function LineIntersectsRect(p1, p2: TVec2; rect: TRect): boolean; overload; inline;
 function LineIntersectsRect(p1, p2: TVec2; bmin, bmax: TVec2): boolean; overload;
 function LineIntersectsCircle(p1, p2: TVec2; origin: TVec2; radius: single): boolean;
-function LineIntersectsCube(p1, p2: TVec3; cube: TCube): boolean; inline;
-function LineIntersectsBox(b1, b2, l1, l2: TVec3; out hit: TVec3): boolean; inline;
+function LineIntersectsLine(constref a1, a2: TVec2; constref b1, b2: TVec2): boolean;
 function RectIntersection(src, dest: TRect; axis: TAxis = TAxis.Both): TRect;
 
-{ Triangle interpolation }
+{ Cubes }
+function LineIntersectsCube(p1, p2: TVec3; cube: TCube): boolean; inline;
+function LineIntersectsBox(b1, b2, l1, l2: TVec3; out hit: TVec3): boolean; inline;
+
+{ Triangles }
 function InterpolateTriangle(p1, p2, p3: TVec3; pos: TVec2): float; 
 function Barycentric(a, b, c, p: TVec3): float; 
 
 implementation
+
+operator in (left: TVec2; right: TRect): boolean;
+begin
+  result := right.Contains(left);
+end;
 
 function InterpolateTriangle(p1, p2, p3: TVec3; pos: TVec2): float; 
 var
@@ -509,6 +539,7 @@ begin
                      b2.x, b2.y);
 end;
 
+{ Convex/Concave polygon intersection }
 function PolyIntersectsPoly(const p1, p2: TVec2Array): boolean;
 var
   next,
@@ -573,7 +604,7 @@ begin
       vn := vertices[next];       // n for "next"
 
       // check against all four sides of the rectangle
-      if lineRect(vc.x,vc.y,vn.x,vn.y, rx,ry,rw,rh) then
+      if LineRect(vc.x,vc.y,vn.x,vn.y, rx,ry,rw,rh) then
         exit(true);
 
       // optional: test if the rectangle is INSIDE the polygon
@@ -713,6 +744,70 @@ begin
   
 end;
 
+
+{
+  https://www.youtube.com/watch?v=7Ik2vowGcU0
+  https://github.com/OneLoneCoder/olcPixelGameEngine/blob/master/Videos/OneLoneCoder_PGE_PolygonCollisions1.cpp
+}
+
+function PolyIntersectionSAT(const r1, r2: TVec2Array): boolean;
+var
+  poly1, poly2: PVec2Array;
+  i, a, b, p: integer;
+  axisProj: TVec2;
+  d, q: float;
+  min_r1, max_r1: float;
+  min_r2, max_r2: float;
+begin
+  poly1 := @r1;
+  poly2 := @r2;
+  for i := 0 to 1 do
+    begin
+      // swap testing order
+      if i = 1 then
+        begin
+          poly1 := @r2;
+          poly2 := @r1;
+        end;
+      for a := 0 to Length(poly1^) - 1 do
+        begin
+
+          // calculate axis project vector
+          b := (a + 1) mod Length(poly1^);
+          axisProj := V2(-(poly1^[b].y - poly1^[a].y), poly1^[b].x - poly1^[a].x);
+
+          d := Sqrt(axisProj.x * axisProj.x + axisProj.y * axisProj.y);
+          axisProj := V2(axisProj.x / d, axisProj.y / d);
+
+          // work out min and max 1D points for r1
+          min_r1 := INFINITY;
+          max_r1 := -INFINITY;
+          for p := 0 to Length(poly1^) - 1 do
+            begin
+              q := (poly1^[p].x * axisProj.x + poly1^[p].y * axisProj.y);
+              min_r1 := min(min_r1, q);
+              max_r1 := max(max_r1, q);
+            end;
+
+          // work out min and max 1D points for r2
+          min_r2 := INFINITY;
+          max_r2 := -INFINITY;
+          for p := 0 to Length(poly2^) - 1 do
+            begin
+              q := (poly2^[p].x * axisProj.x + poly2^[p].y * axisProj.y);
+              min_r2 := min(min_r2, q);
+              max_r2 := max(max_r2, q);
+            end;
+
+          // check for axis separation
+          if not ((max_r2 >= min_r1) and (max_r1 >= min_r2)) then
+            exit(false);
+        end;
+    end;
+  result := true;
+end;
+
+
 function PolyContainsPoint(const points: TVec2Array; constref point: TVec2): boolean;
 var
   i, j, c: integer;
@@ -731,9 +826,34 @@ begin
   result := c <> 0;
 end;
 
-//#########################################################
-// CUBE
-//#########################################################
+{*****************************************************************************
+ *                                    TCylinder
+ *****************************************************************************}
+
+class function TCylinder.Create(_pos: TVec3; _depth, _radius: Float): TCylinder;
+begin
+  result.pos := _pos;
+  result.depth := _depth;
+  result.radius := _radius;
+end;
+
+function CylinderIntersectsCylinder(originA: TVec3; radiusA, depthA: TScalar; originB: TVec3; radiusB, depthB: TScalar): boolean;
+var
+  dx, dy: TScalar;
+  radii: TScalar;
+begin
+  if (originA.z + depthA < originB.z) or
+    (originA.z > originB.z + depthB) then
+    exit(false);
+  dx := originB.x - originA.x;
+  dy := originB.y - originA.y;
+  radii := radiusB + radiusA;
+  result := (dx * dx) + (dy * dy) <= (radii * radii);
+end;
+
+{*****************************************************************************
+ *                                    TCube
+ *****************************************************************************}
 
 function CubeMake(x, y, z, width, height, depth: TScalar): TCube;
 begin
@@ -855,10 +975,10 @@ end;
 
 procedure TCube.Show;
 begin
-  writeln(Str);
+  writeln(ToStr);
 end;
 
-function TCube.Str: string;
+function TCube.ToStr: string;
 begin
   result := '{'+origin.ToStr+', '+size.ToStr+'}';
 end;
@@ -868,7 +988,7 @@ begin
   result := CubeMake(origin.x + x, origin.y + y, origin.z + z, size.width - (x * 2), size.height - (y * 2), size.depth - (z * 2));
 end;
 
-function TCube.IntersectsRect(rect: TCube): boolean;
+function TCube.Intersects(rect: TCube): boolean;
 begin
   result := (rect.MinX < MaxX) and 
             (rect.MaxX > MinX) and 
@@ -898,9 +1018,9 @@ begin
   result := RectMake(origin.x, origin.y, size.width, size.height);
 end;
 
-//#########################################################
-// CIRICLE
-//#########################################################
+{*****************************************************************************
+ *                                TCircle
+ *****************************************************************************}
 
 operator explicit(right: TRect): TCircle;
 begin
@@ -948,6 +1068,27 @@ begin
   result := (dx * dx) + (dy * dy) <= (radii * radii);
 end;
 
+{ Circle intersection with point of intersection
+  https://gamedevelopment.tutsplus.com/tutorials/when-worlds-collide-simulating-circle-circle-collisions--gamedev-769}
+
+function CircleIntersectsCircle(originA: TVec2; radiusA: TScalar; originB: TVec2; radiusB: TScalar; out hitPoint: TVec2): boolean; 
+begin 
+  result := CircleIntersectsCircle(originA, radiusA, originB, radiusB);
+  if result then
+    begin
+      if radiusA = radiusB then
+        begin
+          hitPoint.x := (originA.x + originB.x) / 2;
+          hitPoint.y := (originA.y + originB.y) / 2;
+        end
+      else
+        begin
+          hitPoint.x := ((originA.x * radiusB) + (originB.x * radiusA)) / (radiusA + radiusB);
+          hitPoint.y := ((originA.y * radiusB) + (originB.y * radiusA)) / (radiusA + radiusB);
+        end;
+    end;
+end;
+
 class function TCircle.Create(_origin: TVec2; _radius: TScalar): TCircle;
 begin
   result.origin := _origin;
@@ -970,59 +1111,18 @@ end;
 
 // http://stackoverflow.com/questions/21089959/detecting-collision-of-rectangle-with-circle
 function TCircle.Intersects(constref rect: TRect): boolean; 
-var
-  distX, distY: TScalar;
-  dx, dy: TScalar;
 begin
-  distX := Abs(origin.x - rect.origin.x - (rect.size.width / 2));
-  distY := Abs(origin.y - rect.origin.y - (rect.size.height / 2));
-  
-  if (distX > ((rect.size.width / 2) + radius)) then
-    exit(false);
-  
-  if (distY > ((rect.size.height / 2) + radius)) then
-    exit(false);
-    
-  if (distX <= (rect.size.width / 2)) then
-    exit(true);
-  
-  if (distY <= (rect.size.height / 2)) then
-    exit(true); 
-  
-  dx := distX - (rect.size.width / 2);
-  dy := distY - (rect.size.height / 2);
-  result := (dx * dx + dy * dy <= (radius * radius));
+  result := CircleIntersectsRect(origin, radius, rect);
 end;
 
 function TCircle.Intersects(constref circle: TCircle): boolean; 
-var
-  dx, dy: TScalar;
-  radii: TScalar;
-begin 
-  dx := circle.origin.x - origin.x;
-  dy := circle.origin.y - origin.y;
-  radii := radius + circle.radius;
-  result := (dx * dx) + (dy * dy) <= (radii * radii);
+begin
+  result := CircleIntersectsCircle(origin, radius, circle.origin, circle.radius);
 end;
 
 function TCircle.Intersects(constref circle: TCircle; out hitPoint: TVec2): boolean; 
 begin 
-  result := Intersects(circle);
-    
-  //https://gamedevelopment.tutsplus.com/tutorials/when-worlds-collide-simulating-circle-circle-collisions--gamedev-769
-  if result then
-    begin
-      if self.radius = circle.radius then
-        begin
-          hitPoint.x := (self.origin.x + circle.origin.x) / 2;
-          hitPoint.y := (self.origin.y + circle.origin.y) / 2;
-        end
-      else
-        begin
-          hitPoint.x := ((self.origin.x * circle.radius) + (circle.origin.x * self.radius)) / (self.radius + circle.radius);
-          hitPoint.y := ((self.origin.y * circle.radius) + (circle.origin.y * self.radius)) / (self.radius + circle.radius);
-        end;
-    end;
+  result := CircleIntersectsCircle(origin, radius, circle.origin, circle.radius);
 end;
 
 // distance from diameter
@@ -1043,6 +1143,10 @@ procedure TCircle.Show;
 begin
   writeln(ToStr);
 end;
+
+{*****************************************************************************
+ *                               TSizeHelper
+ *****************************************************************************}
 
 function TSizeHelper.Min: TScalar;
 begin
@@ -1090,6 +1194,10 @@ begin
   result := y;
 end;
 
+{*****************************************************************************
+ *                              TSize3Helper
+ *****************************************************************************}
+
 procedure TSize3Helper.SetWidth(newValue: TScalar);
 begin
   x := newValue;
@@ -1119,6 +1227,10 @@ function TSize3Helper.GetDepth: TScalar;
 begin
   result := z;
 end;
+
+{*****************************************************************************
+ *                                TRect
+ *****************************************************************************}
 
 function RectCenterX(sourceRect: TRect; destRect: TRect): TRect;
 begin
@@ -1472,6 +1584,10 @@ function Trunc(rect: TRect): TRect;
 begin
   result := RectMake(trunc(rect.origin.x), trunc(rect.origin.y), trunc(rect.size.x), trunc(rect.size.y));
 end;
+
+{*****************************************************************************
+ *                                TAABB
+ *****************************************************************************}
 
 procedure TAABB.Show;
 begin

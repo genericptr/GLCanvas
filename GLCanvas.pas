@@ -5,9 +5,12 @@
 {$modeswitch autoderef}
 {$modeswitch multihelpers}
 {$modeswitch nestedprocvars}
+{$modeswitch arrayoperators}
 
 {$interfaces corba}
 {$implicitexceptions off}
+// bug fix: https://bugs.freepascal.org/view.php?id=35821
+{$varpropsetter on}
 
 {$include include/targetos.inc}
 
@@ -24,23 +27,25 @@ uses
   BeRoPNG, VectorMath, GeometryTypes,
   GLVertexBuffer, GLFrameBuffer, GLShader, GLPT, GLPT_Threads;
 
+{$scopedenums on}
 
 {$define INTERFACE}
 {$include include/ExtraTypes.inc}
+{$include include/WebColors.inc}
+{$include include/Images.inc}
 {$include include/Textures.inc}
 {$include include/Text.inc}
 {$include include/BitmapFont.inc}
-{$include include/FileUtils.inc}
+{$include include/Utils.inc}
 {$include include/Input.inc}
 {$undef INTERFACE}
 
-{$scopedenums on}
 type
   TCanvasOption = (VSync,
-                   FullScreen
+                   FullScreen,
+                   WaitForEvents
     );
   TCanvasOptions = set of TCanvasOption;
-{$scopedenums off}
 
 const
   DefaultCanvasOptions = [TCanvasOption.VSync];
@@ -50,6 +55,7 @@ procedure SetupCanvas(width, height: integer; eventCallback: GLPT_EventCallback 
 function IsRunning: boolean;
 procedure QuitApp;
 
+{ Input }
 function CanvasMousePosition(event: pGLPT_MessageRec): TVec2i;
 
 { Shapes }
@@ -78,19 +84,23 @@ procedure DrawTexture(texture: ITexture; constref rect: TRect; constref textureF
 procedure DrawTexture(texture: ITexture; constref rect: TRect; constref textureFrame: TRect; constref color: TVec4); overload;
 procedure DrawTexture(texture: ITexture; constref rect: TRect; constref color: TVec4); overload; inline;
 
+procedure DrawTiledTexture(texture: TTexture; rect: TRect);
+
 { Text }
-function MeasureText(font: IFont; text: ansistring; maximumWidth: integer = MaxInt): TVec2;
-function WrapText(font: IFont; text: ansistring; maximumWidth: integer): TStringList;
+function MeasureText(font: IFont; text: TFontString; maximumWidth: integer = MaxInt): TVec2;
+function WrapText(font: IFont; text: TFontString; maximumWidth: integer): TStringList;
 
-function DrawText(text: ansistring; textAlignment: TTextAlignment; bounds: TRect; color: TColor): TVec2; overload; inline;
-function DrawText(text: ansistring; textAlignment: TTextAlignment; bounds: TRect): TVec2; overload; inline;
-procedure DrawText(text: ansistring; where: TVec2; color: TColor; scale: single = 1.0); overload; inline;
-procedure DrawText(text: ansistring; where: TVec2; scale: single = 1.0); overload; inline;
+function DrawText(text: TFontString; textAlignment: TTextAlignment; bounds: TRect; color: TColor): TVec2; overload; inline;
+function DrawText(text: TFontString; textAlignment: TTextAlignment; bounds: TRect): TVec2; overload; inline;
+procedure DrawText(text: TFontString; where: TVec2; color: TColor; scale: single = 1.0); overload; inline;
+procedure DrawText(text: TFontString; where: TVec2; scale: single = 1.0); overload; inline;
 
-function DrawText(font: IFont; text: ansistring; textAlignment: TTextAlignment; bounds: TRect; color: TColor): TVec2; overload;
-function DrawText(font: IFont; text: ansistring; textAlignment: TTextAlignment; bounds: TRect): TVec2; overload;
-procedure DrawText(font: IFont; text: ansistring; where: TVec2; color: TColor; scale: single = 1.0; textAlignment: TTextAlignment = TTextAlignment.Left); overload;
-procedure DrawText(font: IFont; text: ansistring; where: TVec2; scale: single = 1.0); overload;
+function DrawText(font: IFont; text: TFontString; textAlignment: TTextAlignment; bounds: TRect; color: TColor): TVec2; overload;
+function DrawText(font: IFont; text: TFontString; textAlignment: TTextAlignment; bounds: TRect): TVec2; overload;
+procedure DrawText(font: IFont; text: TFontString; where: TVec2; color: TColor; scale: single = 1.0; textAlignment: TTextAlignment = TTextAlignment.Left); overload; inline;
+procedure DrawText(font: IFont; text: TFontString; where: TVec2; scale: single = 1.0); overload;
+
+procedure LayoutText(var options: TTextLayoutOptions);
 
 { Clip Rects }
 procedure PushClipRect(rect: TRect); 
@@ -121,11 +131,16 @@ procedure PushModelTransform(constref mat: TMat4);
 procedure PopModelTransform; 
 
 { Viewport }
+procedure ResizeCanvas(width, height: integer); overload;
+procedure ResizeCanvas(nativeSize: TVec2; respectNative: boolean; destRect: TRect); overload;
 procedure SetViewPort(rect: TRect); overload;
 procedure SetViewPort(offsetX, offsetY, inWidth, inHeight: integer); overload;
 procedure SetViewPort(inWidth, inHeight: integer); overload;
 function GetViewPort: TRect; inline;
 function GetWindowSize: TVec2i;
+
+{ Display }
+function GetDisplaySize: TVec2i;
 
 { Canvas State }
 procedure SetClearColor(color: TColor);
@@ -134,15 +149,7 @@ function GetFPS: longint; inline;
 function GetDeltaTime: double; inline;
 function GetDefaultShaderAttributes: TVertexAttributes;
 function IsVertexBufferEmpty: boolean; inline;
-
-{ Utilities }
-function FRand: single;
-function FRand(min, max: single): single;
-function FRand(min, max: single; decimal: integer): single;
-function Rand(min, max: longint): longint;
-function Rand(max: longint): longint;
-function RandBool(probability: single = 0.5): boolean;
-function TimeSinceNow: longint;
+function GetResourcecDirectory: ansistring;
 
 type
   TCanvasState = class
@@ -194,78 +201,17 @@ var
 
 {$define IMPLEMENTATION}
 {$include include/ExtraTypes.inc}
+{$include include/WebColors.inc}
+{$include include/Images.inc}
 {$include include/Textures.inc}
 {$include include/Text.inc}
 {$include include/BitmapFont.inc}
-{$include include/FileUtils.inc}
+{$include include/Utils.inc}
 {$include include/Input.inc}
 {$undef IMPLEMENTATION}
 
 const
   TWOPI = 3.14159 * 2;
-  
-{ Utils }
-function TimeSinceNow: longint;
-begin
-  result := round(GLPT_GetTime * 1000);
-end;    
-
-{ Returns a number larger or equal to 'min' and less than or equal to 'max'. }
-
-function FRand(min, max: single): single;
-begin
-  result := FRand(min, max, 100);
-end;
-
-function FRand(min, max: single; decimal: integer): single;
-begin
-  result := Rand(trunc(min * decimal), trunc(max * decimal)) / decimal;
-end;
-
-{ Returns a real number between 0 and 1 is returned (0 included, 1 excluded). }
-function FRand: single;
-begin
-  result := System.Random;
-end;
-
-{ Returns a random number larger or equal to 0 and strictly less than 'max'.  }
-function Rand(max: longint): longint;
-begin
-  result := System.Random(max);
-end;
-
-{ Returns a number larger or equal to 'min' and less than or equal to 'max'. }
-function Rand(min, max: longint): longint;
-var
-  zero: boolean = false;
-begin
-  Assert(max >= 0, 'Rand max ('+IntToStr(max)+') is negative.');
-
-  if min = 0 then 
-    begin
-      //Fatal('GetRandomNumber 0 min value is invalid.');
-      min += 1;
-      max += 1;
-      zero := true;
-    end;
-    
-  if (min < 0) and (max > 0) then
-    max += abs(min);
-  
-  result := System.Random(max) mod ((max - min) + 1);
-  
-  if result < 0 then
-    result := abs(result);
-    
-  if zero then
-    min -= 1;
-  result += min;
-end;
-
-function RandBool(probability: single = 0.5): boolean;
-begin
-  result := System.Random >= probability;
-end;
 
 { Types }
 type
@@ -276,6 +222,7 @@ type
     uv: byte;
     constructor Create(inPos: TVec2; inTexCoord: TVec2; inColor: TVec4; inUV: byte);
     class operator = (constref a, b: TDefaultVertex): boolean;
+    function Compare(constref right: TDefaultVertex): integer;
   end;
 
 constructor TDefaultVertex.Create(inPos: TVec2; inTexCoord: TVec2; inColor: TVec4; inUV: byte);
@@ -286,9 +233,14 @@ begin
   uv := inUV;
 end;
 
+function TDefaultVertex.Compare(constref right: TDefaultVertex): integer;
+begin
+  result := 0;
+end;
+
 class operator TDefaultVertex.= (constref a, b: TDefaultVertex): boolean;
 begin
-  result := (@a = @b);
+  result := true;
 end;
 
 { Quads }
@@ -427,7 +379,7 @@ procedure SetProjectionTransform(constref mat: TMat4);
 begin
   CanvasState.projTransform := mat;
   Assert(ShaderStack.Last = defaultShader, 'active shader must be default.');
-  glUniformMatrix4fv(defaultShader.GetUniformLocation('projTransform'), 1, GL_FALSE, CanvasState.projTransform.Ptr);
+  defaultShader.SetUniformMat4('projTransform', CanvasState.projTransform);
 end;
 
 procedure SetProjectionTransform(x, y, width, height: integer);
@@ -439,7 +391,7 @@ procedure SetViewTransform(constref mat: TMat4);
 begin
   CanvasState.viewTransform := mat;
   Assert(ShaderStack.Last = defaultShader, 'active shader must be default.');
-  glUniformMatrix4fv(defaultShader.GetUniformLocation('viewTransform'), 1, GL_FALSE, CanvasState.viewTransform.Ptr);
+  defaultShader.SetUniformMat4('viewTransform', CanvasState.viewTransform);
 end;
 
 procedure SetViewTransform(x, y, scale: single);
@@ -524,9 +476,61 @@ begin
   result := CanvasState.viewPort;
 end;
 
+{ Call ResizeCanvas in response to GLPT_MESSAGE_RESIZE to change the canvas size }
+
+procedure ResizeCanvas(width, height: integer);
+begin
+  CanvasState.viewPortRatio := V2(1, 1);
+  CanvasState.projTransform := TMat4.Ortho(0, width, height, 0, -MaxInt, MaxInt);
+  CanvasState.viewTransform := TMat4.Identity;
+
+  defaultShader.SetUniformMat4('projTransform', CanvasState.projTransform);
+  defaultShader.SetUniformMat4('viewTransform', CanvasState.viewTransform);
+  defaultShader.SetUniformInts('textures', DefaultTextureUnits);
+
+  SetViewPort(width, height);
+end;
+
+procedure ResizeCanvas(nativeSize: TVec2; respectNative: boolean; destRect: TRect);
+var
+  width, height: integer;
+begin
+  width := trunc(destRect.width);
+  height := trunc(destRect.height);
+
+  SetViewPort(destRect);
+
+  if respectNative then
+    begin
+      CanvasState.viewPortRatio := V2(1, 1);
+      CanvasState.projTransform := TMat4.Ortho(0, width, height, 0, -MaxInt, MaxInt);
+    end
+  else
+    begin
+      CanvasState.viewPortRatio := destRect.Size / nativeSize;
+      CanvasState.projTransform := TMat4.Ortho(0, width, height, 0, -MaxInt, MaxInt) * 
+                                   TMat4.Scale(CanvasState.viewPortRatio, 1);
+    end;
+
+  CanvasState.viewTransform := TMat4.Identity;
+
+  defaultShader.SetUniformMat4('projTransform', CanvasState.projTransform);
+  defaultShader.SetUniformMat4('viewTransform', CanvasState.viewTransform);
+  defaultShader.SetUniformInts('textures', DefaultTextureUnits);
+end;
+
 function GetWindowSize: TVec2i;
 begin
   GLPT_GetFrameBufferSize(CanvasState.window, result.x, result.y);
+end;
+
+function GetDisplaySize: TVec2i;
+var
+  displayCoords: GLPTRect;
+begin
+  GLPT_GetDisplayCoords(displayCoords);
+  result.width := displayCoords.right - displayCoords.left;
+  result.height := displayCoords.bottom - displayCoords.top;
 end;
 
 function GetDefaultShaderAttributes: TVertexAttributes;
@@ -601,13 +605,15 @@ var
 begin 
   ChangePrimitiveType(GL_LINE_LOOP);
 
+  {$ifdef GL_LINE_WIDTH}
   if drawState.lineWidth <> lineWidth then
     begin
       Assert(vertexBuffer.Count = 0, 'must flush drawing before changing line width');
       glLineWidth(lineWidth);
       drawState.lineWidth := lineWidth;
     end;
-
+  {$endif}
+  
   w := rect.width / 2;
   h := rect.height / 2;
   x := rect.x - w;
@@ -794,16 +800,18 @@ var
   texCoord: TVec2;
 begin
 
-  // TODO: line width doesn't work now???
-  // https://stackoverflow.com/questions/3484260/opengl-line-width
   ChangePrimitiveType(GL_LINE_LOOP);
 
+  // TODO: line width doesn't work now???
+  // https://stackoverflow.com/questions/3484260/opengl-line-width
+  {$ifdef GL_LINE_WIDTH}
   if drawState.lineWidth <> lineWidth then
     begin
       Assert(vertexBuffer.Count = 0, 'must flush drawing before changing line width');
       glLineWidth(lineWidth);
       drawState.lineWidth := lineWidth;
     end;
+  {$endif}
 
   texCoord := V2(0, 0);
   vertexBuffer.Add(TDefaultVertex.Create(V2(rect.MinX, rect.MinY), texCoord, color, 255));
@@ -885,6 +893,53 @@ end;
 procedure DrawTexture(texture: ITexture; point: TVec2; constref color: TVec4);
 begin
   DrawTexture(texture, RectMake(point, texture.GetFrame.Size), color);
+end;
+
+procedure DrawTiledTexture(texture: TTexture; rect: TRect);
+var
+  tiles: TVec2;
+  frac: TVec2;
+  origin: TVec2i;
+  part: TRect;
+  x, y: integer;
+begin
+  tiles := rect.size / texture.GetSize;
+
+  frac.x := tiles.x - trunc(tiles.x);
+  frac.y := tiles.y - trunc(tiles.y);
+
+  origin := trunc(tiles);
+
+  for y := 0 to origin.y do
+  for x := 0 to origin.x do
+    begin
+      if (x = origin.x) and (y = origin.y) then
+        begin
+          if (frac.x = 0) or (frac.y = 0) then
+            break;
+          part.origin := V2(rect.x + texture.GetWidth * x, rect.y + texture.GetHeight * y);
+          part.size := texture.GetSize * frac;
+          DrawTexture(texture, part, texture.SubTextureFrame(0, 0, frac.x, frac.y));
+        end
+      else if x = origin.x then
+        begin
+          if frac.x = 0 then
+            break;
+          part.origin := V2(rect.x + texture.GetWidth * x, rect.y + texture.GetHeight * y);
+          part.size := texture.GetSize * V2(frac.x, 1);
+          DrawTexture(texture, part, texture.SubTextureFrame(0, 0, frac.x, 1));
+        end
+      else if y = origin.y then
+        begin
+          if frac.y = 0 then
+            break;
+          part.origin := V2(rect.x + texture.GetWidth * x, rect.y + texture.GetHeight * y);
+          part.size := texture.GetSize * V2(1, frac.y);
+          DrawTexture(texture, part, texture.SubTextureFrame(0, 0, 1, frac.y));
+        end
+      else
+        DrawTexture(texture, V2(rect.x + texture.GetWidth * x, rect.y + texture.GetHeight * y));
+    end;
 end;
 
 procedure PushClipRect(rect: TRect); 
@@ -999,7 +1054,27 @@ begin
   result /= CanvasState.viewPortRatio;
 end;
 
-procedure SetupCanvas(width, height: integer; eventCallback: GLPT_EventCallback = nil; options: TCanvasOptions = DefaultCanvasOptions); 
+function GetResourcecDirectory: ansistring;
+const
+  kResourceDirectoryName = 'Resources';
+var
+  name: string;
+begin
+  result := GLPT_GetBasePath;
+
+  // if the base path is the correct location then force the change
+  name := ExtractFileName(ExcludeTrailingPathDelimiter(result));
+  if AnsiCompareFileName(name, kResourceDirectoryName) <> 0 then
+    result += kResourceDirectoryName;
+
+  if not DirectoryExists(result) then
+    begin
+      writeln('Resource directory "',result,'" doesn''t exist.');
+      halt(-1);
+    end;
+end;
+
+procedure SetupCanvas(width, height: integer; eventCallback: GLPT_EventCallback; options: TCanvasOptions); 
 var
   flags: longint;
   displayCoords: GLPTRect;
@@ -1008,6 +1083,14 @@ begin
 
   if not GLPT_Init then
     halt(-1);
+
+
+  if TCanvasOption.WaitForEvents in options then
+    begin
+      //Exclude(options, TCanvasOption.VSync);
+      writeln('GLPT presentation mode enabled');
+      GLPT_PresentationMode := true;
+    end;
 
   // allocate the default canvas
   if CanvasState = nil then
@@ -1099,6 +1182,6 @@ begin
   DefaultTextureColor := RGBA(1, 1, 1, 1);
   FillChar(TextureSlots, sizeof(TextureSlots), 0);
   System.Randomize;
-  ChDir(GLPT_GetBasePath);
+  ChDir(GetResourcecDirectory);
   InputManager := TInputManager.Create;
 end.

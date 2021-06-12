@@ -37,7 +37,7 @@ type
       TVertexArray = array[0..0] of TVertex;
       PVertexArray = ^TVertexArray;
       {$ifdef FAST_LIST}
-      TVertexList = specialize TFastList<TVertex>;
+      TVertexList = specialize TPointerList<TVertex>;
       {$else}
       TVertexList = specialize TFPGList<TVertex>;
       {$endif}

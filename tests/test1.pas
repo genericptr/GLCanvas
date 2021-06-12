@@ -17,7 +17,7 @@ uses
   GLVertexBuffer, 
   GLUtils, 
   GLShader, 
-  GLGUI, 
+  GLUI, 
   GLFreeTypeFont, 
   GLFreeType, 
   GLFrameBuffer,

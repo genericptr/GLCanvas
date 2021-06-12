@@ -1,12 +1,16 @@
 
+{define DEBUG_FONTS}
+
 {$ifdef INTERFACE}
 
-{$scopedenums on}
 type
 	TTextAlignment = (Left, 
 										Center
 										);
-{$scopedenums off}
+
+type
+	TFontChar = UnicodeChar;
+	TFontString = UnicodeString;
 
 type
 	TFontRenderFrame = record
@@ -18,19 +22,76 @@ type
 
 type
 	IFont = interface (ITexture)
-		function CharacterRenderFrame(c: char): TFontRenderFrame;
+		function CharacterRenderFrame(c: TFontChar): TFontRenderFrame;
 		function LineHeight: integer;
 		function SpaceWidth: integer;
 		function TabWidth: integer;
-		function HasGlyph(c: char): boolean;
+		function HasGlyph(c: TFontChar): boolean;
 		function PreferredTextColor: TVec4;
+	end;
+
+type
+	TTextWrapping = (
+		None,
+		Word,
+		Chararacter
+	);
+
+type
+	TTextOffset = LongInt;
+
+	TTextRange = record
+	  location: TTextOffset;
+	  length: TTextOffset;
+	  insertion: TTextOffset;
+	  constructor Create(_location, _length: TTextOffset);
+	end;
+
+type
+	TTextLayoutOptions = record
+		font: IFont;
+		// TODO: this needs to be a pointer with a range
+		text: TFontString;
+		range: TTextRange;
+		where: TVec2;
+		color: TColor;
+		scale: float;
+		textAlignment: TTextAlignment;
+		wrap: TTextWrapping;
+
+		// TODO: make this another record for an overload
+		testPoint: TVec2;
+		testOffset: TTextOffset;
+		hitPoint: TVec2;
+		hitOffset: TTextOffset;
+
+		textSize: TVec2;
+
+		draw: boolean;
+		cursor: TTextRange;
+		class function DefaulOptions: TTextLayoutOptions; static; inline;
 	end;
 
 {$endif}
 
 {$ifdef IMPLEMENTATION}
 
-function SplitString(text: ansistring; chars: integer; var count: integer): TStringList;
+class function TTextLayoutOptions.DefaulOptions: TTextLayoutOptions;
+begin
+	result.color := TColor.White;
+	result.wrap := TTextWrapping.None;
+	result.hitPoint := 0;
+	result.cursor := TTextRange.Create(-1, 0);
+end;
+
+constructor TTextRange.Create(_location, _length: TTextOffset);
+begin
+	insertion := _location;
+	location := _location;
+	length := _length;
+end;
+
+function SplitString(text: TFontString; chars: integer; var count: integer): TStringList;
 var
 	p: pchar;
 begin	
@@ -50,7 +111,7 @@ begin
 	StrDispose(p);
 end;
 
-function RestoreText(text: ansistring): ansistring;
+function RestoreText(text: TFontString): TFontString;
 begin
 	text := StringReplace(text, '#39', #39, [rfReplaceAll]);
 	text := StringReplace(text, '#34', #34, [rfReplaceAll]);
@@ -58,9 +119,9 @@ begin
 	result := text;
 end;
 
-function CalculateTextWidth(font: IFont; text: ansistring): integer;
+function CalculateTextWidth(font: IFont; text: TFontString): integer;
 var
-	c: char;
+	c: TFontChar;
 	renderFrame: TFontRenderFrame;
 begin
 	result := 0;
@@ -81,7 +142,7 @@ begin
 		end;
 end;
 
-function WrapTextInternal(font: IFont; text: ansistring; max: single; var actualSize: TVec2): TStringList;
+function WrapTextInternal(font: IFont; text: TFontString; max: single; var actualSize: TVec2): TStringList;
 var
 	i, s: integer;
 	part: string;
@@ -169,41 +230,42 @@ begin
   end;
 end;
 
-function WrapText(font: IFont; text: ansistring; maximumWidth: integer): TStringList;
+function WrapText(font: IFont; text: TFontString; maximumWidth: integer): TStringList;
 var
 	actualSize: TVec2;
 begin
 	result := WrapTextInternal(font, text, maximumWidth, actualSize);
 end;
 
-function MeasureText(font: IFont; text: ansistring; maximumWidth: integer = MaxInt): TVec2;
+function MeasureText(font: IFont; text: TFontString; maximumWidth: integer = MaxInt): TVec2;
 begin		
+	// TODO: this is leaking memory!
 	WrapTextInternal(font, text, maximumWidth, result);
 end;
 
-function DrawText(text: ansistring; textAlignment: TTextAlignment; bounds: TRect; color: TColor): TVec2;
+function DrawText(text: TFontString; textAlignment: TTextAlignment; bounds: TRect; color: TColor): TVec2;
 begin
 	DrawText(CanvasState.activeFont, text, textAlignment, bounds, color);
 end;
 
-function DrawText(text: ansistring; textAlignment: TTextAlignment; bounds: TRect): TVec2;
+function DrawText(text: TFontString; textAlignment: TTextAlignment; bounds: TRect): TVec2;
 begin
 	DrawText(CanvasState.activeFont, text, textAlignment, bounds, 1);	
 end;
 
-procedure DrawText(text: ansistring; where: TVec2; color: TColor; scale: single = 1.0);
+procedure DrawText(text: TFontString; where: TVec2; color: TColor; scale: single = 1.0);
 begin
 	DrawText(CanvasState.activeFont, text, where, color, scale);
 end;
 
-procedure DrawText(text: ansistring; where: TVec2; scale: single = 1.0);
+procedure DrawText(text: TFontString; where: TVec2; scale: single = 1.0);
 begin
 	DrawText(CanvasState.activeFont, text, where, CanvasState.activeFont.PreferredTextColor, scale);
 end;
 
-function DrawText(font: IFont; text: ansistring; textAlignment: TTextAlignment; bounds: TRect; color: TColor): TVec2;
+function DrawText(font: IFont; text: TFontString; textAlignment: TTextAlignment; bounds: TRect; color: TColor): TVec2;
 var
-	line: ansistring;
+	line: TFontString;
 	lines: TStringList;
 	where: TVec2;
 begin
@@ -213,11 +275,12 @@ begin
 		exit(V2(0, 0));
 		
 	where := bounds.origin;
+	// TODO: this is leaking memory!
 	lines := WrapTextInternal(font, text, Trunc(bounds.width), result);
 	for line in lines do
 		begin
 			case textAlignment of
-				TTextAlignment.Center:				
+				TTextAlignment.Center:
 					where.x := bounds.MidX - (MeasureText(font, line, maxInt).width / 2);
 				otherwise
 					;
@@ -227,65 +290,223 @@ begin
 		end;
 end;
 
-function DrawText(font: IFont; text: ansistring; textAlignment: TTextAlignment; bounds: TRect): TVec2;
+function DrawText(font: IFont; text: TFontString; textAlignment: TTextAlignment; bounds: TRect): TVec2;
 begin
 	result := DrawText(font, text, textAlignment, bounds, 1);
 end;
 
-procedure DrawText(font: IFont; text: ansistring; where: TVec2; color: TColor; scale: single = 1.0; textAlignment: TTextAlignment = TTextAlignment.Left);
+procedure LayoutText(var options: TTextLayoutOptions);
+
+	procedure DrawCursor(origin: TVec2); inline;
+	var
+		cursorFrame: TRect;
+		yMargin: integer;
+	begin
+		yMargin := 1;
+		cursorFrame.width := 1;
+		cursorFrame.x := (origin.x - trunc(cursorFrame.width / 2)) - 1 { always draw on left side };
+		cursorFrame.y := origin.y - yMargin;
+		cursorFrame.height := options.font.LineHeight + (yMargin * 2);
+		FillRect(cursorFrame, RGBA(1, 0, 0, 0.9));
+	end;
+
+	procedure TestPoints(offset: LongInt; rect: TRect);
+	begin
+		// test hit offset
+		if offset = options.testOffset then
+			options.hitPoint := rect.origin;
+
+		// test the hit point
+		if options.testPoint.y >= rect.minY then
+			begin
+				if options.testPoint.x >= rect.midX then
+					options.hitOffset := offset + 1
+				else if options.testPoint.x >= rect.minX then
+					options.hitOffset := offset;
+			end;
+	end;
+
 var
-	c: char;
+	offset: TTextOffset;
+	c: TFontChar;
 	renderFrame: TFontRenderFrame;
 	newOrigin,
+	prevOrigin,
 	origin,
 	size: TVec2;
+	charFrame: TRect;
+	selFrame: TRect;
+	newLine: boolean;
 begin
-	Assert(font <> nil, 'font must not be nil');
+	Assert(options.font <> nil, 'DrawText font must not be nil');
 
-	if text = '' then
-		exit;
-	
-	case textAlignment of
+	case options.textAlignment of
 		TTextAlignment.Left:
-			origin := where / scale;
+			origin := options.where / options.scale;
 		TTextAlignment.Center:
 			begin
-				origin := where / scale;
-				size := MeasureText(font, text);
+				origin := options.where / options.scale;
+				size := MeasureText(options.font, options.text);
 				origin.x -= size.width / 2; 
 			end;
 	end;	
 
-	for c in text do
+	options.hitOffset := -1;
+	selFrame.height := 0;
+	options.textSize := V2(0, 0);
+
+	for offset := options.range.location to options.range.length - 1 do
 		begin
-			if not font.HasGlyph(c) then
+			c := options.text[offset + 1];
+
+			// draw cursor				
+			if options.draw and (options.cursor.location > -1) then
 				begin
+
+					if offset = options.cursor.insertion then
+						DrawCursor(origin);
+
+					if (offset = options.cursor.location) and (options.cursor.length > 0) then
+						begin
+							// start selection frame
+							selFrame := RectMake(origin.x, origin.y , 0, options.font.LineHeight);
+						end
+					else if (offset = options.cursor.location + options.cursor.length) and (selFrame.height > 0) then
+						begin
+							// end selection frame
+							selFrame.size.x := origin.x - selFrame.origin.x;
+							FillRect(selFrame, RGBA(1, 0, 0, 0.25));
+							selFrame.height := 0;
+						end;
+				end;
+
+			if not options.font.HasGlyph(c) then
+				begin
+					newLine := false;
+					prevOrigin := origin;
+
 					case c of
-						#32: origin.x += font.SpaceWidth; 								// space
-						#9: origin.x += font.SpaceWidth * font.TabWidth;  // tab
-						#10, #12, #13:																		// EOL
+						#32: origin.x += options.font.SpaceWidth; 												// space
+						#9: origin.x += options.font.SpaceWidth * options.font.TabWidth;  // tab
+						#10, #12, #13:																										// EOL
 							begin
-								origin.y += font.LineHeight;
-								origin.x := where.x / scale;
+								newLine := true;
+
+								// test for points outside the line range and
+								// and place the hit offset at the end of the line
+								// but not after the line break characters
+								if (options.testPoint.y >= origin.y) and (options.testPoint.x >= origin.x) then
+									options.hitOffset := offset;
+
+								if offset = options.testOffset then
+									options.hitPoint := origin;
+
+								// before advacing to the next line draw the selection
+								// for the current line
+								if options.draw and (selFrame.height > 0) then
+									begin
+										selFrame.size.x := origin.x - selFrame.origin.x;
+										// add an extra amount of space to indicate the line break is selected
+										selFrame.size.x += Max(2, options.font.SpaceWidth / 2);
+										FillRect(selFrame, RGBA(1, 0, 0, 0.25));
+									end;
+
+								origin.y += options.font.LineHeight;
+								origin.x := options.where.x / options.scale;
+
+								selFrame.origin := origin;
 							end
 						otherwise
-							origin.x += font.SpaceWidth;
+							origin.x += options.font.SpaceWidth;														// other characters
 					end;
+
+					// test points
+					if not newLine then
+						TestPoints(offset, RectMake(origin.x, origin.y, origin.y - prevOrigin.y, options.font.LineHeight));
+
+					// adjust text size
+					if origin.x > options.textSize.width then
+						options.textSize.width := origin.x;
+					if origin.y > options.textSize.height then
+						options.textSize.height := origin.y;	
+
 					continue;
 				end;
 
-			renderFrame := font.CharacterRenderFrame(c);
+			renderFrame := options.font.CharacterRenderFrame(c);
 
 			newOrigin.x := origin.x + renderFrame.bearing.x;
 			newOrigin.y := origin.y + renderFrame.bearing.y;
-			DrawTexture(font, RectMake(newOrigin, renderFrame.faceSize) * scale, renderFrame.textureFrame, color);
-			//FillRect(RectMake(newOrigin, renderFrame.faceSize) * scale, RGBA(1, 0, 0, 0.2));
+
+			{
+				H: 4.0/8.0
+				e: 6.0/6.0
+				l: 4.0/8.0
+				o: 6.0/6.0
+				j: 4.0/10.0
+				g: 6.0/8.0
+			}
+			// "originY": (options.font.LineHeight - (renderFrame.bearing.y + renderFrame.faceSize.y)):1:1
+			//writeln(char(c),':',renderFrame.bearing.y:1:1,'/',renderFrame.faceSize.y:1:1);
+
+			charFrame := RectMake(newOrigin, renderFrame.faceSize) * options.scale;
+
+			// test points
+			TestPoints(offset, charFrame);
+
+			// draw character
+			if options.draw then
+				begin
+					DrawTexture(options.font, charFrame, renderFrame.textureFrame, options.color);
+					{$ifdef DEBUG_FONTS}
+					FillRect(charFrame, RGBA(1, 0, 0, 0.2));
+					{$endif}
+				end;
 
 			origin.x += renderFrame.advance;
+
+			// adjust text size
+			if origin.x > options.textSize.width then
+				options.textSize.width := origin.x;
+			if origin.y > options.textSize.height then
+				options.textSize.height := origin.y;
 		end;
+
+	options.textSize.y += options.font.LineHeight;
+
+	if (options.testPoint.y >= origin.y) and (options.testPoint.x >= origin.x - renderFrame.advance) then
+		options.hitOffset := offset;
+
+	// draw cursor at the final offset
+	if options.draw and 
+		(options.cursor.location > -1) and (
+			(options.cursor.location = options.range.location + options.range.length) or 
+			(options.range.length = 0)) then
+		DrawCursor(origin);
 end;
 
-procedure DrawText(font: IFont; text: ansistring; where: TVec2; scale: single = 1.0);
+procedure DrawText(font: IFont; text: TFontString; where: TVec2; color: TColor; scale: single; textAlignment: TTextAlignment);
+var
+	options: TTextLayoutOptions;
+begin
+	options.font := font;
+	options.text := text;
+	options.range := TTextRange.Create(0, length(text));
+	options.where := where;
+	options.color := color;
+	options.scale := scale;
+	options.textAlignment := textAlignment;
+	options.wrap := TTextWrapping.None;
+	options.testPoint := 0;
+	options.testOffset := 0;
+	options.hitPoint := 0;
+	options.hitOffset := 0;
+	options.draw := true;
+	options.cursor := TTextRange.Create(-1, -1);
+	LayoutText(options);
+end;
+
+procedure DrawText(font: IFont; text: TFontString; where: TVec2; scale: single);
 begin
 	DrawText(font, text, where, 1, scale);
 end;

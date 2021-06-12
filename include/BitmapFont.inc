@@ -57,7 +57,7 @@ type
 
 			{ Accessors }
 			procedure SetCharAdvance(newValue: integer);
-			function TextureForCharacter(c: char): TTexture; inline;
+			function TextureForCharacter(c: TFontChar): TTexture; inline;
 			function GetTexture: integer;
 			function GetFrame: TTextureFrame;
 			property Name: string read m_name;
@@ -66,11 +66,11 @@ type
 			function IsLocked: boolean; override;
 
 			{ IFont }
-			function CharacterRenderFrame(c: char): TFontRenderFrame;
+			function CharacterRenderFrame(c: TFontChar): TFontRenderFrame;
 			function LineHeight: integer;
 			function SpaceWidth: integer;
 			function TabWidth: integer;
-			function HasGlyph(c: char): boolean;
+			function HasGlyph(c: TFontChar): boolean;
 			function PreferredTextColor: TVec4;
 
 		private
@@ -79,14 +79,14 @@ type
 			fontInfo: TFontInfo;
 
 			procedure LoadProperties;
-			function CharDescriptor(c: char): TFontCharDescriptor; inline;
+			function CharDescriptor(c: TFontChar): TFontCharDescriptor; inline;
 	end;
 
 {$endif}
 
 {$ifdef IMPLEMENTATION}
 
-function TBitmapFont.CharacterRenderFrame(c: char): TFontRenderFrame;
+function TBitmapFont.CharacterRenderFrame(c: TFontChar): TFontRenderFrame;
 begin
 	result.bearing.y := fontInfo.chars[ord(c)].yoffset;
 	result.bearing.x := 0;
@@ -110,7 +110,7 @@ begin
 	result := m_tabWidth;
 end;
 
-function TBitmapFont.HasGlyph(c: char): boolean;
+function TBitmapFont.HasGlyph(c: TFontChar): boolean;
 begin
 	result := TextureForCharacter(c) <> nil;
 end;
@@ -140,12 +140,12 @@ begin
 	result := fontInfo.chars[index].texture;
 end;
 
-function TBitmapFont.CharDescriptor(c: char): TFontCharDescriptor;
+function TBitmapFont.CharDescriptor(c: TFontChar): TFontCharDescriptor;
 begin
 	result := fontInfo.chars[ord(c)];
 end;
 
-function TBitmapFont.TextureForCharacter(c: char): TTexture;
+function TBitmapFont.TextureForCharacter(c: TFontChar): TTexture;
 begin
 	if (c = ' ') or (c = '	') then
 		exit(nil);

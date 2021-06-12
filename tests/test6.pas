@@ -23,14 +23,12 @@ type
   TRGBA_F32_PixelMatrix = specialize TFPGMatrix<TColor>;
 
 var
-  pix: RGBA_U8_PixelMatrix;
+  pix: TRGBA_U8_PixelMatrix;
   texture: TTexture;
   x, y: integer;
 begin
   SetupCanvas(window_size_width, window_size_height);
 
-  // TODO: make a TTexture subclass which handles this matrix also
-  // then we can include the matrix class in GLCanvas 
   pix := TRGBA_U8_PixelMatrix.Create(16, 16);
   pix.Fill(TImagePixel.Create(255, 0, 0, 255));
 

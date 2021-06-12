@@ -88,6 +88,7 @@ type
 	TTimerInvocations = class helper for System.TObject
 		function InvokeAfterDelay(_interval: TimerInterval; method: TInvocationCallbackProcedure; params: TInvocation.TVariantParams = nil; _repeats: boolean = false): TTimer; overload;
 		function InvokeAfterDelay(_interval: TimerInterval; method: TInvocationCallbackClass; params: TInvocation.TVariantParams = nil; _repeats: boolean = false): TTimer; overload;
+		function InvokeAfterDelay(_interval: TimerInterval; method: TInvocationCallbackClassNoParams; _repeats: boolean = false): TTimer; overload;
 		function InvokeAfterDelay(_interval: TimerInterval; Code: CodePointer; params: TInvocation.TVariantParams = nil; _repeats: boolean = false): TTimer; overload;
 	end;
 
@@ -206,6 +207,11 @@ end;
 function TTimerInvocations.InvokeAfterDelay(_interval: TimerInterval; method: TInvocationCallbackClass; params: TInvocation.TVariantParams = nil; _repeats: boolean = false): TTimer;
 begin
 	result := TTimer.Invoke(_interval, TInvocation.Create(method, params), _repeats);	
+end;
+
+function TTimerInvocations.InvokeAfterDelay(_interval: TimerInterval; method: TInvocationCallbackClassNoParams; _repeats: boolean = false): TTimer;
+begin
+	result := TTimer.Invoke(_interval, TInvocation.Create(method), _repeats);	
 end;
 
 function TTimerInvocations.InvokeAfterDelay(_interval: TimerInterval; code: CodePointer; params: TInvocation.TVariantParams = nil; _repeats: boolean = false): TTimer;

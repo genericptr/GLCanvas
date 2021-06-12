@@ -1,6 +1,6 @@
-# GLCanvas - Minimalistic drawing library
+# GLCanvas - Minimalistic rendering library
 
-GLCanvas provides a minimalistic drawing API in the same vein as [raylib](https://www.raylib.com) or [libGDX](https://libgdx.badlogicgames.com).
+GLCanvas provides a minimalistic rendering API in the same vein as [raylib](https://www.raylib.com) or [libGDX](https://libgdx.badlogicgames.com).
 
 A simple program with GLCanvas:
 
@@ -34,7 +34,7 @@ end.
  - Bitmap and Freetype fonts
  - Shaders (optional)
  - Frame buffers (optional)
- - GLGUI for many common UI elements like windows, buttons etc...
+ - GLUI for many common UI elements like windows, buttons etc...
 
 ### ⛓ Dependancies:
 
