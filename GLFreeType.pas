@@ -32,7 +32,7 @@ type
       function GetBearing: TPoint; inline;
       function GetSize: TPoint; inline;
     public
-      glyph: TFT_GlyphSlot;   
+      glyph: TFT_GlyphSlot;
       textureFrame: TRect;
       property Size: TPoint read GetSize;             // Size of glyph in pixels
       property Bearing: TPoint read GetBearing;       // Offset from baseline to left/top of glyph
@@ -178,6 +178,7 @@ begin
   Assert(m_face <> nil, 'freetype face is nil.');
   Assert(TextureID = 0, 'font has already been rendered');
 
+  // https://www.freetype.org/freetype2/docs/tutorial/step1.html
   // https://learnopengl.com/In-Practice/Text-Rendering
   // https://stackoverflow.com/questions/24799090/opengl-freetype-weird-texture
   FT_Set_Pixel_Sizes(m_face, 0, pixelSize);

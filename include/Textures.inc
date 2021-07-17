@@ -608,7 +608,7 @@ begin
 				break;
 			end;
 
-	// not available units were found so we need to 
+	// no available units were found so we need to 
 	// flush drawing and clear unlocked slots
 	if textureUnit < 0 then
 		begin

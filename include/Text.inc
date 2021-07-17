@@ -214,14 +214,14 @@ begin
 					longestLine := trunc(max);
 				
 				// no parts were added so assume the whole string fits
-				if result.count = 0 then	
+				if result.count = 0 then
 					result.Add(RestoreText(text));
 				
 				actualSize.width := previousLongestLine;
 				actualSize.height := font.LineHeight * result.count;
 			end
 		else // use the entire strings width
-			begin				
+			begin
 				result.Add(text);
 				actualSize.width := CalculateTextWidth(font, text);
 				actualSize.height := font.LineHeight;
@@ -359,7 +359,7 @@ begin
 		begin
 			c := options.text[offset + 1];
 
-			// draw cursor				
+			// draw cursor
 			if options.draw and (options.cursor.location > -1) then
 				begin
 

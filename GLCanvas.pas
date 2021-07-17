@@ -1097,7 +1097,7 @@ begin
     CanvasState := TCanvasState.Create;
 
   with CanvasState do
-    begin      
+    begin
       clipRectStack := TRectList.Create;
       viewTransformStack := TMat4List.Create;
       modelTransformStack := TMat4List.Create;
@@ -1107,6 +1107,16 @@ begin
       context.majorVersion := 3;
       context.minorVersion := 2;
       context.profile := GLPT_CONTEXT_PROFILE_CORE;
+      {
+        TODO: high res context
+        https://developer.apple.com/library/archive/documentation/GraphicsImaging/Conceptual/OpenGL-MacProgGuide/EnablingOpenGLforHighResolution/EnablingOpenGLforHighResolution.html
+
+        NSRect backingBounds = [self convertRectToBacking:[self bounds]];
+        GLsizei backingPixelWidth  = (GLsizei)(backingBounds.size.width),
+                backingPixelHeight = (GLsizei)(backingBounds.size.height);
+        glViewport(0, 0, backingPixelWidth, backingPixelHeight);
+      }
+      //context.bestResolution := true;
       {$endif}
       {$ifdef API_OPENGLES}
       context.glesVersion := 3;
