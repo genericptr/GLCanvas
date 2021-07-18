@@ -1,6 +1,25 @@
 
 {$ifdef INTERFACE}
 
+{$ifdef PLATFORM_SDL}
+const
+  NUM_SCANCODES = SDL_NUM_SCANCODES;
+
+type
+  TKeyCode = SDL.Uint32;
+  TScanCode = SDL_Scancode;
+
+{$endif}
+
+{$ifdef PLATFORM_GLPT}
+const
+  NUM_SCANCODES = GLPT_NUM_SCANCODES;
+
+type
+  TKeyCode = GLPT_Keycode;
+  TScanCode = GLPT_Scancode;
+{$endif}
+
 function GetMouseLocation: TVec2i;
 function IsMouseDown: boolean;
 function IsLeftMouseDown: boolean;
@@ -10,8 +29,33 @@ function IsCommandKeyDown: boolean;
 function IsShiftKeyDown: boolean;
 function IsOptionKeyDown: boolean;
 function IsControlKeyDown: boolean;
-function IsKeyDown(key: GLPT_Scancode): boolean;
+function IsKeyDown(key: TScanCode): boolean;
+
+{$ifdef PLATFORM_SDL}
+type
+  SDL_Event_Helper = record helper for SDL_Event
+    function GetMouseLocation: TVec2i;
+  end;
+{$endif}
+
+{$ifdef PLATFORM_GLPT}
+type
+  TGLPT_MessageRec_Helper = record helper for GLPT_MessageRec
+    function GetMouseLocation: TVec2i;
+    function ScrollDeltaY: Float;
+    function Keycode: TKeyCode;
+    function Scancode: TScanCode;
+  end;
+
+{$endif}
+
+{$ifdef PLATFORM_SDL}
+procedure PollSystemInput(event: PSDL_Event);
+{$endif}
+
+{$ifdef PLATFORM_GLPT}
 procedure PollSystemInput(event: pGLPT_MessageRec);
+{$endif}
 
 {$endif}
 
@@ -22,27 +66,19 @@ procedure PollSystemInput(event: pGLPT_MessageRec);
 // https://docs.godotengine.org/en/3.1/classes/class_input.html
 
 type
-  TKeyCodeMap = specialize TFPGMap<String, GLPT_Keycode>;
+  TKeyCodeMap = specialize TFPGMap<String, TKeyCode>;
 
 type
   TInputAction = class
-    key: GLPT_Keycode;
+    key: TKeyCode;
     name: string;
-
-    //procedure AddKey();
-    // TODO: how do we get the device id's in advance?
-    //GLPT_MESSAGE_CONTROLLER_HAT = 300;
-    //GLPT_MESSAGE_CONTROLLER_AXIS = 301;
-    //GLPT_MESSAGE_CONTROLLER_BUTTON = 302;
-    //GLPT_MESSAGE_CONTROLLER_ADDED = 303;
-    //GLPT_MESSAGE_CONTROLLER_REMOVED = 304;
   end;
 
 type
   TInputManager = class
     private
       { keyboard }
-      keyDown: array[0..GLPT_NUM_SCANCODES-1] of boolean;
+      keyDown: array[0..NUM_SCANCODES-1] of boolean;
       shiftState: TShiftState;
 
       { mouse }
@@ -139,11 +175,71 @@ end;
 // so we can start using real keycodes instead of scancodes
 // which will break on different keyboard layouts
 
-function IsKeyDown(key: GLPT_Scancode): boolean;
+function IsKeyDown(key: TScanCode): boolean;
 begin
   result := InputManager.keyDown[key];
 end;
 
+{$ifdef PLATFORM_SDL}
+
+procedure PollSystemInput(event: PSDL_Event);
+begin
+  case event.type_ of
+    SDL_MOUSEBUTTONUP:
+      begin
+        InputManager.leftMouseDown := false;
+        InputManager.rightMouseDown := false;
+        InputManager.mouseDownLocation := 0;
+      end;
+    SDL_WINDOW_EVENT:
+      begin
+        case event.window.event of
+          SDL_WINDOWEVENT_LEAVE:
+            InputManager.mouseOffscreen := true;
+          SDL_WINDOWEVENT_ENTER:
+            begin
+              InputManager.mouseOffscreen := false;
+              InputManager.mouseLocation := CanvasMousePosition(event.GetMouseLocation);
+            end;
+        end;
+      end;
+    SDL_MOUSEWHEEL:
+      begin
+        InputManager.mouseLocation := CanvasMousePosition(event.GetMouseLocation);
+      end;
+    SDL_MOUSEBUTTONDOWN:
+      begin
+        InputManager.mouseDownLocation := InputManager.mouseLocation;
+        InputManager.leftMouseDown := event.button.button = SDL_BUTTON_LEFT;
+        InputManager.rightMouseDown := event.button.button = SDL_BUTTON_RIGHT;
+        //InputManager.shiftState := event^.params.mouse.shiftstate;
+      end;
+    SDL_MOUSEMOTION:
+      begin
+        //InputManager.mouseOffscreen := false;
+        InputManager.mouseLocation := CanvasMousePosition(event.GetMouseLocation);
+      end;
+    SDL_KEYUP:
+      begin
+        InputManager.keyDown[event.key.keysym.scancode] := false;
+        //InputManager.shiftState := event^.params.keyboard.shiftstate;
+      end;
+    SDL_KEYDOWN:
+      begin
+        InputManager.keyDown[event.key.keysym.scancode] := true;
+        //InputManager.shiftState := event^.params.keyboard.shiftstate;
+      end;
+  end;
+end;
+
+function SDL_Event_Helper.GetMouseLocation: TVec2i;
+begin
+  result := V2(motion.x, motion.y);
+end;
+{$endif}
+
+
+{$ifdef PLATFORM_GLPT}
 procedure PollSystemInput(event: pGLPT_MessageRec);
 begin
   case event^.mcode of
@@ -158,12 +254,12 @@ begin
     GLPT_MESSAGE_MOUSEENTER:
       begin
         InputManager.mouseOffscreen := false;
-        InputManager.mouseLocation := CanvasMousePosition(event);;
+        InputManager.mouseLocation := CanvasMousePosition(event.GetMouseLocation);
         InputManager.shiftState := event^.params.mouse.shiftstate;
       end;
     GLPT_MESSAGE_SCROLL:
       begin
-        InputManager.mouseLocation := CanvasMousePosition(event);
+        InputManager.mouseLocation := CanvasMousePosition(event.GetMouseLocation);
       end;
     GLPT_MESSAGE_MOUSEDOWN:
       begin
@@ -175,7 +271,7 @@ begin
     GLPT_MESSAGE_MOUSEMOVE:
       begin
         //InputManager.mouseOffscreen := false;
-        InputManager.mouseLocation := CanvasMousePosition(event);
+        InputManager.mouseLocation := CanvasMousePosition(event.GetMouseLocation);
       end;
     GLPT_MESSAGE_KEYRELEASE:
       begin
@@ -191,5 +287,10 @@ begin
   end;
 end; 
 
+function TGLPT_MessageRec_Helper.GetMouseLocation: TVec2i;
+begin
+  result := V2i(params.mouse.x, params.mouse.y);
+end;
+{$endif}
 
 {$endif}
