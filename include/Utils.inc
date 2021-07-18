@@ -7,16 +7,32 @@ function FRand(min, max: single; decimal: integer): single;
 function Rand(min, max: longint): longint;
 function Rand(max: longint): longint;
 function RandBool(probability: single = 0.5): boolean;
-function TimeSinceNow: longint;
+function GetTicks: longint;
+function GetTime: double;
 
 {$endif}
 
 {$ifdef IMPLEMENTATION}
 
-function TimeSinceNow: longint;
+function GetTicks: longint;
 begin
+  {$ifdef PLATFORM_SDL}
+  result := SDL_GetTicks;
+  {$endif}
+  {$ifdef PLATFORM_GLPT}
   result := round(GLPT_GetTime * 1000);
-end;    
+  {$endif}
+end;
+
+function GetTime: double;
+begin
+  {$ifdef PLATFORM_SDL}
+  result := SDL_GetTicks / 1000;
+  {$endif}
+  {$ifdef PLATFORM_GLPT}
+  result := GLPT_GetTime;
+  {$endif}
+end;
 
 { Returns a number larger or equal to 'min' and less than or equal to 'max'. }
 

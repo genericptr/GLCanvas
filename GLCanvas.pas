@@ -14,6 +14,14 @@
 
 {$include include/targetos.inc}
 
+{$if not defined(PLATFORM_SDL) and not defined(PLATFORM_GLPT) }
+  {$define PLATFORM_GLPT}
+{$endif}
+
+{$ifdef PLATFORM_SDL}
+{$linklib libSDL2.dylib}
+{$endif}
+
 unit GLCanvas;
 interface
 uses
@@ -25,7 +33,14 @@ uses
   {$endif}
   Contnrs, FGL, Classes, Math,
   BeRoPNG, VectorMath, GeometryTypes,
-  GLVertexBuffer, GLFrameBuffer, GLShader, GLPT, GLPT_Threads;
+  GLVertexBuffer, GLFrameBuffer, GLShader,
+  {$ifdef PLATFORM_GLPT}
+  GLPT, GLPT_Threads
+  {$endif}
+  {$ifdef PLATFORM_SDL}
+  SDL
+  {$endif}
+  ;
 
 {$scopedenums on}
 
@@ -38,6 +53,7 @@ uses
 {$include include/BitmapFont.inc}
 {$include include/Utils.inc}
 {$include include/Input.inc}
+{$include include/Shaders.inc}
 {$undef INTERFACE}
 
 type
@@ -51,12 +67,20 @@ const
   DefaultCanvasOptions = [TCanvasOption.VSync];
 
 { Window }
+{$ifdef PLATFORM_SDL}
+type
+  SDL_EventCallback = procedure(event: PSDL_Event);
+
+procedure SetupCanvas(width, height: integer; eventCallback: SDL_EventCallback = nil; options: TCanvasOptions = DefaultCanvasOptions); 
+{$endif}
+{$ifdef PLATFORM_GLPT}
 procedure SetupCanvas(width, height: integer; eventCallback: GLPT_EventCallback = nil; options: TCanvasOptions = DefaultCanvasOptions); 
+{$endif}
 function IsRunning: boolean;
 procedure QuitApp;
 
 { Input }
-function CanvasMousePosition(event: pGLPT_MessageRec): TVec2i;
+function CanvasMousePosition(mouse: TVec2i): TVec2i;
 
 { Shapes }
 procedure FillRect(constref rect: TRect; constref color: TColor);
@@ -83,7 +107,9 @@ procedure DrawTexture(texture: ITexture; constref rect: TRect); overload; inline
 procedure DrawTexture(texture: ITexture; constref rect: TRect; constref textureFrame: TRect); overload;
 procedure DrawTexture(texture: ITexture; constref rect: TRect; constref textureFrame: TRect; constref color: TVec4); overload;
 procedure DrawTexture(texture: ITexture; constref rect: TRect; constref color: TVec4); overload; inline;
+procedure DrawTexture(texture: ITexture; quad: TDefaultVertexQuad); inline;
 
+procedure DrawQuad(constref quad: TDefaultVertexQuad); inline;
 procedure DrawTiledTexture(texture: TTexture; rect: TRect);
 
 { Text }
@@ -137,7 +163,10 @@ procedure SetViewPort(rect: TRect); overload;
 procedure SetViewPort(offsetX, offsetY, inWidth, inHeight: integer); overload;
 procedure SetViewPort(inWidth, inHeight: integer); overload;
 function GetViewPort: TRect; inline;
+
+{ Window }
 function GetWindowSize: TVec2i;
+procedure SetWindowTitle(title: string);
 
 { Display }
 function GetDisplaySize: TVec2i;
@@ -161,7 +190,18 @@ type
       frameCount: longint;
       fps: longint;
     public
+      {$ifdef PLATFORM_SDL}
+      window: PSDL_Window;
+      context: PSDL_GLContext;
+      eventCallback: SDL_EventCallback;
+      wantsClose: boolean;
+      {$endif}
+
+      {$ifdef PlATFORM_GLPT}
       window: PGLPTWindow;          // reference to the GLPT window
+      context: GLPT_Context;
+      {$endif}
+
       activeFont: IFont;            // default font for DrawText(...) if no font is specified
       clearColor: TColor;           // color used for ClearBackground 
       bindTextureCount: longint;    // count of bind texture calls for each SwapBuffers call
@@ -178,6 +218,7 @@ type
       procedure FlushDrawing; virtual;
       procedure SwapBuffers; virtual;
       procedure ClearBackground; virtual;
+      procedure FinalizeSetup;
   end;
 
 var
@@ -208,137 +249,12 @@ var
 {$include include/BitmapFont.inc}
 {$include include/Utils.inc}
 {$include include/Input.inc}
+{$include include/Shaders.inc}
 {$undef IMPLEMENTATION}
 
 const
   TWOPI = 3.14159 * 2;
 
-{ Types }
-type
-  TDefaultVertex = record
-    pos: TVec2;
-    texCoord: TVec2;
-    color: TVec4;
-    uv: byte;
-    constructor Create(inPos: TVec2; inTexCoord: TVec2; inColor: TVec4; inUV: byte);
-    class operator = (constref a, b: TDefaultVertex): boolean;
-    function Compare(constref right: TDefaultVertex): integer;
-  end;
-
-constructor TDefaultVertex.Create(inPos: TVec2; inTexCoord: TVec2; inColor: TVec4; inUV: byte);
-begin
-  pos := inPos;
-  texCoord := inTexCoord;
-  color := inColor;
-  uv := inUV;
-end;
-
-function TDefaultVertex.Compare(constref right: TDefaultVertex): integer;
-begin
-  result := 0;
-end;
-
-class operator TDefaultVertex.= (constref a, b: TDefaultVertex): boolean;
-begin
-  result := true;
-end;
-
-{ Quads }
-type
-  generic TTexturedQuad<T> = record
-    v: array[0..5] of T;
-    procedure SetPosition(minX, minY, maxX, maxY: single); inline;
-    procedure SetPosition(constref rect: TRect);
-    procedure SetColor(r, g, b, a: single); inline;
-    procedure SetTexture(rect: TRect); inline;
-    procedure SetUV(id: byte); inline;
-    procedure Transform(constref mat: TMat4); inline;
-  end;
-
-procedure TTexturedQuad.Transform(constref mat: TMat4); 
-begin
-  v[0].pos := mat * v[0].pos;
-  v[1].pos := mat * v[1].pos;
-  v[2].pos := mat * v[2].pos;
-  v[3].pos := mat * v[3].pos;
-  v[4].pos := mat * v[4].pos;
-  v[5].pos := mat * v[5].pos;
-end;
-
-procedure TTexturedQuad.SetPosition(constref rect: TRect);
-begin
-  v[0].pos.x := rect.MinX;
-  v[0].pos.y := rect.MinY;
-  v[1].pos.x := rect.MaxX;
-  v[1].pos.y := rect.MinY; 
-  v[2].pos.x := rect.MinX;
-  v[2].pos.y := rect.MaxY; 
-  v[3].pos.x := rect.MinX;
-  v[3].pos.y := rect.MaxY; 
-  v[4].pos.x := rect.MaxX;
-  v[4].pos.y := rect.MaxY; 
-  v[5].pos.x := rect.MaxX;
-  v[5].pos.y := rect.MinY; 
-end;
-
-procedure TTexturedQuad.SetPosition(minX, minY, maxX, maxY: single);
-begin
-  v[0].pos.x := minX;
-  v[0].pos.y := minY;
-  v[1].pos.x := maxX;
-  v[1].pos.y := minY;
-  v[2].pos.x := minX;
-  v[2].pos.y := maxY;
-  v[3].pos.x := minX;
-  v[3].pos.y := maxY;
-  v[4].pos.x := maxX;
-  v[4].pos.y := maxY;
-  v[5].pos.x := maxX;
-  v[5].pos.y := minY;
-end;
-
-procedure TTexturedQuad.SetColor(r, g, b, a: single);
-begin
-  v[0].color := RGBA(r, g, b, a);
-  v[1].color := RGBA(r, g, b, a);
-  v[2].color := RGBA(r, g, b, a);
-  v[3].color := RGBA(r, g, b, a);
-  v[4].color := RGBA(r, g, b, a);
-  v[5].color := RGBA(r, g, b, a);
-end;
-
-procedure TTexturedQuad.SetTexture(rect: TRect);
-begin
-  v[0].texCoord.x := rect.MinX;
-  v[0].texCoord.y := rect.MinY;
-  v[1].texCoord.x := rect.MaxX;
-  v[1].texCoord.y := rect.MinY; 
-  v[2].texCoord.x := rect.MinX;
-  v[2].texCoord.y := rect.MaxY; 
-  v[3].texCoord.x := rect.MinX;
-  v[3].texCoord.y := rect.MaxY; 
-  v[4].texCoord.x := rect.MaxX;
-  v[4].texCoord.y := rect.MaxY; 
-  v[5].texCoord.x := rect.MaxX;
-  v[5].texCoord.y := rect.MinY; 
-end;
-
-procedure TTexturedQuad.SetUV(id: byte);
-begin
-  v[0].uv := id;
-  v[1].uv := id;
-  v[2].uv := id;
-  v[3].uv := id;
-  v[4].uv := id;
-  v[5].uv := id;
-end;
-
-type
-  TDefaultVertexQuad = specialize TTexturedQuad<TDefaultVertex>;
-  TDefaultVertexList = specialize TFPGList<TDefaultVertex>;
-  TDefaultVertexBuffer = specialize TVertexBuffer<TDefaultVertex>;
-
-{$include include/Shaders.inc}
 
 { Globals }
 type
@@ -348,14 +264,19 @@ type
   end;
 
 var
-  context: GLPT_Context;
   defaultShader: TShader = nil;
   vertexBuffer: TDefaultVertexBuffer = nil;
   drawState: TGLDrawState;
 
 function IsRunning: boolean;
 begin
+  {$ifdef PLATFORM_SDL}
+  result := not CanvasState.wantsClose;
+  {$endif}
+
+  {$ifdef PlATFORM_GLPT}
   result := not GLPT_WindowShouldClose(CanvasState.window);
+  {$endif}
 end;
 
 procedure error_callback(error: integer; description: string);
@@ -519,11 +440,42 @@ begin
   defaultShader.SetUniformInts('textures', DefaultTextureUnits);
 end;
 
-function GetWindowSize: TVec2i;
+procedure SetWindowTitle(title: string);
 begin
-  GLPT_GetFrameBufferSize(CanvasState.window, result.x, result.y);
+  {$ifdef PLATFORM_SDL}
+  title := title+#0;
+  SDL_SetWindowTitle(CanvasState.window, @title[1]);
+  {$endif}
+
+  {$ifdef PlATFORM_GLPT}
+  CanvasState.window^.ref.setTitle(NSSTR(title));
+  {$endif}
 end;
 
+function GetWindowSize: TVec2i;
+begin
+  {$ifdef PLATFORM_SDL}
+  SDL_GetWindowSize(CanvasState.window, result.x, result.y);
+  {$endif}
+
+  {$ifdef PlATFORM_GLPT}
+  GLPT_GetFrameBufferSize(CanvasState.window, result.x, result.y);
+  {$endif}
+end;
+
+
+{$ifdef PLATFORM_SDL}
+function GetDisplaySize: TVec2i;
+var
+  rect: TSDL_Rect;
+begin
+  SDL_GetDisplayBounds(SDL_GetWindowDisplayIndex(CanvasState.window), rect);
+  result.width := rect.w;
+  result.height := rect.h;
+end;
+{$endif}
+
+{$ifdef PlATFORM_GLPT}
 function GetDisplaySize: TVec2i;
 var
   displayCoords: GLPTRect;
@@ -532,6 +484,8 @@ begin
   result.width := displayCoords.right - displayCoords.left;
   result.height := displayCoords.bottom - displayCoords.top;
 end;
+{$endif}
+
 
 function GetDefaultShaderAttributes: TVertexAttributes;
 begin
@@ -561,8 +515,15 @@ end;
 
 procedure QuitApp;
 begin
+  {$ifdef PLATFORM_SDL}
+  SDL_DestroyWindow(CanvasState.window);
+  SDL_Quit;
+  {$endif}
+
+  {$ifdef PlATFORM_GLPT}
   GLPT_DestroyWindow(CanvasState.window);
   GLPT_Terminate;
+  {$endif}
 end;
 
 procedure ChangePrimitiveType(typ: GLint); 
@@ -844,6 +805,12 @@ begin
   result := TTexturePack.Create(path);
 end;
 
+procedure DrawQuad(constref quad: TDefaultVertexQuad);
+begin
+  ChangePrimitiveType(GL_TRIANGLES);
+  vertexBuffer.Add(quad.v);
+end;
+
 procedure DrawTexture(texture: ITexture; constref rect: TRect; constref textureFrame: TRect; constref color: TVec4);
 var
   quad: TDefaultVertexQuad;
@@ -862,6 +829,14 @@ begin
   if CanvasState.modelTransformStack.Count > 0 then
     quad.Transform(CanvasState.modelTransformStack.Last);
 
+  vertexBuffer.Add(quad.v);
+end;
+
+procedure DrawTexture(texture: ITexture; quad: TDefaultVertexQuad);
+begin
+  Assert(texture <> nil, 'texture must not be nil');
+  quad.SetUV(PushTexture(texture));
+  ChangePrimitiveType(GL_TRIANGLES);
   vertexBuffer.Add(quad.v);
 end;
 
@@ -978,47 +953,6 @@ begin
     end;
 end;
 
-
-procedure TCanvasState.FlushDrawing;
-begin
-  if not assigned(vertexBuffer) or (vertexBuffer.Count = 0) then
-    exit;
-  //Assert(ShaderStack.Last = defaultShader, 'active shader must be default.');
-  drawCalls += 1;
-  vertexBuffer.Draw(drawState.bufferPrimitiveType);
-  vertexBuffer.Clear;
-end;
-
-procedure TCanvasState.SwapBuffers;
-var
-  now: double;
-begin
-  self.FlushDrawing;
-  GLPT_SwapBuffers(window);
-  GLPT_PollEvents;
-
-  now := GLPT_GetTime;
-  deltaTime := now - lastFrameTime;
-  lastFrameTime := now;
-  drawCalls := 0;
-  bindTextureCount := 0;
-
-  inc(totalFrameCount);
-  inc(frameCount);
-
-  if now - sampleTime > 1.0 then
-    begin
-      fps := frameCount;
-      sampleTime := now;
-      frameCount := 0;
-    end;
-end;
-
-procedure TCanvasState.ClearBackground;
-begin
-  glClear(GL_COLOR_BUFFER_BIT);
-end;
-
 procedure ClearBackground;
 begin
   CanvasState.ClearBackground;
@@ -1047,9 +981,9 @@ begin
     result.Pop;
 end;
 
-function CanvasMousePosition(event: pGLPT_MessageRec): TVec2i;
+function CanvasMousePosition(mouse: TVec2i): TVec2i;
 begin
-  result := V2i(event^.params.mouse.x, event^.params.mouse.y);
+  result := mouse;
   result -= CanvasState.viewport.origin;
   result /= CanvasState.viewPortRatio;
 end;
@@ -1060,7 +994,13 @@ const
 var
   name: string;
 begin
+  {$ifdef PLATFORM_SDL}
+  result := SDL_GetBasePath;
+  {$endif}
+
+  {$ifdef PlATFORM_GLPT}
   result := GLPT_GetBasePath;
+  {$endif}
 
   // if the base path is the correct location then force the change
   name := ExtractFileName(ExcludeTrailingPathDelimiter(result));
@@ -1074,16 +1014,181 @@ begin
     end;
 end;
 
+procedure TCanvasState.FlushDrawing;
+begin
+  if not assigned(vertexBuffer) or (vertexBuffer.Count = 0) then
+    exit;
+  //Assert(ShaderStack.Last = defaultShader, 'active shader must be default.');
+  drawCalls += 1;
+  vertexBuffer.Draw(drawState.bufferPrimitiveType);
+  vertexBuffer.Clear;
+end;
+
+procedure TCanvasState.SwapBuffers;
+var
+  now: double;
+  {$ifdef PLATFORM_SDL}
+  event: TSDL_Event;
+  {$endif}
+begin
+  self.FlushDrawing;
+
+  {$ifdef PLATFORM_SDL}
+  SDL_GL_SwapWindow(window);
+  SDL_PollEvent(event);
+  case event.type_ of
+    SDL_QUIT_EVENT:
+      wantsClose := true;
+    SDL_WINDOW_EVENT:
+      begin
+        case event.window.event of
+          SDL_WINDOWEVENT_CLOSE:
+            wantsClose := true;
+          SDL_WINDOWEVENT_RESIZED:
+            ;//Reshape(event.window.data1, event.window.data2);
+        end;
+      end;
+  end;
+  PollSystemInput(@event);
+  if eventCallback <> nil then
+    eventCallback(@event);
+  {$endif}
+
+  {$ifdef PlATFORM_GLPT}
+  GLPT_SwapBuffers(window);
+  GLPT_PollEvents;
+  // TODO: return message from GLPT_PollEvents and send to PollSystemInput
+  {$endif}
+
+  now := GetTime;
+
+  deltaTime := now - lastFrameTime;
+  lastFrameTime := now;
+  drawCalls := 0;
+  bindTextureCount := 0;
+
+  inc(totalFrameCount);
+  inc(frameCount);
+
+  if now - sampleTime > 1.0 then
+    begin
+      fps := frameCount;
+      sampleTime := now;
+      frameCount := 0;
+    end;
+end;
+
+procedure TCanvasState.ClearBackground;
+begin
+  glClear(GL_COLOR_BUFFER_BIT);
+end;
+
+procedure TCanvasState.FinalizeSetup;
+var
+  windowSize: TVec2i;
+begin
+  {$ifdef API_OPENGL}
+  if not Load_GL_VERSION_3_2 then
+    Halt(-1);
+  {$endif}
+
+  writeln('OpenGL version: ', glGetString(GL_VERSION));
+  {$ifdef PLATFORM_GLPT}
+  writeln('GLPT version: ', GLPT_GetVersionString);
+  {$endif}
+  {$ifdef PLATFORM_SDL}
+  writeln('SDL version: ???');
+  {$endif}
+  writeln('Maximum Texture Units: ', GetMaximumTextureUnits);
+  writeln('Maximum Texture Size: ', GetMaximumTextureSize);
+  writeln('Maximum Verticies: ', GetMaximumVerticies);
+
+  // the default shader imposes a texture limit we must follow
+  SetMaximumTextureUnits(DEFAULT_SHADER_TEXTURE_UNITS);
+
+  // note: clear an opengl error
+  glGetError();
+
+  // set the view port to the actual size of the window
+  windowSize := GetWindowSize;
+  SetViewPort(0, 0, windowSize.width, windowSize.height);
+
+  glClearColor(1, 1, 1, 1);
+  glEnable(GL_BLEND);
+  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+  glDisable(GL_DEPTH_TEST);
+
+  clipRectStack := TRectList.Create;
+  viewTransformStack := TMat4List.Create;
+  modelTransformStack := TMat4List.Create;
+
+  viewPortRatio := V2(1, 1);
+  projTransform := TMat4.Ortho(0, windowSize.width, windowSize.height, 0, -MaxInt, MaxInt);
+  viewTransform := TMat4.Identity;
+
+  vertexBuffer := TDefaultVertexBuffer.Create([TVertexAttribute.Create('position', GL_FLOAT, 2),
+                                               TVertexAttribute.Create('inTexCoord', GL_FLOAT, 2),
+                                               TVertexAttribute.Create('inColor', GL_FLOAT, 4),
+                                               TVertexAttribute.Create('inUV', GL_UNSIGNED_BYTE, 1)
+                                               ]);
+  
+  defaultShader := CreateShader(DefaultVertexShader, DefaultFragmentShader);
+end;
+
+{$ifdef PLATFORM_SDL}
+procedure SetupCanvas(width, height: integer; eventCallback: SDL_EventCallback; options: TCanvasOptions); 
+begin
+  if SDL_Init(SDL_INIT_VIDEO) < 0 then
+    begin
+      writeln('SDL could not initialize! ',SDL_GetError);
+      Halt(-1);
+    end;
+
+  SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
+  SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
+  SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
+  SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
+
+  // allocate the default canvas
+  if CanvasState = nil then
+    CanvasState := TCanvasState.Create;
+  
+  CanvasState.eventCallback := eventCallback;
+
+  with CanvasState do
+    begin
+      window := SDL_CreateWindow('', SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, width, height, SDL_WINDOW_SHOWN + SDL_WINDOW_OPENGL);
+      if window = nil then
+        begin
+          writeln('Window could not be created! ', SDL_GetError);
+          Halt(-1);
+        end
+      else
+        begin
+          context := SDL_GL_CreateContext(window);
+          SDL_GL_MakeCurrent(window, context);
+          if TCanvasOption.VSync in options then
+            SDL_GL_SetSwapInterval(1)
+          else
+            SDL_GL_SetSwapInterval(0);
+        end;
+
+      FinalizeSetup;
+    end;
+end;
+{$endif}
+
+{$ifdef PlATFORM_GLPT}
 procedure SetupCanvas(width, height: integer; eventCallback: GLPT_EventCallback; options: TCanvasOptions); 
 var
   flags: longint;
   displayCoords: GLPTRect;
+  windowSize: TVec2i;
 begin
   GLPT_SetErrorCallback(@error_callback);
 
   if not GLPT_Init then
     halt(-1);
-
 
   if TCanvasOption.WaitForEvents in options then
     begin
@@ -1098,10 +1203,6 @@ begin
 
   with CanvasState do
     begin
-      clipRectStack := TRectList.Create;
-      viewTransformStack := TMat4List.Create;
-      modelTransformStack := TMat4List.Create;
-
       context := GLPT_GetDefaultContext;
       {$ifdef API_OPENGL}
       context.majorVersion := 3;
@@ -1144,49 +1245,10 @@ begin
 
       window^.event_callback := eventCallback;
 
-      {$ifdef API_OPENGL}
-      if not Load_GL_VERSION_3_2 then
-        Halt(-1);
-      {$endif}
-
-      writeln('OpenGL version: ', glGetString(GL_VERSION));
-      writeln('GLPT version: ', GLPT_GetVersionString);
-      writeln('Maximum Texture Units: ', GetMaximumTextureUnits);
-      writeln('Maximum Texture Size: ', GetMaximumTextureSize);
-      writeln('Maximum Verticies: ', GetMaximumVerticies);
-
-      // the default shader imposes a texture limit we must follow
-      SetMaximumTextureUnits(DEFAULT_SHADER_TEXTURE_UNITS);
-
-      // note: clear an opengl error
-      glGetError();
-
-      // set the view port to the actual size of the window
-      GLPT_GetFrameBufferSize(window, width, height);
-      SetViewPort(0, 0, width, height);
-
-      glClearColor(1, 1, 1, 1);
-      glEnable(GL_BLEND);
-      glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-      glDisable(GL_DEPTH_TEST);
-
-      with CanvasState do
-        begin
-          viewPortRatio := V2(1, 1);
-          projTransform := TMat4.Ortho(0, width, height, 0, -MaxInt, MaxInt);
-          viewTransform := TMat4.Identity;
-
-          vertexBuffer := TDefaultVertexBuffer.Create([TVertexAttribute.Create('position', GL_FLOAT, 2),
-                                                       TVertexAttribute.Create('inTexCoord', GL_FLOAT, 2),
-                                                       TVertexAttribute.Create('inColor', GL_FLOAT, 4),
-                                                       TVertexAttribute.Create('inUV', GL_UNSIGNED_BYTE, 1)
-                                                       ]);
-          
-          defaultShader := CreateShader(DefaultVertexShader, DefaultFragmentShader);
-        end;
+      FinalizeSetup;
     end;
 end;
-
+{$endif}
 
 begin
   DefaultTextureColor := RGBA(1, 1, 1, 1);
