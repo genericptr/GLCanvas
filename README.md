@@ -36,6 +36,7 @@ end.
  - Frame buffers (optional)
  - GLUI for many common UI elements like windows, buttons etc...
 
-### ⛓ Dependancies:
+### Platforms:
 
- - [GLPT](https://github.com/genericptr/GLPT) for the platform layer (windows + events).
+ - [GLPT](https://github.com/genericptr/GLPT) enable using `-dPLATFORM_GLPT` (GLPT is the default platform)
+ - [SDL](https://github.com/libsdl-org/SDL) enable using `-dPLATFORM_SDL`
