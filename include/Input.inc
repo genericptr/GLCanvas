@@ -42,9 +42,6 @@ type
 type
   TGLPT_MessageRec_Helper = record helper for GLPT_MessageRec
     function GetMouseLocation: TVec2i;
-    function ScrollDeltaY: Float;
-    function Keycode: TKeyCode;
-    function Scancode: TScanCode;
   end;
 
 {$endif}

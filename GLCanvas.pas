@@ -136,6 +136,7 @@ procedure PopClipRect;
 function CreateShader(vertexSource, fragmentSource: pchar): TShader;
 
 { Buffers }
+function CreateVertexBuffer: TDefaultVertexBuffer;
 procedure FlushDrawing; inline;
 procedure SwapBuffers; inline;
 procedure ClearBackground;
@@ -204,6 +205,8 @@ type
 
       activeFont: IFont;            // default font for DrawText(...) if no font is specified
       clearColor: TColor;           // color used for ClearBackground 
+      bufferPrimitiveType: GLint;
+      lineWidth: single;
       bindTextureCount: longint;    // count of bind texture calls for each SwapBuffers call
       drawCalls: longint;           // count of FlushDrawing calls for each SwapBuffers call
       deltaTime: double;            // elapsed time since last SwapBuffers
@@ -257,16 +260,10 @@ const
 
 
 { Globals }
-type
-  TGLDrawState = record
-    bufferPrimitiveType: GLint;
-    lineWidth: single;
-  end;
 
 var
-  defaultShader: TShader = nil;
-  vertexBuffer: TDefaultVertexBuffer = nil;
-  drawState: TGLDrawState;
+  DefaultShader: TShader = nil;
+  VertexBuffer: TDefaultVertexBuffer = nil;
 
 function IsRunning: boolean;
 begin
@@ -299,8 +296,8 @@ end;
 procedure SetProjectionTransform(constref mat: TMat4);
 begin
   CanvasState.projTransform := mat;
-  Assert(ShaderStack.Last = defaultShader, 'active shader must be default.');
-  defaultShader.SetUniformMat4('projTransform', CanvasState.projTransform);
+  Assert(ShaderStack.Last = DefaultShader, 'active shader must be default.');
+  DefaultShader.SetUniformMat4('projTransform', CanvasState.projTransform);
 end;
 
 procedure SetProjectionTransform(x, y, width, height: integer);
@@ -311,8 +308,8 @@ end;
 procedure SetViewTransform(constref mat: TMat4);
 begin
   CanvasState.viewTransform := mat;
-  Assert(ShaderStack.Last = defaultShader, 'active shader must be default.');
-  defaultShader.SetUniformMat4('viewTransform', CanvasState.viewTransform);
+  Assert(ShaderStack.Last = DefaultShader, 'active shader must be default.');
+  DefaultShader.SetUniformMat4('viewTransform', CanvasState.viewTransform);
 end;
 
 procedure SetViewTransform(x, y, scale: single);
@@ -405,9 +402,9 @@ begin
   CanvasState.projTransform := TMat4.Ortho(0, width, height, 0, -MaxInt, MaxInt);
   CanvasState.viewTransform := TMat4.Identity;
 
-  defaultShader.SetUniformMat4('projTransform', CanvasState.projTransform);
-  defaultShader.SetUniformMat4('viewTransform', CanvasState.viewTransform);
-  defaultShader.SetUniformInts('textures', DefaultTextureUnits);
+  DefaultShader.SetUniformMat4('projTransform', CanvasState.projTransform);
+  DefaultShader.SetUniformMat4('viewTransform', CanvasState.viewTransform);
+  DefaultShader.SetUniformInts('textures', DefaultTextureUnits);
 
   SetViewPort(width, height);
 end;
@@ -435,9 +432,9 @@ begin
 
   CanvasState.viewTransform := TMat4.Identity;
 
-  defaultShader.SetUniformMat4('projTransform', CanvasState.projTransform);
-  defaultShader.SetUniformMat4('viewTransform', CanvasState.viewTransform);
-  defaultShader.SetUniformInts('textures', DefaultTextureUnits);
+  DefaultShader.SetUniformMat4('projTransform', CanvasState.projTransform);
+  DefaultShader.SetUniformMat4('viewTransform', CanvasState.viewTransform);
+  DefaultShader.SetUniformInts('textures', DefaultTextureUnits);
 end;
 
 procedure SetWindowTitle(title: string);
@@ -448,7 +445,7 @@ begin
   {$endif}
 
   {$ifdef PlATFORM_GLPT}
-  CanvasState.window^.ref.setTitle(NSSTR(title));
+  //CanvasState.window^.ref.setTitle(NSSTR(title));
   {$endif}
 end;
 
@@ -489,12 +486,12 @@ end;
 
 function GetDefaultShaderAttributes: TVertexAttributes;
 begin
-  result := vertexBuffer.attributes;
+  result := VertexBuffer.attributes;
 end;
 
 function IsVertexBufferEmpty: boolean;
 begin
-  result := vertexBuffer.Count = 0;
+  result := VertexBuffer.Count = 0;
 end;
 
 procedure SetClearColor(color: TColor); 
@@ -528,9 +525,9 @@ end;
 
 procedure ChangePrimitiveType(typ: GLint); 
 begin
-  if (vertexBuffer.Count > 0) and (drawState.bufferPrimitiveType <> typ) then
+  if (VertexBuffer.Count > 0) and (CanvasState.bufferPrimitiveType <> typ) then
     FlushDrawing;
-  drawState.bufferPrimitiveType := typ;
+  CanvasState.bufferPrimitiveType := typ;
 end;
 
 procedure FillOval(constref rect: TRect; constref color: TColor; segments: single = 32); 
@@ -549,7 +546,7 @@ begin
   
   while t <= TWOPI do
     begin
-      vertexBuffer.Add(TDefaultVertex.Create(V2(w * Cos(t) + x, h * Sin(t) + y), V2(0, 0), color, 255));
+      VertexBuffer.Add(TDefaultVertex.Create(V2(w * Cos(t) + x, h * Sin(t) + y), V2(0, 0), color, 255));
       t += TWOPI/segments;
     end;
 
@@ -567,11 +564,11 @@ begin
   ChangePrimitiveType(GL_LINE_LOOP);
 
   {$ifdef GL_LINE_WIDTH}
-  if drawState.lineWidth <> lineWidth then
+  if CanvasState.lineWidth <> lineWidth then
     begin
-      Assert(vertexBuffer.Count = 0, 'must flush drawing before changing line width');
+      Assert(VertexBuffer.Count = 0, 'must flush drawing before changing line width');
       glLineWidth(lineWidth);
-      drawState.lineWidth := lineWidth;
+      CanvasState.lineWidth := lineWidth;
     end;
   {$endif}
   
@@ -587,7 +584,7 @@ begin
 
   while t <= TWOPI do
     begin
-      vertexBuffer.Add(TDefaultVertex.Create(V2(w * Cos(t) + x, h * Sin(t) + y), texCoord, color, 255));
+      VertexBuffer.Add(TDefaultVertex.Create(V2(w * Cos(t) + x, h * Sin(t) + y), texCoord, color, 255));
       t += s;
     end;
 
@@ -620,7 +617,7 @@ procedure FillPolygon(points: array of TVec2; constref color: TColor);
     if CanvasState.modelTransformStack.Count > 0 then
       quad.Transform(CanvasState.modelTransformStack.Last);
 
-    vertexBuffer.Add(quad.v);
+    VertexBuffer.Add(quad.v);
   end;
 
 var
@@ -636,7 +633,7 @@ begin
   ChangePrimitiveType(GL_TRIANGLE_FAN);
 
   for i := 0 to high(points) do
-    vertexBuffer.Add(TDefaultVertex.Create(points[i], 0, color, 255));
+    VertexBuffer.Add(TDefaultVertex.Create(points[i], 0, color, 255));
 
   // TODO: we don't need to flush each time
   // https://stackoverflow.com/questions/31723405/line-graph-with-gldrawarrays-and-gl-line-strip-from-vector
@@ -652,7 +649,7 @@ begin
   else  
     ChangePrimitiveType(GL_LINES);
   for i := 0 to high(points) do
-    vertexBuffer.Add(TDefaultVertex.Create(points[i], V2(0, 0), color, 255));
+    VertexBuffer.Add(TDefaultVertex.Create(points[i], V2(0, 0), color, 255));
   // TODO: we don't need to flush each time
   FlushDrawing;
 end;
@@ -660,7 +657,7 @@ end;
 procedure DrawPoint(constref point: TVec2; constref color: TColor);
 begin
   ChangePrimitiveType(GL_POINTS);
-  vertexBuffer.Add(TDefaultVertex.Create(point, V2(0, 0), color, 255));
+  VertexBuffer.Add(TDefaultVertex.Create(point, V2(0, 0), color, 255));
   // TODO: we don't need to flush each time
   FlushDrawing;
 end;
@@ -696,10 +693,10 @@ begin
           // connect points between segments
           //if (i mod 2 = 0) and (i > 0) then
           //  begin
-          //    vertexBuffer.Add(TDefaultVertex.Create(points[i - 1], V2(0, 0), V4(0, 0, 0, 1), 255));
-          //    vertexBuffer.Add(TDefaultVertex.Create(points[i], V2(0, 0), V4(0, 0, 0, 1), 255));
+          //    VertexBuffer.Add(TDefaultVertex.Create(points[i - 1], V2(0, 0), V4(0, 0, 0, 1), 255));
+          //    VertexBuffer.Add(TDefaultVertex.Create(points[i], V2(0, 0), V4(0, 0, 0, 1), 255));
           //  end;
-          vertexBuffer.Add(TDefaultVertex.Create(points[i], V2(0, 0), color, 255));
+          VertexBuffer.Add(TDefaultVertex.Create(points[i], V2(0, 0), color, 255));
         end;
     end
   else if thickness > 1 then
@@ -727,13 +724,13 @@ begin
           v[2] := TDefaultVertex.Create(points[i + 1] + n.Rotate(a + PI * 0.25) * r, V2(0, 0), color, 255);
           v[3] := TDefaultVertex.Create(points[i + 1] + n.Rotate(a + PI * 1.25) * r, V2(0, 0), color, 255);
 
-          vertexBuffer.Add(v[0]);
-          vertexBuffer.Add(v[1]);
-          vertexBuffer.Add(v[3]);
+          VertexBuffer.Add(v[0]);
+          VertexBuffer.Add(v[1]);
+          VertexBuffer.Add(v[3]);
 
-          vertexBuffer.Add(v[3]);
-          vertexBuffer.Add(v[2]);
-          vertexBuffer.Add(v[0]);
+          VertexBuffer.Add(v[3]);
+          VertexBuffer.Add(v[2]);
+          VertexBuffer.Add(v[0]);
 
           i += 2;
         end;
@@ -753,7 +750,7 @@ begin
   if CanvasState.modelTransformStack.Count > 0 then
     quad.Transform(CanvasState.modelTransformStack.Last);
 
-  vertexBuffer.Add(quad.v);
+  VertexBuffer.Add(quad.v);
 end;
 
 procedure StrokeRect(constref rect: TRect; constref color: TColor; lineWidth: single = 1.0);
@@ -766,19 +763,19 @@ begin
   // TODO: line width doesn't work now???
   // https://stackoverflow.com/questions/3484260/opengl-line-width
   {$ifdef GL_LINE_WIDTH}
-  if drawState.lineWidth <> lineWidth then
+  if CanvasState.lineWidth <> lineWidth then
     begin
-      Assert(vertexBuffer.Count = 0, 'must flush drawing before changing line width');
+      Assert(VertexBuffer.Count = 0, 'must flush drawing before changing line width');
       glLineWidth(lineWidth);
-      drawState.lineWidth := lineWidth;
+      CanvasState.lineWidth := lineWidth;
     end;
   {$endif}
 
   texCoord := V2(0, 0);
-  vertexBuffer.Add(TDefaultVertex.Create(V2(rect.MinX, rect.MinY), texCoord, color, 255));
-  vertexBuffer.Add(TDefaultVertex.Create(V2(rect.MaxX, rect.MinY), texCoord, color, 255));
-  vertexBuffer.Add(TDefaultVertex.Create(V2(rect.MaxX, rect.MaxY), texCoord, color, 255));
-  vertexBuffer.Add(TDefaultVertex.Create(V2(rect.MinX, rect.MaxY), texCoord, color, 255));
+  VertexBuffer.Add(TDefaultVertex.Create(V2(rect.MinX, rect.MinY), texCoord, color, 255));
+  VertexBuffer.Add(TDefaultVertex.Create(V2(rect.MaxX, rect.MinY), texCoord, color, 255));
+  VertexBuffer.Add(TDefaultVertex.Create(V2(rect.MaxX, rect.MaxY), texCoord, color, 255));
+  VertexBuffer.Add(TDefaultVertex.Create(V2(rect.MinX, rect.MaxY), texCoord, color, 255));
 
   // TODO: we don't need to flush each time
   // https://stackoverflow.com/questions/31723405/line-graph-with-gldrawarrays-and-gl-line-strip-from-vector
@@ -808,7 +805,7 @@ end;
 procedure DrawQuad(constref quad: TDefaultVertexQuad);
 begin
   ChangePrimitiveType(GL_TRIANGLES);
-  vertexBuffer.Add(quad.v);
+  VertexBuffer.Add(quad.v);
 end;
 
 procedure DrawTexture(texture: ITexture; constref rect: TRect; constref textureFrame: TRect; constref color: TVec4);
@@ -821,7 +818,6 @@ begin
   ChangePrimitiveType(GL_TRIANGLES);
 
   quad.SetColor(color.r, color.g, color.b, color.a);
-  // TODO: take a transform param
   quad.SetPosition(rect);
   quad.SetTexture(textureFrame);
   quad.SetUV(textureUnit);
@@ -829,7 +825,7 @@ begin
   if CanvasState.modelTransformStack.Count > 0 then
     quad.Transform(CanvasState.modelTransformStack.Last);
 
-  vertexBuffer.Add(quad.v);
+  VertexBuffer.Add(quad.v);
 end;
 
 procedure DrawTexture(texture: ITexture; quad: TDefaultVertexQuad);
@@ -837,7 +833,7 @@ begin
   Assert(texture <> nil, 'texture must not be nil');
   quad.SetUV(PushTexture(texture));
   ChangePrimitiveType(GL_TRIANGLES);
-  vertexBuffer.Add(quad.v);
+  VertexBuffer.Add(quad.v);
 end;
 
 procedure DrawTexture(texture: ITexture; constref rect: TRect; constref color: TVec4);
@@ -977,8 +973,17 @@ begin
   result.SetUniformInts('textures', DefaultTextureUnits);
 
   // don't pop the default shader
-  if defaultShader <> nil then
+  if DefaultShader <> nil then
     result.Pop;
+end;
+
+function CreateVertexBuffer: TDefaultVertexBuffer;
+begin
+  result := TDefaultVertexBuffer.Create([TVertexAttribute.Create('position', GL_FLOAT, 2),
+                                         TVertexAttribute.Create('inTexCoord', GL_FLOAT, 2),
+                                         TVertexAttribute.Create('inColor', GL_FLOAT, 4),
+                                         TVertexAttribute.Create('inUV', GL_UNSIGNED_BYTE, 1)
+                                        ]);
 end;
 
 function CanvasMousePosition(mouse: TVec2i): TVec2i;
@@ -1016,12 +1021,12 @@ end;
 
 procedure TCanvasState.FlushDrawing;
 begin
-  if not assigned(vertexBuffer) or (vertexBuffer.Count = 0) then
+  if not assigned(VertexBuffer) or (VertexBuffer.Count = 0) then
     exit;
-  //Assert(ShaderStack.Last = defaultShader, 'active shader must be default.');
+  //Assert(ShaderStack.Last = DefaultShader, 'active shader must be default.');
   drawCalls += 1;
-  vertexBuffer.Draw(drawState.bufferPrimitiveType);
-  vertexBuffer.Clear;
+  VertexBuffer.Draw(CanvasState.bufferPrimitiveType);
+  VertexBuffer.Clear;
 end;
 
 procedure TCanvasState.SwapBuffers;
@@ -1126,13 +1131,9 @@ begin
   projTransform := TMat4.Ortho(0, windowSize.width, windowSize.height, 0, -MaxInt, MaxInt);
   viewTransform := TMat4.Identity;
 
-  vertexBuffer := TDefaultVertexBuffer.Create([TVertexAttribute.Create('position', GL_FLOAT, 2),
-                                               TVertexAttribute.Create('inTexCoord', GL_FLOAT, 2),
-                                               TVertexAttribute.Create('inColor', GL_FLOAT, 4),
-                                               TVertexAttribute.Create('inUV', GL_UNSIGNED_BYTE, 1)
-                                               ]);
-  
-  defaultShader := CreateShader(DefaultVertexShader, DefaultFragmentShader);
+  // create global vertex buffer and shader
+  VertexBuffer := CreateVertexBuffer;
+  DefaultShader := CreateShader(DefaultVertexShader, DefaultFragmentShader);
 end;
 
 {$ifdef PLATFORM_SDL}

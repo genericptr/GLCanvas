@@ -30,14 +30,12 @@ type
 
 type
   TDefaultVertexQuad = specialize TTexturedQuad<TDefaultVertex>;
+  TDefaultVertexList = specialize TFPGList<TDefaultVertex>;
+  TDefaultVertexBuffer = specialize TVertexBuffer<TDefaultVertex>;
 
 {$endif}
 
 {$ifdef IMPLEMENTATION}
-
-type
-  TDefaultVertexList = specialize TFPGList<TDefaultVertex>;
-  TDefaultVertexBuffer = specialize TVertexBuffer<TDefaultVertex>;
 
 constructor TDefaultVertex.Create(inPos: TVec2; inTexCoord: TVec2; inColor: TVec4; inUV: byte);
 begin
