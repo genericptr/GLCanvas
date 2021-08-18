@@ -15,33 +15,23 @@
 program Test4;
 uses
   CThreads, 
-  VectorMath, GLFreeTypeFont, GLCanvas, GLPT;
+  VectorMath, GLCanvas, GLPT;
 
 const
   window_size_width = 600;
   window_size_height = 600;
 
-
-procedure LoadFreeType;
 var
-  font: TGLFreeTypeFont;
-begin
-  font := TGLFreeTypeFont.Create('Avenir.ttc');
-  font.Render(36 * 2);
-  { make this the system font }
-  SetActiveFont(font);
-  { call this once we're done using loading fonts }
-  TGLFreeTypeFont.FreeLibrary;
-end;
-
+  font: IFont;
 begin
   SetupCanvas(window_size_width, window_size_height);
-  LoadFreeType;
+  
+  font := CreateFont('Avenir.ttc', 36 * 2);
 
   while IsRunning do
     begin
       ClearBackground;
-      DrawText('Hello World', V2(50, 50), RGBA(0.1, 0.1, 1, 1), 0.5);
+      DrawText(font, 'Hello World', V2(50, 50), RGBA(0.1, 0.1, 1, 1), 0.5);
       SwapBuffers;
     end;
 

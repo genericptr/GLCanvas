@@ -49,7 +49,13 @@ type
       function BottomRight: TVec2; inline;
 
       function Min: TVec2; inline;
+      function Mid: TVec2; inline;
       function Max: TVec2; inline;
+
+      procedure SetMidX (newValue: TScalar); inline;
+      procedure SetMidY (newValue: TScalar); inline;
+      procedure SetMaxX (newValue: TScalar); inline;
+      procedure SetMaxY (newValue: TScalar); inline;
 
       property Points[index: integer]: TVec2 read GetPoint;
 
@@ -83,22 +89,68 @@ type
   TRectList = specialize TFPGList<TRect>;
 
 type
-  TAABB = record
+  generic TGRect<TComponent> = record
+    private type
+      TComponent2 = specialize TGVec2<TComponent>;
     public
-      left: TScalar;
-      top: TScalar;
-      right: TScalar;
-      bottom: TScalar;
+      origin: TComponent2;
+      size: TComponent2;
     public
-      constructor Create(l, t, r, b: TScalar);
-      function Width: TScalar; inline;
-      function Height: TScalar; inline;
-      property X: TScalar read left write left;
-      property Y: TScalar read top write top;
+      property X: TComponent read origin.x write origin.x;
+      property Y: TComponent read origin.y write origin.y;
+      property Width: TComponent read size.x write size.x;
+      property Height: TComponent read size.y write size.y;
+      property W: TComponent read size.x write size.x;
+      property H: TComponent read size.y write size.y;
+      
+      function Min: TComponent2; inline;
+      function Max: TComponent2; inline;
+
+      property MinX: TComponent read origin.x;
+      property MinY: TComponent read origin.y;
+
+      function MaxX: TComponent; inline;
+      function MidX: TComponent; inline;
+      function MaxY: TComponent; inline;
+      function MidY: TComponent; inline;
+
+      procedure Show;
+      function ToStr: string;
+    public
+      class operator := (left: TRect): TGRect;
+      class operator := (left: TGRect): TRect;
+      class operator = (left, right: TGRect): boolean; 
+  end;
+
+type
+  TRecti = specialize TGRect<Integer>;
+  PRecti = ^TRecti;
+
+type
+  generic TGAABB<TComponent> = record
+    public
+      left: TComponent;
+      top: TComponent;
+      right: TComponent;
+      bottom: TComponent;
+    public
+      constructor Create(l, t, r, b: TComponent);
+
+      function Width: TComponent; inline;
+      function Height: TComponent; inline;
+
+      property X: TComponent read left write left;
+      property Y: TComponent read top write top;
+      property MinX: TComponent read left write left; 
+      property MinY: TComponent read top write top;
+      property MaxX: TComponent read right write right;
+      property MaxY: TComponent read bottom write bottom;
 
       procedure Show;
       function ToStr: string;
   end;
+  TAABB = specialize TGAABB<TScalar>;
+  TAABBi = specialize TGAABB<Integer>;
 
 operator := (left: TAABB): TRect;
 operator := (left: TRect): TAABB;
@@ -218,7 +270,6 @@ type
 function CubeMake(x, y, z, width, height, depth: TScalar): TCube; overload; inline;
 function CubeMake(origin, size: TVec3): TCube; overload; inline;
 
-{ TCylinder }
 type
   TCylinder = record
     public
@@ -1396,6 +1447,26 @@ begin
   result := (rect.MinX >= MinX) and (rect.MinY >= MinY) and (rect.MaxX <= MaxX) and (rect.MaxY <= MaxY);
 end;
 
+procedure TRect.SetMidX (newValue: TScalar);
+begin
+  origin.x := MidX + newValue;
+end;
+
+procedure TRect.SetMidY (newValue: TScalar);
+begin
+  origin.y := MidY + newValue;
+end;
+
+procedure TRect.SetMaxX (newValue: TScalar);
+begin
+  size.width := newValue - origin.x;
+end;
+
+procedure TRect.SetMaxY (newValue: TScalar);
+begin
+  size.height := newValue - origin.y;
+end;
+
 function TRect.Union(rect: TRect): TRect;
 var
   aabb: TAABB;
@@ -1463,6 +1534,11 @@ end;
 function TRect.Min: TVec2;
 begin
   result := origin;
+end;
+
+function TRect.Mid: TVec2;
+begin
+  result := V2(MidX, MidY);
 end;
 
 function TRect.Max: TVec2;
@@ -1589,17 +1665,17 @@ end;
  *                                TAABB
  *****************************************************************************}
 
-procedure TAABB.Show;
+procedure TGAABB.Show;
 begin
   writeln(ToStr);
 end;
 
-function TAABB.ToStr: string;
+function TGAABB.ToStr: string;
 begin
-  result := '{'+FloatToStr(left)+','+FloatToStr(top)+','+FloatToStr(right)+','+FloatToStr(bottom)+'}';
+  result := '{'+left.ToString+','+top.ToString+','+right.ToString+','+bottom.ToString+'}';
 end;
 
-constructor TAABB.Create(l, t, r, b: TScalar);
+constructor TGAABB.Create(l, t, r, b: TComponent);
 begin
   left := l;
   top := t;
@@ -1607,12 +1683,12 @@ begin
   bottom := b;
 end;
 
-function TAABB.Width: TScalar;
+function TGAABB.Width: TComponent;
 begin
   result := right - left;
 end;
 
-function TAABB.Height: TScalar;
+function TGAABB.Height: TComponent;
 begin
   result := bottom - top;
 end;
@@ -1635,6 +1711,70 @@ end;
 function AABB(left, top, right, bottom: TScalar): TAABB;
 begin
   result := TAABB.Create(left, top, right, bottom);
+end;
+
+{ TGRect }
+
+class operator TGRect.:= (left: TRect): TGRect;
+begin
+  result.origin.x := Trunc(left.origin.x);
+  result.origin.y := Trunc(left.origin.y);
+  result.size.x := Trunc(left.size.x);
+  result.size.y := Trunc(left.size.y);
+end;
+
+class operator TGRect.:= (left: TGRect): TRect;
+begin
+  result.origin.x := left.origin.x;
+  result.origin.y := left.origin.y;
+  result.size.x := left.size.x;
+  result.size.y := left.size.y;
+end;
+
+class operator TGRect.= (left, right: TGRect): boolean; 
+begin
+  result := (left.origin = right.origin) and (left.size = right.size);
+end;
+
+function TGRect.Min: TComponent2;
+begin
+  result := origin;
+end;
+
+function TGRect.Max: TComponent2;
+begin
+  result.x := MaxX;
+  result.y := MaxY;
+end;
+
+function TGRect.MaxX: TComponent;
+begin
+  result := MinX + Width;
+end;
+
+function TGRect.MidX: TComponent;
+begin
+  result := MinX + Width div 2;
+end;
+
+function TGRect.MaxY: TComponent;
+begin
+  result := MinY + Height;
+end;
+
+function TGRect.MidY: TComponent;
+begin
+  result := MinY + Height div 2;
+end;
+
+procedure TGRect.Show;
+begin
+  writeln(ToStr);
+end;
+
+function TGRect.ToStr: string;
+begin
+  result := '{'+origin.ToStr+','+size.ToStr+'}';
 end;
 
 end.

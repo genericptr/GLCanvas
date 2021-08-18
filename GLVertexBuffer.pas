@@ -11,9 +11,6 @@ uses
   {$ifdef API_OPENGLES}
   GLES30,
   {$endif}
-  {$ifdef FAST_LIST}
-  UFastList, 
-  {$endif}
   FGL;
 
 type
@@ -36,20 +33,18 @@ type
       TQuad = array[0..5] of TVertex;
       TVertexArray = array[0..0] of TVertex;
       PVertexArray = ^TVertexArray;
-      {$ifdef FAST_LIST}
-      TVertexList = specialize TPointerList<TVertex>;
-      {$else}
       TVertexList = specialize TFPGList<TVertex>;
-      {$endif}
     private
       list: TVertexList;
       bufferID: GLuint;
       vertexArrayObject: GLuint;
       attributes: TVertexAttributes;
+      vertexCount: integer;
+      staticDraw: boolean;
       function SizeofAttribute(kind: GLuint): integer;
       procedure EnableVertexAttributes; 
     public
-      constructor Create(_attributes: TVertexAttributes);
+      constructor Create(_attributes: TVertexAttributes; _static: boolean = false);
       procedure Add(constref vertex: TVertex); overload; inline;
       procedure Add(constref quad: TQuad); overload; inline;
       function Count: integer;
@@ -89,23 +84,12 @@ end;
 
 procedure TVertexBuffer.Add(constref quad: TQuad);
 begin
-  {$ifdef FAST_LIST}
-  // todo: crashes and causes memory bugs
-  //list.Add(PVertex(quad), 6);
   list.Add(quad[0]);
   list.Add(quad[1]);
   list.Add(quad[2]);
   list.Add(quad[3]);
   list.Add(quad[4]);
   list.Add(quad[5]);
-  {$else}
-  list.Add(quad[0]);
-  list.Add(quad[1]);
-  list.Add(quad[2]);
-  list.Add(quad[3]);
-  list.Add(quad[4]);
-  list.Add(quad[5]);
-  {$endif}
 end;
 
 function TVertexBuffer.Count: integer;
@@ -154,10 +138,25 @@ end;
 procedure TVertexBuffer.Draw(mode: GLenum);
 begin
   EnableVertexAttributes;
-  glBufferData(GL_ARRAY_BUFFER, sizeof(TVertex) * list.Count, TFPSList(list).First, GL_DYNAMIC_DRAW);
-  GLAssert('glBufferData');
-  glDrawArrays(mode, 0, list.Count);
-  GLAssert('glDrawArrays');
+  if staticDraw then
+    begin
+      if list.Count > 0 then
+        begin
+          glBufferData(GL_ARRAY_BUFFER, sizeof(TVertex) * list.Count, TFPSList(list).First, GL_STATIC_DRAW);
+          GLAssert('glBufferData');
+          vertexCount := list.Count;
+          list.Clear;
+        end;
+      glDrawArrays(mode, 0, vertexCount);
+      GLAssert('glDrawArrays');
+    end
+  else
+    begin
+      glBufferData(GL_ARRAY_BUFFER, sizeof(TVertex) * list.Count, TFPSList(list).First, GL_DYNAMIC_DRAW);
+      GLAssert('glBufferData');
+      glDrawArrays(mode, 0, list.Count);
+      GLAssert('glDrawArrays');
+    end;
 end;
 
 procedure TVertexBuffer.Clear;
@@ -172,9 +171,10 @@ begin
   list.Free;
 end;
 
-constructor TVertexBuffer.Create(_attributes: TVertexAttributes);
+constructor TVertexBuffer.Create(_attributes: TVertexAttributes; _static: boolean = false);
 begin
   attributes := _attributes;
+  staticDraw := _static;
   list := TVertexList.Create;
 end;
 

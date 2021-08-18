@@ -4,6 +4,8 @@
     GLCanvas Test #6
     
     Tests loading textures from memory
+
+    TODO: this example is deprecated in favor of TImage
 }
 {$mode objfpc}
 {$assertions on}

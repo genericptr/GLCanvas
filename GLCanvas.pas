@@ -11,6 +11,7 @@
 {$implicitexceptions off}
 // bug fix: https://bugs.freepascal.org/view.php?id=35821
 {$varpropsetter on}
+{$scopedenums on}
 
 {$include include/targetos.inc}
 
@@ -32,8 +33,8 @@ uses
   GLES30,
   {$endif}
   Contnrs, FGL, Classes, Math,
+  GLVertexBuffer, GLShader, GLFreeType,
   BeRoPNG, VectorMath, GeometryTypes,
-  GLVertexBuffer, GLFrameBuffer, GLShader,
   {$ifdef PLATFORM_GLPT}
   GLPT, GLPT_Threads
   {$endif}
@@ -42,25 +43,27 @@ uses
   {$endif}
   ;
 
-{$scopedenums on}
-
 {$define INTERFACE}
 {$include include/ExtraTypes.inc}
 {$include include/WebColors.inc}
 {$include include/Images.inc}
 {$include include/Textures.inc}
+{$include include/FrameBuffers.inc}
 {$include include/Text.inc}
 {$include include/BitmapFont.inc}
 {$include include/Utils.inc}
 {$include include/Input.inc}
 {$include include/Shaders.inc}
+{$include include/Event.inc}
+{$include include/FreeType.inc}
 {$undef INTERFACE}
 
 type
   TCanvasOption = (VSync,
                    FullScreen,
-                   WaitForEvents
-    );
+                   WaitForEvents,
+                   Resizable
+                  );
   TCanvasOptions = set of TCanvasOption;
 
 const
@@ -73,9 +76,11 @@ type
 
 procedure SetupCanvas(width, height: integer; eventCallback: SDL_EventCallback = nil; options: TCanvasOptions = DefaultCanvasOptions); 
 {$endif}
+
 {$ifdef PLATFORM_GLPT}
 procedure SetupCanvas(width, height: integer; eventCallback: GLPT_EventCallback = nil; options: TCanvasOptions = DefaultCanvasOptions); 
 {$endif}
+
 function IsRunning: boolean;
 procedure QuitApp;
 
@@ -125,8 +130,12 @@ function DrawText(font: IFont; text: TFontString; textAlignment: TTextAlignment;
 function DrawText(font: IFont; text: TFontString; textAlignment: TTextAlignment; bounds: TRect): TVec2; overload;
 procedure DrawText(font: IFont; text: TFontString; where: TVec2; color: TColor; scale: single = 1.0; textAlignment: TTextAlignment = TTextAlignment.Left); overload; inline;
 procedure DrawText(font: IFont; text: TFontString; where: TVec2; scale: single = 1.0); overload;
+procedure DrawText(font: IFont; lines: array of TFontString; bounds: TRect; color: TColor; textAlignment: TTextAlignment = TTextAlignment.Left); overload;
 
 procedure LayoutText(var options: TTextLayoutOptions);
+
+{ Fonts }
+function CreateFont(name: ansistring; pixelSize: integer): TGLFreeTypeFont;
 
 { Clip Rects }
 procedure PushClipRect(rect: TRect); 
@@ -136,10 +145,33 @@ procedure PopClipRect;
 function CreateShader(vertexSource, fragmentSource: pchar): TShader;
 
 { Buffers }
-function CreateVertexBuffer: TDefaultVertexBuffer;
+function CreateVertexBuffer(static: boolean = false): TDefaultVertexBuffer;
+procedure PushVertexBuffer(buffer: TDefaultVertexBuffer);
+procedure PopVertexBuffer;
+procedure DrawBuffer(buffer: TDefaultVertexBuffer);
+
 procedure FlushDrawing; inline;
 procedure SwapBuffers; inline;
 procedure ClearBackground;
+
+{ Blend Mode }
+type
+  TBlendingFactor = (
+    ZERO,
+    ONE,
+    SRC_COLOR,
+    ONE_MINUS_SRC_COLOR,
+    SRC_ALPHA,
+    ONE_MINUS_SRC_ALPHA,
+    DST_ALPHA,
+    ONE_MINUS_DST_ALPHA,
+    DST_COLOR,
+    ONE_MINUS_DST_COLOR,
+    SRC_ALPHA_SATURATE
+  );
+
+procedure PushBlendMode(source, destination: TBlendingFactor);
+procedure PopBlendMode;
 
 { Fonts }
 procedure SetActiveFont(newValue: IFont);
@@ -148,10 +180,12 @@ function GetActiveFont: IFont;
 { Transforms }
 procedure SetProjectionTransform(constref mat: TMat4);
 procedure SetProjectionTransform(x, y, width, height: integer);
+procedure PushProjectionTransform(constref mat: TMat4); 
+procedure PopProjectionTransform; 
 
 procedure SetViewTransform(x, y, scale: single);
 procedure PushViewTransform(constref mat: TMat4);
-procedure PushViewTransform(x, y, scale: single);  
+procedure PushViewTransform(x, y, scale: single);
 procedure PopViewTransform; 
 
 procedure PushModelTransform(constref mat: TMat4); 
@@ -168,6 +202,7 @@ function GetViewPort: TRect; inline;
 { Window }
 function GetWindowSize: TVec2i;
 procedure SetWindowTitle(title: string);
+procedure SetWindowFullScreen(newValue: boolean);
 
 { Display }
 function GetDisplaySize: TVec2i;
@@ -183,13 +218,27 @@ function GetResourcecDirectory: ansistring;
 
 type
   TCanvasState = class
+    private type
+      TBlendModeState = class
+        private
+          source: GLenum;
+          destination: GLenum;
+        public
+          constructor Create(src, dest: TBlendingFactor);
+      end;
+      TBlendModeList = specialize TFPGObjectList<TBlendModeState>;
     private
       viewTransformStack: TMat4List;
+      projectionTransformStack: TMat4List;
       modelTransformStack: TMat4List;
       clipRectStack: TRectList;
+      vertexBufferList: TDefaultVertexBufferList;
+      blendModeList: TBlendModeList;
       sampleTime: double;
       frameCount: longint;
       fps: longint;
+      m_activeFont: IFont;            // default font for DrawText(...) if no font is specified
+      function GetActiveFont: IFont;
     public
       {$ifdef PLATFORM_SDL}
       window: PSDL_Window;
@@ -203,7 +252,6 @@ type
       context: GLPT_Context;
       {$endif}
 
-      activeFont: IFont;            // default font for DrawText(...) if no font is specified
       clearColor: TColor;           // color used for ClearBackground 
       bufferPrimitiveType: GLint;
       lineWidth: single;
@@ -217,6 +265,8 @@ type
       viewPort: TRect;              // rect set by SetViewPort
       fullScreen: boolean;          // the window was created in fullscreen mode
       totalFrameCount: longint;     // frame count for each SwapBuffers call 
+    public
+      property ActiveFont: IFont read GetActiveFont;
     public
       procedure FlushDrawing; virtual;
       procedure SwapBuffers; virtual;
@@ -248,11 +298,14 @@ var
 {$include include/WebColors.inc}
 {$include include/Images.inc}
 {$include include/Textures.inc}
+{$include include/FrameBuffers.inc}
 {$include include/Text.inc}
 {$include include/BitmapFont.inc}
 {$include include/Utils.inc}
 {$include include/Input.inc}
 {$include include/Shaders.inc}
+{$include include/Event.inc}
+{$include include/FreeType.inc}
 {$undef IMPLEMENTATION}
 
 const
@@ -285,12 +338,65 @@ end;
 
 procedure SetActiveFont(newValue: IFont);
 begin
-  CanvasState.activeFont := newValue;
+  CanvasState.m_activeFont := newValue;
 end;
 
 function GetActiveFont: IFont;
 begin
   result := CanvasState.activeFont;
+end;
+
+type
+  TBlendModeState = TCanvasState.TBlendModeState;
+
+function ConvertBlendingFactor(fac: TBlendingFactor): GLenum; inline;
+begin
+  case fac of
+    TBlendingFactor.ZERO: result := GL_ZERO;
+    TBlendingFactor.ONE: result := GL_ONE;
+    TBlendingFactor.SRC_COLOR: result := GL_SRC_COLOR;
+    TBlendingFactor.ONE_MINUS_SRC_COLOR: result := GL_ONE_MINUS_SRC_COLOR;
+    TBlendingFactor.SRC_ALPHA: result := GL_SRC_ALPHA;
+    TBlendingFactor.ONE_MINUS_SRC_ALPHA: result := GL_ONE_MINUS_SRC_ALPHA;
+    TBlendingFactor.DST_ALPHA: result := GL_DST_ALPHA;
+    TBlendingFactor.ONE_MINUS_DST_ALPHA: result := GL_ONE_MINUS_DST_ALPHA;
+    TBlendingFactor.DST_COLOR: result := GL_DST_COLOR;
+    TBlendingFactor.ONE_MINUS_DST_COLOR: result := GL_ONE_MINUS_DST_COLOR;
+    TBlendingFactor.SRC_ALPHA_SATURATE: result := GL_SRC_ALPHA_SATURATE;
+  end;
+end;
+
+constructor TBlendModeState.Create(src, dest: TBlendingFactor);
+begin
+  source := ConvertBlendingFactor(src);
+  destination := ConvertBlendingFactor(dest);
+end;
+
+procedure SetBlendMode(mode: TBlendModeState);
+begin
+  glBlendFunc(mode.source, mode.destination);
+end;
+
+procedure PushBlendMode(source, destination: TBlendingFactor);
+var
+  mode: TBlendModeState;
+begin
+  with CanvasState do
+    begin
+      mode := TBlendModeState.Create(source, destination);
+      SetBlendMode(mode);
+      blendModeList.Add(mode);
+    end;
+end;
+
+procedure PopBlendMode;
+begin
+  with CanvasState do
+    begin
+      blendModeList.Delete(blendModeList.Count - 1);
+      if blendModeList.Count > 0 then
+        SetBlendMode(blendModeList.Last);
+    end;
 end;
 
 procedure SetProjectionTransform(constref mat: TMat4);
@@ -304,6 +410,31 @@ procedure SetProjectionTransform(x, y, width, height: integer);
 begin
   SetProjectionTransform(TMat4.Ortho(x, width, height, y, -MaxInt, MaxInt));
 end;
+
+procedure PushProjectionTransform(constref mat: TMat4); 
+begin
+  with CanvasState do
+    begin
+      SetProjectionTransform(mat);
+      projectionTransformStack.Add(mat);
+    end;
+end;
+
+procedure PopProjectionTransform; 
+var
+  mat: TMat4;
+begin
+  with CanvasState do
+    begin
+      projectionTransformStack.Delete(projectionTransformStack.Count - 1);
+      if projectionTransformStack.Count > 0 then
+        begin
+          mat := projectionTransformStack.Last;
+          SetProjectionTransform(mat);
+        end;
+    end;
+end;
+
 
 procedure SetViewTransform(constref mat: TMat4);
 begin
@@ -366,6 +497,30 @@ begin
     end;
 end;
 
+procedure PushVertexBuffer(buffer: TDefaultVertexBuffer); 
+begin
+  with CanvasState do
+    begin
+      VertexBuffer := buffer;
+      vertexBufferList.Add(buffer);
+    end;
+end;
+
+procedure PopVertexBuffer;
+begin
+  with CanvasState do
+    begin
+      vertexBufferList.Delete(vertexBufferList.Count - 1);
+      if vertexBufferList.Count > 0 then
+        VertexBuffer := vertexBufferList.Last;
+    end;
+end;
+
+procedure DrawBuffer(buffer: TDefaultVertexBuffer); 
+begin
+  buffer.Draw(GL_TRIANGLES);
+end;
+
 procedure SetViewPort(rect: TRect);
 begin
   SetViewPort(trunc(rect.minX), trunc(rect.minY), trunc(rect.width), trunc(rect.height));
@@ -386,11 +541,7 @@ begin
 end;
 
 function GetViewPort: TRect;
-//var
-//  viewPort: array[0..3] of GLint;
 begin
-  //glGetIntegerv(GL_VIEWPORT, @viewPort);
-  //result := RectMake(viewPort[0], viewPort[1], viewPort[2], viewPort[3]);
   result := CanvasState.viewPort;
 end;
 
@@ -435,6 +586,16 @@ begin
   DefaultShader.SetUniformMat4('projTransform', CanvasState.projTransform);
   DefaultShader.SetUniformMat4('viewTransform', CanvasState.viewTransform);
   DefaultShader.SetUniformInts('textures', DefaultTextureUnits);
+end;
+
+procedure SetWindowFullScreen(newValue: boolean);
+begin
+  {$ifdef PLATFORM_SDL}
+  if newValue then
+    SDL_SetWindowFullscreen(CanvasState.window, SDL_WINDOW_FULLSCREEN)
+  else
+    SDL_SetWindowFullscreen(CanvasState.window, 0);
+  {$endif}
 end;
 
 procedure SetWindowTitle(title: string);
@@ -686,8 +847,12 @@ begin
 
   if thickness = 1 then
     begin
-      ChangePrimitiveType(GL_LINE_STRIP);
-
+      //if count = 2 then
+      //  ChangePrimitiveType(GL_LINES)
+      //else
+      //  ChangePrimitiveType(GL_LINE_STRIP);
+      ChangePrimitiveType(GL_LINES);
+      
       for i := 0 to count - 1 do
         begin
           // connect points between segments
@@ -977,13 +1142,14 @@ begin
     result.Pop;
 end;
 
-function CreateVertexBuffer: TDefaultVertexBuffer;
+function CreateVertexBuffer(static: boolean): TDefaultVertexBuffer;
 begin
   result := TDefaultVertexBuffer.Create([TVertexAttribute.Create('position', GL_FLOAT, 2),
                                          TVertexAttribute.Create('inTexCoord', GL_FLOAT, 2),
                                          TVertexAttribute.Create('inColor', GL_FLOAT, 4),
                                          TVertexAttribute.Create('inUV', GL_UNSIGNED_BYTE, 1)
-                                        ]);
+                                        ],
+                                        static);
 end;
 
 function CanvasMousePosition(mouse: TVec2i): TVec2i;
@@ -1018,6 +1184,19 @@ begin
       halt(-1);
     end;
 end;
+
+function TCanvasState.GetActiveFont: IFont;
+begin
+  if m_activeFont = nil then
+    begin
+      // find a default system font
+      {$ifdef DARWIN}
+      m_activeFont := CreateFont('/System/Library/Fonts/SFNS.ttf', 14);
+      {$endif}
+    end;
+  result := m_activeFont;
+end;
+
 
 procedure TCanvasState.FlushDrawing;
 begin
@@ -1062,7 +1241,6 @@ begin
   {$ifdef PlATFORM_GLPT}
   GLPT_SwapBuffers(window);
   GLPT_PollEvents;
-  // TODO: return message from GLPT_PollEvents and send to PollSystemInput
   {$endif}
 
   now := GetTime;
@@ -1119,25 +1297,32 @@ begin
   SetViewPort(0, 0, windowSize.width, windowSize.height);
 
   glClearColor(1, 1, 1, 1);
-  glEnable(GL_BLEND);
-  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
   glDisable(GL_DEPTH_TEST);
+  glEnable(GL_BLEND);
 
   clipRectStack := TRectList.Create;
   viewTransformStack := TMat4List.Create;
   modelTransformStack := TMat4List.Create;
+  projectionTransformStack := TMat4List.Create;
+  vertexBufferList := TDefaultVertexBufferList.Create;
+  blendModeList := TCanvasState.TBlendModeList.Create;
 
   viewPortRatio := V2(1, 1);
-  projTransform := TMat4.Ortho(0, windowSize.width, windowSize.height, 0, -MaxInt, MaxInt);
-  viewTransform := TMat4.Identity;
 
   // create global vertex buffer and shader
   VertexBuffer := CreateVertexBuffer;
   DefaultShader := CreateShader(DefaultVertexShader, DefaultFragmentShader);
+
+  PushProjectionTransform(TMat4.Ortho(0, windowSize.width, windowSize.height, 0, -MaxInt, MaxInt));
+  PushViewTransform(TMat4.Identity);
+  PushBlendMode(TBlendingFactor.SRC_ALPHA, TBlendingFactor.ONE_MINUS_SRC_ALPHA);
+  PushVertexBuffer(VertexBuffer);
 end;
 
 {$ifdef PLATFORM_SDL}
-procedure SetupCanvas(width, height: integer; eventCallback: SDL_EventCallback; options: TCanvasOptions); 
+procedure SetupCanvas(width, height: integer; eventCallback: SDL_EventCallback; options: TCanvasOptions);
+var
+  flags: longint;
 begin
   if SDL_Init(SDL_INIT_VIDEO) < 0 then
     begin
@@ -1147,7 +1332,7 @@ begin
 
   SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
   SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
-  SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
+  SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 2);
   SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
 
   // allocate the default canvas
@@ -1158,7 +1343,18 @@ begin
 
   with CanvasState do
     begin
-      window := SDL_CreateWindow('', SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, width, height, SDL_WINDOW_SHOWN + SDL_WINDOW_OPENGL);
+      flags := SDL_WINDOW_SHOWN + SDL_WINDOW_OPENGL;
+
+      if TCanvasOption.Resizable in options then
+        flags += SDL_WINDOW_RESIZABLE;
+
+      if TCanvasOption.FullScreen in options then
+        begin
+          fullScreen := true;
+          flags += SDL_WINDOW_FULLSCREEN;
+        end;
+
+      window := SDL_CreateWindow('', SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, width, height, flags);
       if window = nil then
         begin
           writeln('Window could not be created! ', SDL_GetError);
@@ -1226,7 +1422,10 @@ begin
 
       context.vsync := TCanvasOption.VSync in options;
 
-      flags := GLPT_WINDOW_TITLED + GLPT_WINDOW_CLOSABLE + GLPT_WINDOW_RESIZABLE;
+      flags := GLPT_WINDOW_TITLED + GLPT_WINDOW_CLOSABLE;
+      
+      if TCanvasOption.Resizable in options then
+        flags += GLPT_WINDOW_RESIZABLE;
 
       if TCanvasOption.FullScreen in options then
         begin

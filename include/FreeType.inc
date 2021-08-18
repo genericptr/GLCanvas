@@ -1,10 +1,5 @@
-{$mode objfpc}
-{$implicitexceptions off}
 
-unit GLFreeTypeFont;
-interface
-uses
-  GLFreeType, GLCanvas, GeometryTypes, VectorMath;
+{$ifdef INTERFACE}
 
 type
   TGLFreeTypeFont = class (TFreeTypeFont, IFont, ITexture)
@@ -12,7 +7,7 @@ type
       m_textureUnit: integer;
       m_locked: boolean;
     protected
-      procedure GenerateTexture(data: pointer; width, height: integer; minFilter, magFilter: integer); override;
+      procedure GenerateTexture(data: pointer; width, height: integer); override;
     public
       { ITexture }
       function GetTextureUnit: integer;
@@ -33,15 +28,16 @@ type
       function PreferredTextColor: TVec4;
   end;
 
-implementation
+{$endif}
 
+{$ifdef IMPLEMENTATION}
+
+procedure TGLFreeTypeFont.GenerateTexture(data: pointer; width, height: integer);
 const
   TextureOptions = [TTextureImage.RGBA,  
                     TTextureImage.UnsignedByte,
                     TTextureImage.NearestNeighbor
                     ];
-
-procedure TGLFreeTypeFont.GenerateTexture(data: pointer; width, height: integer; minFilter, magFilter: integer); 
 begin
   GLCanvas.GenerateTexture(Longint(m_texture));
   BindTexture2D(textureID);
@@ -137,4 +133,4 @@ begin
   result := RGBA(0, 0, 0, 1);
 end;
 
-end.
+{$endif}

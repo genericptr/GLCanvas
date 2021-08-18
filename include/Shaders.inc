@@ -32,7 +32,8 @@ type
   TDefaultVertexQuad = specialize TTexturedQuad<TDefaultVertex>;
   TDefaultVertexList = specialize TFPGList<TDefaultVertex>;
   TDefaultVertexBuffer = specialize TVertexBuffer<TDefaultVertex>;
-
+  TDefaultVertexBufferList = specialize TFPGList<TDefaultVertexBuffer>;
+  
 {$endif}
 
 {$ifdef IMPLEMENTATION}

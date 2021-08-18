@@ -42,7 +42,7 @@ type
 
 			class procedure CancelPreviousInvocationsWithTarget(_target: TObject);
 			class procedure RegisterDispatchHandler(handler: TTimerDispatchHandler; context: pointer);
-			
+	
 			class function DefaultDispatcher: TTimerDispatcher; virtual;
 
 			{ Constructors }
@@ -121,9 +121,9 @@ var
 	GlobalDispatchHandler: TTimerDispatchHandler = nil;
 	GlobalDispatchHandlerContext: Pointer = nil;
 	
-//#########################################################
-// PROCEDURAL
-//#########################################################
+{*****************************************************************************
+ *                              Procedural
+ *****************************************************************************}
 
 function GetTargetFrameRate: integer;
 begin
@@ -149,9 +149,9 @@ begin
 		end;
 end;
 
-//#########################################################
-// OPERATION QUEUE
-//#########################################################
+{*****************************************************************************
+ *                             TOperationQueue
+ *****************************************************************************}
 
 procedure TOperationQueue.Add(op: TInvocation);
 begin
@@ -195,9 +195,9 @@ begin
 	queue := TInvocationList.Create;
 end;
 
-//#########################################################
-// TIMER INVOCATIONS
-//#########################################################
+{*****************************************************************************
+ *                               TTimerInvocations
+ *****************************************************************************}
 
 function TTimerInvocations.InvokeAfterDelay(_interval: TimerInterval; method: TInvocationCallbackProcedure; params: TInvocation.TVariantParams = nil; _repeats: boolean = false): TTimer;
 begin
@@ -223,9 +223,9 @@ begin
 	result := TTimer.Invoke(_interval, TInvocation.Create(method, params), _repeats);	
 end;
 
-//#########################################################
-// TIMER DISPATCHER
-//#########################################################
+{*****************************************************************************
+ *                                TTimerDispatcher
+ *****************************************************************************}
 
 function TTimerDispatcher.TimerForTarget(target: TObject): TTimer;
 var
@@ -315,9 +315,9 @@ begin
 	GlobalDispatchers.Add(dispatcher);
 end;
 
-//#########################################################
-// TIMER
-//#########################################################
+{*****************************************************************************
+ *                                 TTimer
+ *****************************************************************************}
 
 function TTimer.GetInvocation: TInvocation;
 begin

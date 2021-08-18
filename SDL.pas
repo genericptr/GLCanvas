@@ -503,7 +503,7 @@ procedure SDL_RaiseWindow(window: PSDL_Window); cdecl; external;
 procedure SDL_MaximizeWindow(window: PSDL_Window); cdecl; external;
 procedure SDL_MinimizeWindow(window: PSDL_Window); cdecl; external;
 procedure SDL_RestoreWindow(window: PSDL_Window); cdecl; external;
-function SDL_SetWindowFullscreen(window: PSDL_Window; fullscreen: SDL_Bool): LongInt; cdecl; external;
+function SDL_SetWindowFullscreen(window: PSDL_Window; flags: Uint32): LongInt; cdecl; external;
 function SDL_GetWindowSurface(window: PSDL_Window): PSDL_Surface; cdecl; external;
 function SDL_UpdateWindowSurface(window: PSDL_Window): LongInt; cdecl; external;
 function SDL_UpdateWindowSurfaceRects(window: PSDL_Window; var rects: TSDL_Rect; numrects: LongInt): LongInt; cdecl; external;

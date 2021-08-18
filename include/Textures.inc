@@ -107,7 +107,6 @@ type
 			constructor Create(path: ansistring; options: TTextureImageOptions = DefaultTextureOptions); overload;
 			constructor Create(texture: integer; width: integer = 0; height: integer = 0; options: TTextureImageOptions = DefaultTextureOptions); overload;
 			constructor Create(width, height: integer; data: pointer; options: TTextureImageOptions = DefaultTextureOptions); overload;
-			constructor Create(frameBuffer: TFrameBuffer); overload;
 			constructor Create(image: TImage; copyImage: boolean = true); overload;
 
 			{ Accessors }
@@ -141,11 +140,9 @@ type
 			function Slice(columns: integer; rows: integer = 0): TTextureArray;
 
 		private type
-			{$scopedenums on}
 			TTextureFlag = (DisposeTexture, 		// we own the textureID
 											FreeSourceImage			// we own internal image data
 											);
-			{$scopedenums off}
 			TTextureFlags = set of TTextureFlag;
 		private
 			flags: TTextureFlags;
@@ -201,6 +198,8 @@ type
 			property Rows: integer read GetRows;
 			property TableSize: TVec2i read GetTableSize;
 			property CellSize: TVec2i read GetCellSize;
+			property CellWidth: integer read m_cellSize.x;
+			property CellHeight: integer read m_cellSize.y;
 
 			procedure Load; override;
 			destructor Destroy; override;
@@ -1478,17 +1477,6 @@ begin
 		slices.Free;
 
 	inherited;
-end;
-
-constructor TTexture.Create(frameBuffer: TFrameBuffer);
-var
-	options: TTextureImageOptions;
-begin
-	options := [TTextureImage.NearestNeighbor];
-	options += [TextureImagePixelFormat(frameBuffer.PixelFormat)];
-	options += [TextureImagePixelType(frameBuffer.PixelType)];
-	
-	Create(frameBuffer.Texture, frameBuffer.Width, frameBuffer.Height, options);
 end;
 
 constructor TTexture.Create(image: TImage; copyImage: boolean = true);

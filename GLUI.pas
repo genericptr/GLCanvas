@@ -2429,7 +2429,7 @@ end;
 
 function TEvent.Location(system: TObject = nil): TPoint;
 begin
-  result := CanvasMousePosition(msg);
+  result := CanvasMousePosition(msg.GetMouseLocation);
 
   // scale location from screen scale
   result.x := trunc(result.x / PlatformScreenScale);
@@ -5123,7 +5123,7 @@ procedure TMenu.Popup(_positioningRect: TRect; _positioningView: TView; edge: TR
     params := Default(GLPT_MessageParams);
     params.mouse.x := where.x;
     params.mouse.y := where.y;
-    params.mouse.timestamp := GLPT_GetTime;
+    params.mouse.timestamp := GetTime;
 
     msg := Default(GLPT_MessageRec);
     msg.win := MainPlatformWindow;

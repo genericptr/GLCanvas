@@ -9,33 +9,27 @@
 unit GLFreeType;
 interface
 uses
-  {$ifdef API_OPENGL}
-  GL, GLext,
-  {$endif}
-  {$ifdef API_OPENGLES}
-  GLES30,
-  {$endif}
-  CWString, FreeTypeH, FGL;
+  CWString, CTypes, FreeTypeH, FGL;
 
 const
   FREETYPE_ANSI_CHARSET = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ!;%:?*()<>_+-=.,/|"''@#$^&{}[]0123456789';
 
 type
-  TPoint = record
+  TFTPoint = record
     x, y: single;
   end;
-  TRect = record
+  TFTRect = record
     x, y, w, h: single;
   end;
   TFreeTypeFace = record
     private
-      function GetBearing: TPoint; inline;
-      function GetSize: TPoint; inline;
+      function GetBearing: TFTPoint; inline;
+      function GetSize: TFTPoint; inline;
     public
       glyph: TFT_GlyphSlot;
-      textureFrame: TRect;
-      property Size: TPoint read GetSize;             // Size of glyph in pixels
-      property Bearing: TPoint read GetBearing;       // Offset from baseline to left/top of glyph
+      textureFrame: TFTRect;
+      property Size: TFTPoint read GetSize;             // Size of glyph in pixels
+      property Bearing: TFTPoint read GetBearing;       // Offset from baseline to left/top of glyph
       property Advance: FT_Pos read glyph.advance.x;  // Offset to advance to next glyph
   end;
 
@@ -55,8 +49,7 @@ type
       procedure AddTexture(c: TFontChar; posX, posY: integer); 
     protected
       m_texture: integer;
-
-      procedure GenerateTexture(data: pointer; width, height: integer; minFilter, magFilter: integer); virtual;
+      procedure GenerateTexture(data: pointer; width, height: integer); virtual;
     public
 
       { Methods }
@@ -64,7 +57,7 @@ type
       constructor Create(path: ansistring); overload;
       class procedure FreeLibrary;
 
-      procedure Render(pixelSize: integer; const charset: TFontString = FREETYPE_ANSI_CHARSET; minFilter: GLuint = GL_LINEAR; magFilter: GLuint = GL_LINEAR); 
+      procedure Render(pixelSize: integer; const charset: TFontString = FREETYPE_ANSI_CHARSET); 
 
       { Accessors }
       function HasGlyph(c: TFontChar): boolean;
@@ -92,7 +85,7 @@ begin
   result := rval;
 end;
 
-function RectMake(x, y, w, h: single): TRect; inline; 
+function RectMake(x, y, w, h: single): TFTRect; inline; 
 begin
   result.x := x;
   result.y := y;
@@ -100,24 +93,23 @@ begin
   result.h := h;
 end;
 
-function PointMake(x, y: single): TPoint; inline; 
+function PointMake(x, y: single): TFTPoint; inline; 
 begin
   result.x := x;
   result.y := y;
 end;
 
-function TFreeTypeFace.GetBearing: TPoint;
+function TFreeTypeFace.GetBearing: TFTPoint;
 begin
   result.x := glyph.bitmap_left;
   result.y := glyph.bitmap_top;
 end;
 
-function TFreeTypeFace.GetSize: TPoint;
+function TFreeTypeFace.GetSize: TFTPoint;
 begin
   result.x := glyph.bitmap.width;
   result.y := glyph.bitmap.rows;
 end;
-
 
 class procedure TFreeTypeFont.FreeLibrary;
 begin
@@ -150,20 +142,15 @@ begin
   m_faces.Add(c, f);
 end;
 
-procedure TFreeTypeFont.GenerateTexture(data: pointer; width, height: integer; minFilter, magFilter: integer); 
+procedure TFreeTypeFont.GenerateTexture(data: pointer; width, height: integer); 
 begin
-  glGenTextures(1, @m_texture);
-  glBindTexture(GL_TEXTURE_2D, m_texture);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, magFilter);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, minFilter);
-  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
 end;
 
-procedure TFreeTypeFont.Render(pixelSize: integer; const charset: TFontString; minFilter: GLuint; magFilter: GLuint); 
+procedure TFreeTypeFont.Render(pixelSize: integer; const charset: TFontString); 
 var
   bitmap: FT_Bitmap;
-  data: PGLubyte;
-  value: GLubyte;
+  data: PUInt8;
+  value: UInt8;
   x, y: integer;
   glyph: TFontChar;
   err: integer;
@@ -192,7 +179,7 @@ begin
   canvasX := 0;
   canvasY := 0;
   channels := 4;
-  data := PGLubyte(GetMem(channels * width * height));
+  data := PUInt8(GetMem(channels * width * height));
 
   m_maxLineHeight := m_face^.size^.metrics.y_ppem;
   padding := 1;
@@ -206,12 +193,12 @@ begin
       for y := 0 to bitmap.rows - 1 do
         for x := 0 to bitmap.width - 1 do
           begin
-            value := PGLubyte(bitmap.buffer)[x + y * bitmap.width];
+            value := PUInt8(bitmap.buffer)[x + y * bitmap.width];
             offset := width * canvasY + (canvasX + x + y * width);
 
-            data[channels * offset + 0] := high(GLubyte);
-            data[channels * offset + 1] := high(GLubyte);
-            data[channels * offset + 2] := high(GLubyte);
+            data[channels * offset + 0] := high(UInt8);
+            data[channels * offset + 1] := high(UInt8);
+            data[channels * offset + 2] := high(UInt8);
             data[channels * offset + 3] := value;
           end;  
 
@@ -225,7 +212,7 @@ begin
         end;
     end;
 
-  GenerateTexture(data, width, height, minFilter, magFilter);
+  GenerateTexture(data, width, height);
   FreeMem(data);
 end;
 

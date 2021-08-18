@@ -29,7 +29,7 @@ function IsCommandKeyDown: boolean;
 function IsShiftKeyDown: boolean;
 function IsOptionKeyDown: boolean;
 function IsControlKeyDown: boolean;
-function IsKeyDown(key: TScanCode): boolean;
+function IsKeyDown(key: TScanCode; repeating: boolean = true): boolean;
 
 {$ifdef PLATFORM_SDL}
 type
@@ -72,10 +72,16 @@ type
   end;
 
 type
+  TKeyDownState = record
+    state: boolean;
+    dirty: boolean;
+  end;
+  
+type
   TInputManager = class
     private
       { keyboard }
-      keyDown: array[0..NUM_SCANCODES-1] of boolean;
+      keyDown: array[0..NUM_SCANCODES-1] of TKeyDownState;
       shiftState: TShiftState;
 
       { mouse }
@@ -94,9 +100,17 @@ var
   InputManager: TInputManager;
 
 constructor TInputManager.Create;
+var
+  i: integer;
 begin
   actions := TKeyCodeMap.Create;
   mouseOffscreen := true;
+
+  for i := 0 to NUM_SCANCODES - 1 do
+    begin
+      keyDown[i].state := false;
+      keyDown[i].dirty := true;
+    end;
 end;
 
 { Actions }
@@ -172,9 +186,20 @@ end;
 // so we can start using real keycodes instead of scancodes
 // which will break on different keyboard layouts
 
-function IsKeyDown(key: TScanCode): boolean;
+function IsKeyDown(key: TScanCode; repeating: boolean): boolean;
 begin
-  result := InputManager.keyDown[key];
+  if not repeating then
+    begin
+      if InputManager.keyDown[key].state and InputManager.keyDown[key].dirty then
+        begin
+          result := true;
+          InputManager.keyDown[key].dirty := false;
+        end
+      else
+        result := false;
+    end
+  else
+    result := InputManager.keyDown[key].state;
 end;
 
 {$ifdef PLATFORM_SDL}
@@ -218,12 +243,13 @@ begin
       end;
     SDL_KEYUP:
       begin
-        InputManager.keyDown[event.key.keysym.scancode] := false;
+        InputManager.keyDown[event.key.keysym.scancode].state := false;
+        InputManager.keyDown[event.key.keysym.scancode].dirty := true;
         //InputManager.shiftState := event^.params.keyboard.shiftstate;
       end;
     SDL_KEYDOWN:
       begin
-        InputManager.keyDown[event.key.keysym.scancode] := true;
+        InputManager.keyDown[event.key.keysym.scancode].state := true;
         //InputManager.shiftState := event^.params.keyboard.shiftstate;
       end;
   end;
@@ -273,12 +299,13 @@ begin
     GLPT_MESSAGE_KEYRELEASE:
       begin
         // TODO: we need GLPT_GetKeyFromScancode/GLPT_GetScancodeFromKey
-        InputManager.keyDown[event^.params.keyboard.scancode] := false;
+        InputManager.keyDown[event^.params.keyboard.scancode].state := false;
+        InputManager.keyDown[event^.params.keyboard.scancode].dirty := true;
         InputManager.shiftState := event^.params.keyboard.shiftstate;
       end;
     GLPT_MESSAGE_KEYPRESS:
       begin
-        InputManager.keyDown[event^.params.keyboard.scancode] := true;
+        InputManager.keyDown[event^.params.keyboard.scancode].state := true;
         InputManager.shiftState := event^.params.keyboard.shiftstate;
       end;
   end;
