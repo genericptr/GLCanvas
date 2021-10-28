@@ -1,17 +1,14 @@
 
 {$ifdef INTERFACE}
 
-{$ifdef PLATFORM_SDL}
+{$if defined(PLATFORM_SDL)}
 const
   NUM_SCANCODES = SDL_NUM_SCANCODES;
 
 type
   TKeyCode = SDL.Uint32;
   TScanCode = SDL_Scancode;
-
-{$endif}
-
-{$ifdef PLATFORM_GLPT}
+{$elseif defined(PLATFORM_GLPT)}
 const
   NUM_SCANCODES = GLPT_NUM_SCANCODES;
 
@@ -19,6 +16,10 @@ type
   TKeyCode = GLPT_Keycode;
   TScanCode = GLPT_Scancode;
 {$endif}
+
+// redeclare shift state to override GLPT
+type
+  TShiftState = Classes.TShiftState;
 
 function GetMouseLocation: TVec2i;
 function IsMouseDown: boolean;

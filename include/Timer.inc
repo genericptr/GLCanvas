@@ -115,8 +115,17 @@ procedure InvalidateTimer(var timer: TTimer);
 
 {$ifdef IMPLEMENTATION}
 
+type
+	{$if defined(PLATFORM_SDL)}
+  TThreadID = SDL_Long;
+	{$elseif defined(PLATFORM_GLPT)}
+  TThreadID = GLPT_Thread_ID;
+  {$else}
+  TThreadID = LongInt;
+	{$endif}
+
 var
-	MainThreadID: GLPT_Thread_ID;
+	MainThreadID: TThreadID;
 	GlobalDispatchers: TTimerDispatcherList = nil;
 	GlobalDispatchHandler: TTimerDispatchHandler = nil;
 	GlobalDispatchHandlerContext: Pointer = nil;
@@ -124,6 +133,15 @@ var
 {*****************************************************************************
  *                              Procedural
  *****************************************************************************}
+
+function GetThreadID: TThreadID; inline;
+begin
+	{$if defined(PLATFORM_SDL)}
+	result := SDL_ThreadID;
+	{$elseif defined(PLATFORM_GLPT)}
+	result := GLPT_ThreadID;
+	{$endif}
+end;
 
 function GetTargetFrameRate: integer;
 begin
@@ -163,14 +181,14 @@ var
 	op: TInvocation;
 	startTime: TimerInterval;
 begin
-	startTime := GLPT_GetTime;
+	startTime := GetTime;
 	while queue.Count > 0 do
 		begin
 			//queue.GetValue(0, op);
 			op := queue[0];
 			op.Invoke;
 			queue.Delete(0);
-			if GLPT_GetTime - startTime > limit then
+			if GetTime - startTime > limit then
 				break;
 		end;
 	result := queue.Count > 0;
@@ -398,7 +416,7 @@ end;
 procedure TTimer.Install(in_dispatcher: TTimerDispatcher = nil);
 begin	
 	Assert(not valid, 'Timer has already been installed.');
-	Assert(GLPT_ThreadID = MainThreadID, 'Timer access outside of main thread.');
+	Assert(GetThreadID = MainThreadID, 'Timer access outside of main thread.');
 	
 	if in_dispatcher = nil then
 		dispatcher := DefaultDispatcher
@@ -419,7 +437,7 @@ end;
 
 procedure TTimer.Invalidate;
 begin
-	Assert(GLPT_ThreadID = MainThreadID, 'Timer access outside of main thread.');
+	Assert(GetThreadID = MainThreadID, 'Timer access outside of main thread.');
 	
 	//writeln('invalidate timer');
 	valid := false;
@@ -445,7 +463,7 @@ var
 	aTimer: TTimer;
 	aDispatcher: TTimerDispatcher;
 begin
-	Assert(GLPT_ThreadID = MainThreadID, 'Timer access outside of main thread.');
+	Assert(GetThreadID = MainThreadID, 'Timer access outside of main thread.');
 	for pointer(aDispatcher) in GlobalDispatchers do
 		begin
 			aTimer := aDispatcher.timerForTarget(_target);
@@ -473,7 +491,7 @@ end;
 {$endif}
 
 {$ifdef INITIALIZATION}
-MainThreadID := GLPT_ThreadID;
+MainThreadID := GetThreadID;
 GlobalDispatchers := TTimerDispatcherList.Create;
 TTimerDispatcher.Register(TTimerDispatcher.Create);
 {$endif}

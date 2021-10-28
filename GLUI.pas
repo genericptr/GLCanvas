@@ -23,8 +23,13 @@ uses
   {$ifdef API_OPENGLES}
   GLES30,
   {$endif}
-  SysUtils, FGL, TypInfo,
-  GLPT, GLCanvas, GLPT_Threads,
+  SysUtils, FGL, TypInfo, Classes,
+  {$if defined(PLATFORM_GLPT)}
+  GLPT, GLPT_Threads, 
+  {$elseif defined(PLATFORM_SDL)}
+  SDL,
+  {$endif}
+  GLCanvas,
   GeometryTypes, VectorMath;
 
 type
@@ -40,27 +45,22 @@ type
 {$undef INTERFACE}
 
 type
-  TEvent = class
+  TEvent = class(GLCanvas.TEvent)
     private
-      msg: pGLPT_MessageRec;
       m_accepted: boolean;
       m_inputSender: TObject;
       acceptedObject: TObject;
     public
-      function KeyCode: GLPT_Keycode;
-      function ScrollWheel: TVec2;
-      function ClickCount: integer;
-      function IsKeyboardCommand: boolean;
-      function KeyboardModifiers: TShiftState;
-      function MouseModifiers: TShiftState;
-      function KeyboardCharacter: TFontChar;
+      { Methods }
+      function ScrollWheel: TVec2; override;
       function Location(system: TObject = nil): TPoint;
-      property IsAccepted: boolean read m_accepted;
-      property InputSender: TObject read m_inputSender;
       procedure Accept(obj: TObject = nil);
       procedure Reject;
-      constructor Create(raw: pGLPT_MessageRec);
+      { Properties }
+      property IsAccepted: boolean read m_accepted;
+      property InputSender: TObject read m_inputSender;
   end;
+  TEventList = specialize TFPGObjectList<TEvent>;
 
 type
   TDragOperation = (
@@ -92,14 +92,14 @@ type
     // return the parent coordinate system(canvas, layer or sprite)
     function GetParentCoordinateSystem: TObject;
     
-    // point: A point specifying a location in the coordinate system of the caller.
-    // system: The system into whose coordinate system "point" is to be converted.
-    // result: The point converted to the coordinate system of "system".
+    { point: A point specifying a location in the coordinate system of the caller.
+      system: The system into whose coordinate system "point" is to be converted.
+      result: The point converted to the coordinate system of "system". }
     function ConvertPointTo(point: TPoint; system: TObject): TPoint;
     
-    // point: A point specifying a location in the coordinate system of "system".
-    // system: The system with "point" in its coordinate system.
-    // result: The point converted to the coordinate system of the caller.
+    { point: A point specifying a location in the coordinate system of "system".
+      system: The system with "point" in its coordinate system.
+      result: The point converted to the coordinate system of the caller. }
     function ConvertPointFrom(point: TPoint; system: TObject): TPoint;
     
     function ConvertRectTo(rect: TRect; system: TObject): TRect;
@@ -188,27 +188,25 @@ type
       locked: boolean;
       list: array[TWindowLevel] of TWindowList;
       pendingClose: TWindowList;
-      currentEvent: TEvent;
       function GetWindow(level: TWindowLevel; index: integer): TWindow;
       property Get[level: TWindowLevel; index: integer]: TWindow read GetWindow; default;
     private
       procedure Add(window: TWindow);
       procedure Remove(window: TWindow);
       procedure MoveToFront(window: TWindow);
-
-      procedure Update;
-      function GetNextEvent(constref msg: pGLPT_MessageRec): TEvent;
-      function PollEvent(constref msg: pGLPT_MessageRec): boolean;
-      procedure ResizeScreen(constref msg: pGLPT_MessageRec);
+      procedure ResizeScreen(event: TEvent);
+      function PollEvent(event: TEvent): boolean;
     protected
       procedure HandleKeyEquivalent(event: TEvent); override;
       procedure HandleCommand(command: string); override;
     public
-
       { Static }
       class function FirstResponder: TObject;
 
       { Methods }
+      function PollEvent(constref event: TEvent.TRawEvent): boolean;
+
+      procedure Update;
       function FrontWindow: TWindow;
       function AvailableWindows: TWindowArray;
       function FindWindow(window: TWindow): boolean;
@@ -276,13 +274,13 @@ type
       procedure InsertSubview(view: TView; index: integer);
       procedure RemoveSubview(view: TView);
       procedure RemoveSubviews;
-      procedure RemoveFromParent;     
+      procedure RemoveFromParent;
 
       { Searching }
       function FindParent(ofClass: TViewClass): TView;
       function FindSubview(withTag: integer): TView;  
 
-      { Controls }    
+      { Controls }
       // TODO: remove these to helpers so we can decouple TControl from TView
       function FindValue(identifier: string): variant;
       function FindControl(identifier: string): TControl;
@@ -644,7 +642,7 @@ type
   TControlState = (Off, On, Mixed);
 
   TControlKeyEquivalent = record
-    keycode: GLPT_Keycode;
+    keycode: TKeyCode;
     modifiers: TShiftState;
   end;
 
@@ -664,7 +662,7 @@ type
       procedure SetControlState(newValue: TControlState);
       procedure SetAction(newValue: TInvocation); overload;
       procedure SetAction(newValue: string); overload;
-      procedure SetKeyEquivalent(keycode: GLPT_Keycode; modifiers: TShiftState = []); virtual;
+      procedure SetKeyEquivalent(keycode: TKeycode; modifiers: TShiftState = []); virtual;
       procedure SetIdentifier(newValue: string);
       procedure SetBinding(prop: string; controller: TObject);
       procedure SetController(controller: TObject);
@@ -755,6 +753,71 @@ type
   end;
 
 type
+  PLineLayout = ^TLineLayout;
+  TLineLayout = record
+    {
+      TODO: keep the parent node (which is above us)
+      so we when line wrapping is implemented we can find
+      the literal line number which preceeds the line and
+      use that determine the line number of the current line (and lines below)
+      a concept of dirty flags needs to be added also so that
+      when lines are removed we know to track the parent and recalculate
+    }
+    offset: LongInt;
+    line: integer;
+    columns: integer;
+    prev: PLineLayout;
+    next: PLineLayout;
+    class operator = (left: TLineLayout; right: TLineLayout): boolean;
+  end;
+
+type
+  TTextStorage = class
+    // text storage will be used for style runs
+    m_text: pchar;
+    length: integer;
+
+    //function FindCharacterAtPoint(point: TVec2i): LongInt;
+    //function FindPointAtLocation(location: LongInt): TVec2i;
+    //function FindWordAtPoint(point: TVec2i): TTextRange;
+    //function FindLineAtPoint(point: TVec2i): TTextRange;
+  end;
+
+type
+  TLayoutManager = class
+    private type
+      TLineList = specialize TFPGList<TLineLayout>;
+    private
+      lines: TLineList;
+      // TODO: this needs to be a pointer with a range
+      text: TFontString;
+      //range: TTextRange;
+      //where: TVec2;
+      color: TColor;
+      scale: float;
+      textAlignment: TTextAlignment;
+      wrap: TTextWrapping;
+      // TODO: make this another record for an overload
+      //testPoint: TVec2;
+      //testOffset: TTextOffset;
+      //hitPoint: TVec2;
+      //hitOffset: TTextOffset;
+      //textSize: TVec2;
+      function GetLineHeight: integer; inline;
+      procedure DrawLine(origin: TVec2; line: TLineLayout);
+      procedure DrawGutter(origin: TVec2; startLine, endLine: integer; out gutterWidth: integer);
+    public
+      cursor: TTextRange;
+      font: IFont;
+
+      constructor Create;
+      procedure SetText(const newText: ansistring);
+      procedure Draw(origin: TVec2; visibleRect: TRect);
+
+      property LineHeight: integer read GetLineHeight;
+  end;
+
+type
   TTextViewOption = (
       WidthTracksContainer,
       HeightTracksContainer,
@@ -769,16 +832,6 @@ type
       Word,
       Line
     );
-
-type
-  TTextStorage = class
-    m_text: TTextViewString;
-
-    //function FindCharacterAtPoint(point: TVec2i): LongInt;
-    //function FindPointAtLocation(location: LongInt): TVec2i;
-    //function FindWordAtPoint(point: TVec2i): TTextRange;
-    //function FindLineAtPoint(point: TVec2i): TTextRange;
-  end;
 
 type
   TTextView = class (TView)
@@ -1577,7 +1630,7 @@ type
       procedure SetChecked(newValue: boolean);
       procedure SetFont(newValue: IFont);
       procedure SetImage(newValue: TTexture);
-      procedure SetKeyEquivalent(keycode: GLPT_Keycode; modifiers: TShiftState); override;
+      procedure SetKeyEquivalent(keycode: TKeyCode; modifiers: TShiftState); override;
 
       function GetTextSize: TVec2i;
       function GetItemIndex: integer;
@@ -1654,8 +1707,8 @@ type
 
       procedure AddItem(item: TMenuItem); overload;
       function AddItem(title: string; action: TInvocation): TMenuItem; overload;
-      function AddItem(title: string; action: TInvocation; keycode: GLPT_Keycode; modifiers: TShiftState = []): TMenuItem; overload;
-      function AddItem(title: string; method: string; keycode: GLPT_Keycode; modifiers: TShiftState = []): TMenuItem; overload;
+      function AddItem(title: string; action: TInvocation; keycode: TKeyCode; modifiers: TShiftState = []): TMenuItem; overload;
+      function AddItem(title: string; method: string; keycode: TKeyCode; modifiers: TShiftState = []): TMenuItem; overload;
 
       procedure InsertItem(index: integer; item: TMenuItem);
       procedure RemoveItem(item: TMenuItem); overload;
@@ -1828,11 +1881,6 @@ type
       procedure PopPage(page: TView);
   end;
 
-// TODO: Move to TApplication and make an oveload for SetupCanvas
-// that can take an object reference
-function PollWindowEvents(constref event: pGLPT_MessageRec): boolean;
-procedure UpdateWindows;
-
 procedure Draw3PartImage(parts: TTextureArray; frame: TRect; vertical: boolean = false); 
 procedure Draw9PartImage(parts: TTextureSheet; frame: TRect); 
 
@@ -1853,13 +1901,13 @@ type
   end; 
 
 var
-  MainApp: TApplication;
   KeyWindow: TWindow;
   ScreenMouseLocation: TPoint;
   SubpixelAccuracyEnabled: boolean = false;
   SharedCursor: TWindowCursor;
   MainMenuBar: TMenuBar = nil;
-  PendingEvents: array of GLPT_MessageRec;
+  CurrentEvent: TEvent = nil;
+  PendingEvents: TEventList;
 
 {$define IMPLEMENTATION}
 {$include include/Invocation.inc}
@@ -1881,29 +1929,28 @@ begin
   result := FindParent(TScrollView) as TScrollView;
 end;
 
-function MainPlatformWindow: pGLPTwindow; inline;
+function MainPlatformWindow: pointer; inline;
 begin
   result := CanvasState.window;
 end;
 
-function PollWindowEvents(constref event: pGLPT_MessageRec): boolean;
-var
-  msg: GLPT_MessageRec;
+function GetClipboardText: UnicodeString;
 begin
-  result := SharedApp.PollEvent(event);
-
-  while Length(PendingEvents) > 0 do
-    begin
-      msg := PendingEvents[High(PendingEvents)];
-      SharedApp.PollEvent(@msg);
-      SetLength(PendingEvents, Length(PendingEvents) - 1);
-    end;
+  {$if defined(PLATFORM_SDL)}
+  result := SDL_GetClipboardText;
+  {$elseif defined(PLATFORM_GLPT)}
+  result := GLPT_GetClipboardText;
+  {$endif}
 end;
 
-procedure UpdateWindows;
+procedure SetClipboardText(text: UnicodeString);
 begin
-  SharedApp.Update;
-  ProcessTimersForLoop;
+  {$if defined(PLATFORM_SDL)}
+  text += #0;
+  SDL_SetClipboardText(@text[1]);
+  {$elseif defined(PLATFORM_GLPT)}
+  GLPT_SetClipboardText(text);
+  {$endif}
 end;
 
 { DRAWING }
@@ -2203,54 +2250,59 @@ begin
         PopViewTransform;
       end;
   locked := false;
+
+  ProcessTimersForLoop;
 end;
 
-function TApplication.GetNextEvent(constref msg: pGLPT_MessageRec): TEvent;
-begin
-  result := TEvent.Create(msg);
-  if currentEvent <> nil then
-    currentEvent.Free;
-  currentEvent := result;
-end;
-
-procedure TApplication.ResizeScreen(constref msg: pGLPT_MessageRec);
+procedure TApplication.ResizeScreen(event: TEvent);
 begin
   PostNotification(kNotificationScreenWillResize);
-  ResizeCanvas(msg^.params.rect.width, msg^.params.rect.height);
-  MainScreen.SetSize(V2(msg^.params.rect.width, msg^.params.rect.height));
+  ResizeCanvas(event.WindowSize);
+  MainScreen.SetSize(event.WindowSize);
 end;
 
-function TApplication.PollEvent(constref msg: pGLPT_MessageRec): boolean;
+function TApplication.PollEvent(constref event: TEvent.TRawEvent): boolean;
+begin
+  FreeAndNil(CurrentEvent);
+
+  result := PollEvent(TEvent.Create(event));
+
+  while PendingEvents.Count > 0 do
+    begin
+      PollEvent(PendingEvents.Last);
+      PendingEvents.Delete(PendingEvents.Count - 1);
+    end;
+end;
+
+function TApplication.PollEvent(event: TEvent): boolean;
 var
   window: TWindow;
   level: integer;
   didResize: boolean;
-  event: TEvent;
 label
   Finished;
 begin
-  result := false;
+  CurrentEvent := event;
+
   locked := true;
   didResize := false;
-  event := GetNextEvent(msg);
+  result := false;
 
   // handle application level events outside main loop
-  case msg^.mcode of
-    GLPT_MESSAGE_KEYPRESS:
+  case event.EventType of
+    TEventType.KeyDown:
       begin
+        writeln(event.KeyCode);
         // get key combinations and propogate through "HandleKeyEquivalent(event)/HandleKeyEquivalent"
         // also see NSMenuItemValidation to enabling menu items based
-        if event.IsKeyboardCommand then
-          begin
-            //writeln('perform key equivalent: ', event.KeyCode);
-            HandleKeyEquivalent(event);
-            if event.IsAccepted then
-              goto Finished;
-          end;
+        //writeln('perform key equivalent: ', event.KeyCode);
+        HandleKeyEquivalent(event);
+        if event.IsAccepted then
+          goto Finished;
       end;
-    GLPT_MESSAGE_RESIZE:
+    TEventType.WindowResize:
       begin
-        ResizeScreen(msg);
+        ResizeScreen(event);
         didResize := true;
       end;
   end;
@@ -2389,47 +2441,14 @@ end;
 
 { EVENT }
 
-function TEvent.KeyCode: GLPT_Keycode;
-begin
-  result := msg^.params.keyboard.keycode;
-end;
-
-function TEvent.IsKeyboardCommand: boolean;
-begin
-  result := KeyboardModifiers <> [];
-end;
-
-function TEvent.KeyboardModifiers: TShiftState;
-begin
-  result := msg^.params.keyboard.shiftstate;
-end;
-
-function TEvent.MouseModifiers: TShiftState;
-begin
-  result := msg^.params.mouse.shiftstate;
-end;
-
-function TEvent.KeyboardCharacter: TFontChar;
-begin
-  result := TFontChar(msg^.params.keyboard.keycode);
-end;
-
 function TEvent.ScrollWheel: TVec2;
 begin
-  result := V2(msg^.params.mouse.deltaX, msg^.params.mouse.deltaY);
-
-  // scale amount to screen scale
-  result *= PlatformScreenScale;
-end;
-
-function TEvent.ClickCount: integer;
-begin
-  result := msg^.params.mouse.clicks;
+  result := inherited * PlatformScreenScale;
 end;
 
 function TEvent.Location(system: TObject = nil): TPoint;
 begin
-  result := CanvasMousePosition(msg.GetMouseLocation);
+  result := CanvasMousePosition(MouseLocation);
 
   // scale location from screen scale
   result.x := trunc(result.x / PlatformScreenScale);
@@ -2449,11 +2468,6 @@ procedure TEvent.Accept(obj: TObject = nil);
 begin
   m_accepted := true;
   acceptedObject := obj;
-end;
-
-constructor TEvent.Create(raw: pGLPT_MessageRec); 
-begin
-  msg := raw;
 end;
 
 { VIEW }
@@ -3536,7 +3550,7 @@ constructor TView.Create(_frame: TRect);
 begin
   SetFrame(_frame);
   Initialize;
-end;  
+end;
 
 class function TView.StyleName: string;
 begin
@@ -3792,8 +3806,8 @@ begin
       HandleDidBecomeFrontWindow;
     end;
 
-  if assigned(SharedApp.CurrentEvent) then
-    TestMouseTracking(SharedApp.CurrentEvent);
+  if assigned(CurrentEvent) then
+    TestMouseTracking(CurrentEvent);
 end;
 
 function TWindow.IsFront: boolean;
@@ -3881,16 +3895,9 @@ begin
 end;
 
 class function TWindow.ScreenRect: TRect;
-var
-  width, height: integer;
 begin
   result.origin := 0;
-  result.size := 0;
-
-  GLPT_GetFrameBufferSize(MainPlatformWindow, width, height);
-
-  result.size.x := width / PlatformScreenScale;
-  result.size.y := height / PlatformScreenScale;
+  result.size := TVec2(GetDisplaySize) / PlatformScreenScale;
 end;
 
 function TWindow.ShouldMoveByBackground(event: TEvent): boolean;
@@ -4030,7 +4037,7 @@ procedure TWindow.HandleKeyDown(event: TEvent);
 begin
   
   // handle default button action
-  if (event.KeyCode = GLPT_KEY_RETURN) and
+  if (event.KeyCode = KEY_RETURN) and
      (defaultButton <> nil) then
     begin
       TButton(defaultButton).InvokeAction;
@@ -4238,13 +4245,12 @@ function TWindow.PollEvent(event: TEvent): boolean;
 begin
   // if the window is modal then we need to block other events
   result := IsModal;
-
   ScreenMouseLocation := event.Location;
 
-  case event.msg.mcode of
-    GLPT_MESSAGE_RESIZE:
+  case event.EventType of
+    TEventType.WindowResize:
       HandleScreenDidResize;
-    GLPT_MESSAGE_MOUSEDOWN:
+    TEventType.MouseDown:
       begin
         Assert(SharedCursor.inputStarted = nil, 'mouse up wasn''t processed');
 
@@ -4260,7 +4266,7 @@ begin
             exit(true);
           end;
       end;
-    GLPT_MESSAGE_MOUSEUP:
+    TEventType.MouseUp:
       begin
         event.m_inputSender := SharedCursor.inputStarted;
 
@@ -4274,7 +4280,7 @@ begin
         if event.IsAccepted then
           exit(true);
       end;
-    GLPT_MESSAGE_MOUSEMOVE:
+    TEventType.MouseMoved:
       begin
         { don't accpet the mouse moved event during dragging sessions
           the reason for this is so that the event falls through and
@@ -4325,13 +4331,13 @@ begin
         //    SharedCursor.dragTarget := nil;
         //  end;
       end;
-    GLPT_MESSAGE_SCROLL:
+    TEventType.Scroll:
       begin
         HandleMouseWheelScroll(event);
         if event.IsAccepted then
           exit(true);
       end;
-    GLPT_MESSAGE_KEYPRESS:
+    TEventType.KeyDown:
       begin
         if assigned(KeyWindow) then
           KeyWindow.HandleKeyDown(event);
@@ -5007,7 +5013,7 @@ begin
   keyEquivalentCell.SetStringValue(value);
 end;
 
-procedure TMenuItem.SetKeyEquivalent(keycode: GLPT_Keycode; modifiers: TShiftState);
+procedure TMenuItem.SetKeyEquivalent(keycode: TKeyCode; modifiers: TShiftState);
 var
   codeName: string;
 begin
@@ -5063,13 +5069,13 @@ begin
   AddItem(result);
 end;
 
-function TMenu.AddItem(title: string; action: TInvocation; keycode: GLPT_Keycode; modifiers: TShiftState = []): TMenuItem;
+function TMenu.AddItem(title: string; action: TInvocation; keycode: TKeyCode; modifiers: TShiftState = []): TMenuItem;
 begin
   result := AddItem(title, action);
   result.SetKeyEquivalent(keycode, modifiers);
 end;
 
-function TMenu.AddItem(title: string; method: string; keycode: GLPT_Keycode; modifiers: TShiftState = []): TMenuItem;
+function TMenu.AddItem(title: string; method: string; keycode: TKeyCode; modifiers: TShiftState = []): TMenuItem;
 begin
   result := AddItem(title, TInvocation.Create(TApplication.FirstResponder, method), keycode, modifiers);
 end;
@@ -5115,6 +5121,7 @@ end;
 procedure TMenu.Popup(_positioningRect: TRect; _positioningView: TView; edge: TRectEdge);
 
   // TODO: make an app level method for this
+  {$ifdef PLATFORM_GLPT}
   procedure SimulateMouseEvent(where: TVec2i);
   var
     params: GLPT_MessageParams;
@@ -5130,10 +5137,11 @@ procedure TMenu.Popup(_positioningRect: TRect; _positioningView: TView; edge: TR
     msg.mcode := GLPT_MESSAGE_MOUSEMOVE;
     msg.params := params;
 
-    PendingEvents += [msg];
+    PendingEvents.Add(TEvent.Create(msg));
     //SharedApp.PollEvents(@msg);
     //TApplication.Active.PostEvent(event);
   end;
+  {$endif}
 
 var
   menu: TMenu;
@@ -5358,13 +5366,13 @@ var
 begin
   //writeln(event.KeyCode);
   case event.KeyCode of
-    GLPT_KEY_ESCAPE:
+    KEY_ESCAPE:
       begin
         writeln('close menu!');
         Close;
         event.Accept(self);
       end;
-    GLPT_KEY_RETURN:
+    KEY_RETURN:
       begin
         if selectedItem <> nil then
           begin
@@ -5373,7 +5381,7 @@ begin
           end;
         event.Accept(self);
       end;
-    GLPT_KEY_LEFT:
+    KEY_LEFT:
       begin
         // if the menu has a parent then close us
         if parentMenu <> nil then
@@ -5392,7 +5400,7 @@ begin
             event.Accept(self);
           end;
       end;
-    GLPT_KEY_RIGHT:
+    KEY_RIGHT:
       begin
         if (selectedItem <> nil) and (selectedItem.submenu <> nil) then
           begin
@@ -5409,10 +5417,10 @@ begin
               writeln(index);
 
             MainMenuBar.Items[index].OpenMenu;
-            event.Accept(self);            
+            event.Accept(self);
           end;
       end;
-    GLPT_KEY_UP:
+    KEY_UP:
       begin
         item := GetSelectedItem;
         if item = nil then
@@ -5425,7 +5433,7 @@ begin
           end;
         event.Accept(self);
       end;
-    GLPT_KEY_DOWN:
+    KEY_DOWN:
       begin
         writeln('down');
         item := GetSelectedItem;
@@ -7614,7 +7622,7 @@ var
   index: integer;
 begin
   case event.KeyCode of
-    GLPT_KEY_UP:
+    KEY_UP:
       begin
         {
           TODO: this fails because rowIndex is not global to the data source
@@ -7630,7 +7638,7 @@ begin
           ScrollUp;
         event.Accept(self);
       end;
-    GLPT_KEY_DOWN:
+    KEY_DOWN:
       begin
         if selection.Count > 0 then
           index := cells[selection[0]].rowIndex + 1
@@ -8022,6 +8030,360 @@ begin
   result := 0;
 end;
 
+class operator TLineLayout.= (left: TLineLayout; right: TLineLayout): boolean;
+begin
+  result := left.offset = right.offset;
+end;
+
+procedure TLayoutManager.SetText(const newText: ansistring);
+var
+  i,
+  offset, rows, columns: integer;
+  line: TLineLayout;
+begin
+  offset := 0;
+  rows := 0;
+  columns := 0;
+  lines.Clear;
+
+  text := newText;//Copy(newText, 0, length);
+
+  for i := 0 to Length(newText) - 1 do
+    begin
+      {
+        wrap to column/word or line ending
+      }
+      if newText[i] in [LineEnding] then
+        begin
+          //writeln(rows,'x',offset,':',columns,': ', Copy(newText, offset, columns));
+
+          line.line := rows;
+          line.offset := offset;
+          line.columns := columns;
+          if lines.Count > 0 then
+            line.prev := TFPSList(lines).Last
+          else
+            line.prev := nil;
+
+          if line.prev <> nil then
+            line.prev.next := @self;
+
+          lines.Add(line);
+
+          inc(rows);
+          columns :=0;
+          offset := i;
+          continue;
+        end;
+      inc(columns);
+    end;
+end;
+
+procedure TLayoutManager.DrawLine(origin: TVec2; line: TLineLayout);
+var
+  offset: integer;
+  c: char;
+  renderFrame: TFontRenderFrame;
+  newOrigin: TVec2;
+  charFrame: TRect;
+begin
+  //writeln(line.line,':',line.offset);
+  for offset := line.offset to (line.offset + line.columns) - 1 do
+    begin
+      c := text[offset + 1];
+
+      if not font.HasGlyph(c) then
+        begin
+          /// TODO: SpaceWidth is character width for monospace fonts
+          case c of
+            #32: origin.x += font.SpaceWidth;                   // space
+            #9: origin.x += font.SpaceWidth * font.TabWidth;    // tab
+            otherwise
+              origin.x += font.SpaceWidth;                      // other characters
+          end;
+
+          continue;
+        end;
+
+      renderFrame := font.CharacterRenderFrame(c);
+
+      newOrigin.x := origin.x + renderFrame.bearing.x;
+      newOrigin.y := origin.y + renderFrame.bearing.y;
+
+      {
+        H: 4.0/8.0
+        e: 6.0/6.0
+        l: 4.0/8.0
+        o: 6.0/6.0
+        j: 4.0/10.0
+        g: 6.0/8.0
+      }
+      // "originY": (options.font.LineHeight - (renderFrame.bearing.y + renderFrame.faceSize.y)):1:1
+      //writeln(char(c),':',renderFrame.bearing.y:1:1,'/',renderFrame.faceSize.y:1:1);
+
+      charFrame := RectMake(newOrigin, renderFrame.faceSize) * scale;
+
+      { TODO: move to direct quad drawing
+        charQuad.SetOrigin(origin);
+        charQuad.SetSize(face.size);
+        charQuad.SetTexture(face.textureFrame);
+        DrawQuad(charQuad);
+      }
+
+      DrawTexture(font, charFrame, renderFrame.textureFrame, color);
+      {$ifdef DEBUG_FONTS}
+      FillRect(charFrame, RGBA(1, 0, 0, 0.2));
+      {$endif}
+
+      origin.x += renderFrame.advance;
+    end;
+end;
+
+procedure TLayoutManager.DrawGutter(origin: TVec2; startLine, endLine: integer; out gutterWidth: integer);
+var
+  i: integer;
+  lineColor: TColor;
+begin
+  lineColor := RGBA(0, 1);
+
+  gutterWidth := 32;
+
+  FillRect(RectMake(origin.x, origin.y, gutterWidth, (endLine - startLine) * LineHeight), RGBA(0.8, 1));
+
+  for i := startLine to endLine do
+    begin
+      DrawText(font, lines[i].line.ToString, origin, lineColor);
+      origin.y += LineHeight;
+    end;
+end;
+
+procedure TLayoutManager.Draw(origin: TVec2; visibleRect: TRect);
+var
+  i, startLine, endLine: integer;
+  gutterWidth: integer;
+begin
+  startLine := Trunc(visibleRect.MinY / LineHeight);
+  endLine := Trunc(visibleRect.MaxY / LineHeight);
+
+  DrawGutter(origin, startLine, endLine, gutterWidth);
+
+  origin.x += gutterWidth;
+
+  for i := startLine to endLine do
+    begin
+      DrawLine(origin, lines[i]);
+      origin.y += LineHeight;
+    end;
+end;
+
+function TLayoutManager.GetLineHeight: integer;
+begin
+  result := font.LineHeight;
+end;
+
+constructor TLayoutManager.Create;
+begin
+  lines := TLineList.Create;
+  scale := 1;
+  color := RGBA(0, 1);
+end;
+
+procedure LayoutText(var options: TTextLayoutOptions);
+
+  procedure DrawCursor(origin: TVec2); inline;
+  var
+    cursorFrame: TRect;
+    yMargin: integer;
+  begin
+    yMargin := 1;
+    cursorFrame.width := 1;
+    cursorFrame.x := (origin.x - trunc(cursorFrame.width / 2)) - 1 { always draw on left side };
+    cursorFrame.y := origin.y - yMargin;
+    cursorFrame.height := options.font.LineHeight + (yMargin * 2);
+    FillRect(cursorFrame, RGBA(1, 0, 0, 0.9));
+  end;
+
+  procedure TestPoints(offset: LongInt; rect: TRect);
+  begin
+    // test hit offset
+    if offset = options.testOffset then
+      options.hitPoint := rect.origin;
+
+    // test the hit point
+    if options.testPoint.y >= rect.minY then
+      begin
+        if options.testPoint.x >= rect.midX then
+          options.hitOffset := offset + 1
+        else if options.testPoint.x >= rect.minX then
+          options.hitOffset := offset;
+      end;
+  end;
+
+var
+  offset: TTextOffset;
+  c: TFontChar;
+  renderFrame: TFontRenderFrame;
+  newOrigin,
+  prevOrigin,
+  origin,
+  size: TVec2;
+  charFrame: TRect;
+  selFrame: TRect;
+  newLine: boolean;
+begin
+  Assert(options.font <> nil, 'DrawText font must not be nil');
+
+  case options.textAlignment of
+    TTextAlignment.Left:
+      origin := options.where / options.scale;
+    TTextAlignment.Center:
+      begin
+        origin := options.where / options.scale;
+        size := MeasureText(options.font, options.text);
+        origin.x -= size.width / 2; 
+      end;
+  end;
+
+  options.hitOffset := -1;
+  selFrame.height := 0;
+  options.textSize := V2(0, 0);
+
+  for offset := options.range.location to options.range.length - 1 do
+    begin
+      c := options.text[offset + 1];
+
+      // draw cursor
+      if options.draw and (options.cursor.location > -1) then
+        begin
+
+          if offset = options.cursor.insertion then
+            DrawCursor(origin);
+
+          if (offset = options.cursor.location) and (options.cursor.length > 0) then
+            begin
+              // start selection frame
+              selFrame := RectMake(origin.x, origin.y , 0, options.font.LineHeight);
+            end
+          else if (offset = options.cursor.location + options.cursor.length) and (selFrame.height > 0) then
+            begin
+              // end selection frame
+              selFrame.size.x := origin.x - selFrame.origin.x;
+              FillRect(selFrame, RGBA(1, 0, 0, 0.25));
+              selFrame.height := 0;
+            end;
+        end;
+
+      if not options.font.HasGlyph(c) then
+        begin
+          newLine := false;
+          prevOrigin := origin;
+
+          case c of
+            #32: origin.x += options.font.SpaceWidth;                         // space
+            #9: origin.x += options.font.SpaceWidth * options.font.TabWidth;  // tab
+            #10, #12, #13:                                                    // EOL
+              begin
+                newLine := true;
+
+                // test for points outside the line range and
+                // and place the hit offset at the end of the line
+                // but not after the line break characters
+                if (options.testPoint.y >= origin.y) and (options.testPoint.x >= origin.x) then
+                  options.hitOffset := offset;
+
+                if offset = options.testOffset then
+                  options.hitPoint := origin;
+
+                // before advacing to the next line draw the selection
+                // for the current line
+                if options.draw and (selFrame.height > 0) then
+                  begin
+                    selFrame.size.x := origin.x - selFrame.origin.x;
+                    // add an extra amount of space to indicate the line break is selected
+                    selFrame.size.x += Max(2, options.font.SpaceWidth / 2);
+                    FillRect(selFrame, RGBA(1, 0, 0, 0.25));
+                  end;
+
+                origin.y += options.font.LineHeight;
+                origin.x := options.where.x / options.scale;
+
+                selFrame.origin := origin;
+              end
+            otherwise
+              origin.x += options.font.SpaceWidth;                            // other characters
+          end;
+
+          // test points
+          if not newLine then
+            TestPoints(offset, RectMake(origin.x, origin.y, origin.y - prevOrigin.y, options.font.LineHeight));
+
+          // adjust text size
+          if origin.x > options.textSize.width then
+            options.textSize.width := origin.x;
+          if origin.y > options.textSize.height then
+            options.textSize.height := origin.y;  
+
+          continue;
+        end;
+
+      renderFrame := options.font.CharacterRenderFrame(c);
+
+      newOrigin.x := origin.x + renderFrame.bearing.x;
+      newOrigin.y := origin.y + renderFrame.bearing.y;
+
+      {
+        H: 4.0/8.0
+        e: 6.0/6.0
+        l: 4.0/8.0
+        o: 6.0/6.0
+        j: 4.0/10.0
+        g: 6.0/8.0
+      }
+      // "originY": (options.font.LineHeight - (renderFrame.bearing.y + renderFrame.faceSize.y)):1:1
+      //writeln(char(c),':',renderFrame.bearing.y:1:1,'/',renderFrame.faceSize.y:1:1);
+
+      charFrame := RectMake(newOrigin, renderFrame.faceSize) * options.scale;
+
+      // test points
+      TestPoints(offset, charFrame);
+
+      // draw character
+      if options.draw then
+        begin
+          { TODO: move to direct quad drawing
+            charQuad.SetOrigin(origin);
+            charQuad.SetSize(face.size);
+            charQuad.SetTexture(face.textureFrame);
+            DrawQuad(charQuad);
+          }
+          DrawTexture(options.font, charFrame, renderFrame.textureFrame, options.color);
+          {$ifdef DEBUG_FONTS}
+          FillRect(charFrame, RGBA(1, 0, 0, 0.2));
+          {$endif}
+        end;
+
+      origin.x += renderFrame.advance;
+
+      // adjust text size
+      if origin.x > options.textSize.width then
+        options.textSize.width := origin.x;
+      if origin.y > options.textSize.height then
+        options.textSize.height := origin.y;
+    end;
+
+  options.textSize.y += options.font.LineHeight;
+
+  if (options.testPoint.y >= origin.y) and (options.testPoint.x >= origin.x - renderFrame.advance) then
+    options.hitOffset := offset;
+
+  // draw cursor at the final offset
+  if options.draw and 
+    (options.cursor.location > -1) and (
+      (options.cursor.location = options.range.location + options.range.length) or 
+      (options.range.length = 0)) then
+    DrawCursor(origin);
+end;
+
 function TTextView.FindPointAtLocation(location: LongInt): TVec2i;
 var
   layout: TTextLayoutOptions;
@@ -8118,15 +8480,15 @@ end;
 
 procedure TTextView.HandleKeyEquivalent(event: TEvent);
 begin
-  if (event.KeyCode = GLPT_KEY_v) and (event.KeyboardModifiers = [ssSuper]) then
+  if (event.KeyCode = KEY_v) and (event.KeyboardModifiers = [ssSuper]) then
     begin
-      InsertText(GLPT_GetClipboard);
+      InsertText(GetClipboardText);
       event.Accept(self);
     end
-  else if (event.KeyCode = GLPT_KEY_c) and (event.KeyboardModifiers = [ssSuper]) then
+  else if (event.KeyCode = KEY_c) and (event.KeyboardModifiers = [ssSuper]) then
     begin
       if cursor.length > 0 then
-        GLPT_SetClipboard(System.Copy(Text, cursor.location + 1, cursor.length));
+        SetClipboardText(System.Copy(Text, cursor.location + 1, cursor.length));
       event.Accept(self);
     end;
 end;
@@ -8171,7 +8533,7 @@ procedure TTextView.HandleInputDragged(event: TEvent);
 var
   offset: longint;
 begin
-  inherited HandleInputStarted(event);
+  inherited HandleInputDragged(event);
 
   if InputHit(event) and (event.InputSender = self) then
     begin
@@ -8221,7 +8583,6 @@ begin
     end;
 end;
 
-
 procedure TTextView.HandleKeyDown(event: TEvent);
 var
   newLocation, 
@@ -8235,9 +8596,9 @@ begin
       grow := ssShift in event.KeyboardModifiers;
 
       case event.KeyCode of
-        GLPT_KEY_RETURN:
+        KEY_RETURN:
           InsertText(LineEnding);
-        GLPT_KEY_BACKSPACE, GLPT_KEY_DELETE:
+        KEY_BACKSPACE, KEY_DELETE:
           if HandleWillDelete then
             begin
               if ssSuper in event.KeyboardModifiers then
@@ -8279,11 +8640,11 @@ begin
                     end;
                 end;
             end;
-        GLPT_KEY_PAGEUP:
+        KEY_PAGEUP:
           ;
-        GLPT_KEY_PAGEDOWN:
+        KEY_PAGEDOWN:
           ;
-        GLPT_KEY_RIGHT:
+        KEY_RIGHT:
           begin
             if ssSuper in event.KeyboardModifiers then
               MoveCursor(MaxInt, grow)
@@ -8292,7 +8653,7 @@ begin
             else
               MoveCursor(cursor.insertion + 1, grow);
           end;
-        GLPT_KEY_LEFT:
+        KEY_LEFT:
           begin
             if ssSuper in event.KeyboardModifiers then
               MoveCursor(0, grow)
@@ -8301,14 +8662,14 @@ begin
             else
               MoveCursor(cursor.insertion - 1, grow);
           end;
-        GLPT_KEY_DOWN:
+        KEY_DOWN:
           begin
             point := FindPointAtLocation(cursor.location);
             point.y += textFont.LineHeight;
             offset := FindCharacterAtPoint(point);
             MoveCursor(offset);
           end;
-        GLPT_KEY_UP:
+        KEY_UP:
           begin
             point := FindPointAtLocation(cursor.location);
             point.y -= textFont.LineHeight;
@@ -8317,7 +8678,7 @@ begin
           end;
         otherwise
           begin
-            InsertText(event.KeyboardCharacter);
+            InsertText(event.KeyChar);
           end;
 
         event.Accept(self);
@@ -8509,12 +8870,12 @@ end;
 procedure TTextField.HandleKeyDown(event: TEvent);
 begin
   case event.KeyCode of
-    GLPT_KEY_TAB:
+    KEY_TAB:
       begin
         Window.AdvanceFocus;
         event.Accept(self);
       end;
-    GLPT_KEY_RETURN:
+    KEY_RETURN:
       begin
         InvokeAction;
         event.Accept(self);
@@ -9460,7 +9821,7 @@ begin
   NeedsLayoutSubviews;
 end;
 
-procedure TControl.SetKeyEquivalent(keycode: GLPT_Keycode; modifiers: TShiftState);
+procedure TControl.SetKeyEquivalent(keycode: TKeyCode; modifiers: TShiftState);
 begin
   keyEquivalent.keycode := keycode;
   keyEquivalent.modifiers := modifiers;
@@ -9701,11 +10062,11 @@ begin
 end;
 
 begin
-  MainApp := TApplication.Create;
+  TApplication.Create;
   MainScreen := TScreen.Create;
   ScreenMouseLocation := V2(-1, -1);
   PlatformScreenScale := 1.0;
-  PendingEvents := [];
+  PendingEvents := TEventList.Create(true);
 
   {$define INITIALIZATION}
   {$include include/NotificationCenter.inc}

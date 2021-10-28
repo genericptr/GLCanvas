@@ -19,26 +19,6 @@ type
 		class operator := (right: TInvocationCallbackDispatch): boolean;
 	end;
 
-	TInvocationCallback = record
-		// TODO: can we make an enum and single pointer? "of object" may be larger than
-		{
-			TInvocationCallbackClass 16
-			TInvocationCallbackProcedure 8
-			TInvocationCallbackNested 16
-			TInvocationCallbackDispatch 272
-			TInvocationCallbackClassNoParams 16
-			TInvocationCallbackProcedureNoParams 8
-			TInvocationCallbackNestedNoParams 16
-		}
-		callbackClass: TInvocationCallbackClass;
-		callbackProcedure: TInvocationCallbackProcedure;
-		callbackNested: TInvocationCallbackNested;
-		callbackDispatch: TInvocationCallbackDispatch;
-		callbackClassNoParams: TInvocationCallbackClassNoParams;
-		callbackProcedureNoParams: TInvocationCallbackProcedureNoParams;
-		callbackNestedNoParams: TInvocationCallbackNestedNoParams;
-	end;
-
 	TInvocation = class
 		private type
 			TVariantParams = array of variant;
@@ -90,7 +70,6 @@ type
 operator := (right: TInvocationCallbackClass): TInvocation;
 operator := (right: TInvocationCallbackProcedure): TInvocation;
 operator := (right: TInvocationCallbackNested): TInvocation;
-
 operator := (right: TInvocationCallbackClassNoParams): TInvocation;
 operator := (right: TInvocationCallbackProcedureNoParams): TInvocation;
 operator := (right: TInvocationCallbackNestedNoParams): TInvocation;

@@ -1,4 +1,3 @@
-
 {$mode objfpc}
 {$modeswitch advancedrecords}
 {$modeswitch typehelpers}
@@ -6,6 +5,10 @@
 {$modeswitch multihelpers}
 {$modeswitch nestedprocvars}
 {$modeswitch arrayoperators}
+
+{$ifdef COCOA_EVENTS}
+{$modeswitch objectivec1}
+{$endif}
 
 {$interfaces corba}
 {$implicitexceptions off}
@@ -15,7 +18,17 @@
 
 {$include include/targetos.inc}
 
-{$if not defined(PLATFORM_SDL) and not defined(PLATFORM_GLPT) }
+{
+  GLPT supports the following platform macros:
+
+    1) PLATFORM_SDL
+    2) PLATFORM_GLPT
+    3) PLATFORM_NONE
+
+  If neither is specified then GLCanvas will default to PLATFORM_GLPT.
+}
+
+{$if not defined(PLATFORM_SDL) and not defined(PLATFORM_GLPT) and not defined(PLATFORM_NONE) }
   {$define PLATFORM_GLPT}
 {$endif}
 
@@ -34,13 +47,10 @@ uses
   {$endif}
   Contnrs, FGL, Classes, Math,
   GLVertexBuffer, GLShader, GLFreeType,
-  BeRoPNG, VectorMath, GeometryTypes,
-  {$ifdef PLATFORM_GLPT}
-  GLPT, GLPT_Threads
-  {$endif}
-  {$ifdef PLATFORM_SDL}
-  SDL
-  {$endif}
+  BeRoPNG, VectorMath, GeometryTypes
+  {$ifdef COCOA_EVENTS},CocoaAll{$endif}
+  {$ifdef PLATFORM_GLPT},GLPT, GLPT_Threads{$endif}
+  {$ifdef PLATFORM_SDL},SDL{$endif}
   ;
 
 {$define INTERFACE}
@@ -52,10 +62,11 @@ uses
 {$include include/Text.inc}
 {$include include/BitmapFont.inc}
 {$include include/Utils.inc}
-{$include include/Input.inc}
 {$include include/Shaders.inc}
-{$include include/Event.inc}
 {$include include/FreeType.inc}
+{$include include/Keys.inc}
+{$ifndef PLATFORM_NONE}{$include include/Input.inc}{$endif}
+{$include include/Event.inc}
 {$undef INTERFACE}
 
 type
@@ -70,15 +81,14 @@ const
   DefaultCanvasOptions = [TCanvasOption.VSync];
 
 { Window }
-{$ifdef PLATFORM_SDL}
+
+{$ifdef PLATFORM_NONE}
+procedure SetupCanvas(width, height: integer; options: TCanvasOptions = DefaultCanvasOptions); 
+{$else}
 type
-  SDL_EventCallback = procedure(event: PSDL_Event);
+  TEventCallback = procedure(event: TEvent);
 
-procedure SetupCanvas(width, height: integer; eventCallback: SDL_EventCallback = nil; options: TCanvasOptions = DefaultCanvasOptions); 
-{$endif}
-
-{$ifdef PLATFORM_GLPT}
-procedure SetupCanvas(width, height: integer; eventCallback: GLPT_EventCallback = nil; options: TCanvasOptions = DefaultCanvasOptions); 
+procedure SetupCanvas(width, height: integer; eventCallback: TEventCallback = nil; options: TCanvasOptions = DefaultCanvasOptions); 
 {$endif}
 
 function IsRunning: boolean;
@@ -181,6 +191,8 @@ function GetActiveFont: IFont;
 procedure SetProjectionTransform(constref mat: TMat4);
 procedure SetProjectionTransform(x, y, width, height: integer);
 procedure PushProjectionTransform(constref mat: TMat4); 
+procedure PushProjectionTransform(width, height: integer); 
+procedure PushProjectionTransform(x, y, width, height: integer); 
 procedure PopProjectionTransform; 
 
 procedure SetViewTransform(x, y, scale: single);
@@ -193,8 +205,10 @@ procedure PopModelTransform;
 
 { Viewport }
 procedure ResizeCanvas(width, height: integer); overload;
+procedure ResizeCanvas(newSize: TVec2i); overload;
 procedure ResizeCanvas(nativeSize: TVec2; respectNative: boolean; destRect: TRect); overload;
 procedure SetViewPort(rect: TRect); overload;
+procedure SetViewPort(size: TVec2i); overload;
 procedure SetViewPort(offsetX, offsetY, inWidth, inHeight: integer); overload;
 procedure SetViewPort(inWidth, inHeight: integer); overload;
 function GetViewPort: TRect; inline;
@@ -212,9 +226,10 @@ procedure SetClearColor(color: TColor);
 
 function GetFPS: longint; inline;
 function GetDeltaTime: double; inline;
+function GetFrameCount: longint; inline;
 function GetDefaultShaderAttributes: TVertexAttributes;
 function IsVertexBufferEmpty: boolean; inline;
-function GetResourcecDirectory: ansistring;
+function GetResourceDirectory: ansistring;
 
 type
   TCanvasState = class
@@ -240,16 +255,17 @@ type
       m_activeFont: IFont;            // default font for DrawText(...) if no font is specified
       function GetActiveFont: IFont;
     public
-      {$ifdef PLATFORM_SDL}
+      {$if defined(PLATFORM_SDL)}
       window: PSDL_Window;
       context: PSDL_GLContext;
-      eventCallback: SDL_EventCallback;
       wantsClose: boolean;
-      {$endif}
-
-      {$ifdef PlATFORM_GLPT}
-      window: PGLPTWindow;          // reference to the GLPT window
+      eventCallback: TEventCallback;
+      {$elseif defined(PlATFORM_GLPT)}
+      window: PGLPTWindow;
       context: GLPT_Context;
+      eventCallback: TEventCallback;
+      {$else}
+      window: pointer;
       {$endif}
 
       clearColor: TColor;           // color used for ClearBackground 
@@ -271,7 +287,7 @@ type
       procedure FlushDrawing; virtual;
       procedure SwapBuffers; virtual;
       procedure ClearBackground; virtual;
-      procedure FinalizeSetup;
+      procedure FinalizeSetup(windowSize: TVec2i);
   end;
 
 var
@@ -302,10 +318,11 @@ var
 {$include include/Text.inc}
 {$include include/BitmapFont.inc}
 {$include include/Utils.inc}
-{$include include/Input.inc}
 {$include include/Shaders.inc}
-{$include include/Event.inc}
 {$include include/FreeType.inc}
+{$include include/Keys.inc}
+{$ifndef PLATFORM_NONE}{$include include/Input.inc}{$endif}
+{$include include/Event.inc}
 {$undef IMPLEMENTATION}
 
 const
@@ -420,6 +437,16 @@ begin
     end;
 end;
 
+procedure PushProjectionTransform(width, height: integer); 
+begin
+  PushProjectionTransform(0, 0, width, height);
+end;
+
+procedure PushProjectionTransform(x, y, width, height: integer); 
+begin
+  PushProjectionTransform(TMat4.Ortho(x, width, height, y, -MaxInt, MaxInt));
+end;
+
 procedure PopProjectionTransform; 
 var
   mat: TMat4;
@@ -434,7 +461,6 @@ begin
         end;
     end;
 end;
-
 
 procedure SetViewTransform(constref mat: TMat4);
 begin
@@ -521,6 +547,11 @@ begin
   buffer.Draw(GL_TRIANGLES);
 end;
 
+procedure SetViewPort(size: TVec2i); overload;
+begin
+  SetViewPort(size.width, size.height);
+end;
+
 procedure SetViewPort(rect: TRect);
 begin
   SetViewPort(trunc(rect.minX), trunc(rect.minY), trunc(rect.width), trunc(rect.height));
@@ -558,6 +589,11 @@ begin
   DefaultShader.SetUniformInts('textures', DefaultTextureUnits);
 
   SetViewPort(width, height);
+end;
+
+procedure ResizeCanvas(newSize: TVec2i);
+begin
+  ResizeCanvas(newSize.width, newSize.height);
 end;
 
 procedure ResizeCanvas(nativeSize: TVec2; respectNative: boolean; destRect: TRect);
@@ -607,6 +643,7 @@ begin
 
   {$ifdef PlATFORM_GLPT}
   //CanvasState.window^.ref.setTitle(NSSTR(title));
+  Assert(false, 'SetWindowTitle not implemented for platform');
   {$endif}
 end;
 
@@ -619,31 +656,33 @@ begin
   {$ifdef PlATFORM_GLPT}
   GLPT_GetFrameBufferSize(CanvasState.window, result.x, result.y);
   {$endif}
+
+  {$ifdef PlATFORM_NONE}
+  Assert(false, 'GetWindowSize not implemented for platform');
+  {$endif}
 end;
 
-
-{$ifdef PLATFORM_SDL}
 function GetDisplaySize: TVec2i;
+{$if defined(PLATFORM_SDL)}
 var
   rect: TSDL_Rect;
+{$elseif defined(PlATFORM_GLPT)}
+var
+  displayCoords: GLPTRect;
+{$endif}
 begin
+  {$if defined(PLATFORM_SDL)}
   SDL_GetDisplayBounds(SDL_GetWindowDisplayIndex(CanvasState.window), rect);
   result.width := rect.w;
   result.height := rect.h;
-end;
-{$endif}
-
-{$ifdef PlATFORM_GLPT}
-function GetDisplaySize: TVec2i;
-var
-  displayCoords: GLPTRect;
-begin
+  {$elseif defined(PlATFORM_GLPT)}
   GLPT_GetDisplayCoords(displayCoords);
   result.width := displayCoords.right - displayCoords.left;
   result.height := displayCoords.bottom - displayCoords.top;
+  {$elseif defined(PlATFORM_NONE)}
+  Assert(false, 'GetDisplaySize not implemented for platform');
+  {$endif}
 end;
-{$endif}
-
 
 function GetDefaultShaderAttributes: TVertexAttributes;
 begin
@@ -669,6 +708,11 @@ end;
 function GetDeltaTime: double;
 begin
   result := CanvasState.deltaTime;
+end;
+
+function GetFrameCount: longint;
+begin
+  result := CanvasState.totalFrameCount;
 end;
 
 procedure QuitApp;
@@ -1159,7 +1203,7 @@ begin
   result /= CanvasState.viewPortRatio;
 end;
 
-function GetResourcecDirectory: ansistring;
+function GetResourceDirectory: ansistring;
 const
   kResourceDirectoryName = 'Resources';
 var
@@ -1171,6 +1215,10 @@ begin
 
   {$ifdef PlATFORM_GLPT}
   result := GLPT_GetBasePath;
+  {$endif}
+
+  {$ifdef PlATFORM_NONE}
+  Assert(false, 'GetResourceDirectory not implemented for platform');
   {$endif}
 
   // if the base path is the correct location then force the change
@@ -1213,29 +1261,37 @@ var
   now: double;
   {$ifdef PLATFORM_SDL}
   event: TSDL_Event;
+  _event: TEvent;
   {$endif}
 begin
   self.FlushDrawing;
 
   {$ifdef PLATFORM_SDL}
   SDL_GL_SwapWindow(window);
-  SDL_PollEvent(event);
-  case event.type_ of
-    SDL_QUIT_EVENT:
-      wantsClose := true;
-    SDL_WINDOW_EVENT:
-      begin
-        case event.window.event of
-          SDL_WINDOWEVENT_CLOSE:
-            wantsClose := true;
-          SDL_WINDOWEVENT_RESIZED:
-            ;//Reshape(event.window.data1, event.window.data2);
-        end;
+  
+  while SDL_PollEvent(event) > 0 do
+    begin
+      case event.type_ of
+        SDL_QUIT_EVENT:
+          wantsClose := true;
+        SDL_WINDOW_EVENT:
+          begin
+            case event.window.event of
+              SDL_WINDOWEVENT_CLOSE:
+                wantsClose := true;
+              SDL_WINDOWEVENT_RESIZED:
+                ;//Reshape(event.window.data1, event.window.data2);
+            end;
+          end;
       end;
-  end;
-  PollSystemInput(@event);
-  if eventCallback <> nil then
-    eventCallback(@event);
+      PollSystemInput(@event);
+      if eventCallback <> nil then
+        begin
+          _event := TEvent.Create(event);
+          eventCallback(_event);
+          _event.Free;
+        end;
+    end;
   {$endif}
 
   {$ifdef PlATFORM_GLPT}
@@ -1266,9 +1322,7 @@ begin
   glClear(GL_COLOR_BUFFER_BIT);
 end;
 
-procedure TCanvasState.FinalizeSetup;
-var
-  windowSize: TVec2i;
+procedure TCanvasState.FinalizeSetup(windowSize: TVec2i);
 begin
   {$ifdef API_OPENGL}
   if not Load_GL_VERSION_3_2 then
@@ -1293,8 +1347,7 @@ begin
   glGetError();
 
   // set the view port to the actual size of the window
-  windowSize := GetWindowSize;
-  SetViewPort(0, 0, windowSize.width, windowSize.height);
+  SetViewPort(windowSize);
 
   glClearColor(1, 1, 1, 1);
   glDisable(GL_DEPTH_TEST);
@@ -1320,7 +1373,7 @@ begin
 end;
 
 {$ifdef PLATFORM_SDL}
-procedure SetupCanvas(width, height: integer; eventCallback: SDL_EventCallback; options: TCanvasOptions);
+procedure SetupCanvas(width, height: integer; eventCallback: TEventCallback; options: TCanvasOptions);
 var
   flags: longint;
 begin
@@ -1370,17 +1423,27 @@ begin
             SDL_GL_SetSwapInterval(0);
         end;
 
-      FinalizeSetup;
+      FinalizeSetup(V2i(width, height));
     end;
 end;
 {$endif}
 
 {$ifdef PlATFORM_GLPT}
-procedure SetupCanvas(width, height: integer; eventCallback: GLPT_EventCallback; options: TCanvasOptions); 
+
+procedure MainEventCallback(event: pGLPT_MessageRec); 
+var
+  _event: TEvent;
+begin
+  Assert(CanvasState.eventCallback <> nil, 'event callback is not set');
+  _event := TEvent.Create(event^);
+  CanvasState.eventCallback(_event);
+  _event.Free;
+end;
+
+procedure SetupCanvas(width, height: integer; eventCallback: TEventCallback; options: TCanvasOptions); 
 var
   flags: longint;
   displayCoords: GLPTRect;
-  windowSize: TVec2i;
 begin
   GLPT_SetErrorCallback(@error_callback);
 
@@ -1397,6 +1460,8 @@ begin
   // allocate the default canvas
   if CanvasState = nil then
     CanvasState := TCanvasState.Create;
+
+  CanvasState.eventCallback := eventCallback;
 
   with CanvasState do
     begin
@@ -1443,9 +1508,23 @@ begin
           halt(-1);
         end;
 
-      window^.event_callback := eventCallback;
+      window^.event_callback := @MainEventCallback;
 
-      FinalizeSetup;
+      FinalizeSetup(V2i(width, height));
+    end;
+end;
+{$endif}
+
+{$ifdef PlATFORM_NONE}
+procedure SetupCanvas(width, height: integer; options: TCanvasOptions); 
+begin
+  // allocate the default canvas
+  if CanvasState = nil then
+    CanvasState := TCanvasState.Create;
+
+  with CanvasState do
+    begin
+      FinalizeSetup(V2i(width, height));
     end;
 end;
 {$endif}
@@ -1454,6 +1533,9 @@ begin
   DefaultTextureColor := RGBA(1, 1, 1, 1);
   FillChar(TextureSlots, sizeof(TextureSlots), 0);
   System.Randomize;
-  ChDir(GetResourcecDirectory);
+  
+  {$ifndef PLATFORM_NONE}
+  ChDir(GetResourceDirectory);
   InputManager := TInputManager.Create;
+  {$endif}
 end.
