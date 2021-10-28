@@ -133,6 +133,7 @@ begin
   if FrameBufferStack = nil then
     FrameBufferStack := TFrameBufferList.Create;
   FrameBufferStack.Add(self);
+  PushProjectionTransform(Width, Height);
   Bind;
 end;
 
@@ -142,6 +143,7 @@ begin
   FlushDrawing;
   FrameBufferStack.Last.Unbind;
   FrameBufferStack.Delete(FrameBufferStack.Count - 1);
+  PopProjectionTransform;
 end;
 
 destructor TFrameBuffer.Destroy;

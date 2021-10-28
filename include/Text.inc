@@ -160,11 +160,11 @@ begin
 			exit;
 		end;
 						
-  try		
+  try
 		result := TStringList.Create; 
 		if max > 0 then
 			begin
-				start := 1;								
+				start := 1;
 				if start < length(text) then
 					for i := start to length(text) - 1 do
 						begin
@@ -238,7 +238,7 @@ begin
 end;
 
 function MeasureText(font: IFont; text: TFontString; maximumWidth: integer = MaxInt): TVec2;
-begin		
+begin
 	// TODO: this is leaking memory!
 	WrapTextInternal(font, text, maximumWidth, result);
 end;
@@ -349,7 +349,7 @@ begin
 				size := MeasureText(options.font, options.text);
 				origin.x -= size.width / 2; 
 			end;
-	end;	
+	end;
 
 	options.hitOffset := -1;
 	selFrame.height := 0;
@@ -457,6 +457,12 @@ begin
 			// draw character
 			if options.draw then
 				begin
+					{ TODO: move to direct quad drawing
+						charQuad.SetOrigin(origin);
+						charQuad.SetSize(face.size);
+						charQuad.SetTexture(face.textureFrame);
+						DrawQuad(charQuad);
+					}
 					DrawTexture(options.font, charFrame, renderFrame.textureFrame, options.color);
 					{$ifdef DEBUG_FONTS}
 					FillRect(charFrame, RGBA(1, 0, 0, 0.2));
@@ -509,6 +515,34 @@ end;
 procedure DrawText(font: IFont; text: TFontString; where: TVec2; scale: single);
 begin
 	DrawText(font, text, where, 1, scale);
+end;
+
+procedure DrawText(font: IFont; lines: array of TFontString; bounds: TRect; color: TColor; textAlignment: TTextAlignment);
+var
+	origin: TVec2;
+	line: TFontString;
+begin
+	Assert(font <> nil, 'font must not be nil');
+	
+	origin := bounds.origin;
+
+	for line in lines do
+		begin
+			case textAlignment of
+				TTextAlignment.Center:
+					origin.x := bounds.MidX - (MeasureText(font, line, maxInt).width / 2);
+				otherwise
+					;
+			end;
+			DrawText(font, line, origin, color);
+			origin.y += font.LineHeight;
+		end;
+end;
+
+function CreateFont(name: ansistring; pixelSize: integer): TGLFreeTypeFont;
+begin
+  result := TGLFreeTypeFont.Create(name);
+  result.Render(pixelSize);
 end;
 
 {$endif}

@@ -14,6 +14,7 @@ type
                     { Color Format }
                     RGB,
                     RGBA,
+                    BGRA,
 
                     { Pixel Type }
                     Float,
@@ -50,7 +51,7 @@ type
 	end;
 
 type
-	TTextureSource = class(ITexture)
+	TTextureSource = class abstract(ITexture)
 		public
 			function GetTexture: integer;
 			function GetTextureUnit: integer;
@@ -305,6 +306,10 @@ procedure RestoreLastBoundTexture;
 
 {$ifdef IMPLEMENTATION}
 
+{*****************************************************************************
+ *                                  Texture Slots
+ *****************************************************************************}
+
 type
 	TTextureSlot = record
 		id: integer;
@@ -374,9 +379,9 @@ begin
 end;
 
 
-//#########################################################
-// OPENGL UTILITIES
-//#########################################################
+{*****************************************************************************
+ *                            OpenGL Utilities
+ *****************************************************************************}
 
 var
 	RealMaximumTextureUnits: integer = 0;
@@ -495,72 +500,130 @@ begin
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 		end;
+end;
 
+procedure GetPixelFormat(const options: TTextureImageOptions; out pixelFormat: GLenum; out internalformat: GLenum; out pixelType: GLenum);
+begin
+	pixelFormat := 0;
+	pixelType := 0;
+	internalformat := 0;
+
+	Assert((TTextureImage.RGB in options) or 
+				(TTextureImage.RGBA in options) or 
+				(TTextureImage.BGRA in options), 'Texture2D requires a pixel format.');
+
+	Assert((TTextureImage.Float in options) or 
+				(TTextureImage.UnsignedByte in options), 'Texture2D requires a pixel type.');
+
+	// pixel format
+	if TTextureImage.RGB in options then
+		begin
+			pixelFormat := GL_RGB;
+			internalformat := GL_RGB;
+		end
+	else if TTextureImage.RGBA in options then
+		begin
+			pixelFormat := GL_RGBA;
+			internalformat := GL_RGBA;
+		end
+	else if TTextureImage.BGRA in options then
+		begin
+			pixelFormat := GL_BGRA;
+			internalformat := GL_RGBA;
+		end;
+
+	// pixel type
+	if TTextureImage.Float in options then
+		pixelType := GL_FLOAT
+	else if TTextureImage.UnsignedByte in options then
+		pixelType := GL_UNSIGNED_BYTE;
+
+	{
+	Specifies the data type of the pixel data. The following symbolic values are accepted: 
+	GL_UNSIGNED_BYTE, GL_BYTE, GL_UNSIGNED_SHORT, GL_SHORT, GL_UNSIGNED_INT, GL_INT, 
+	GL_HALF_FLOAT, GL_FLOAT, GL_UNSIGNED_BYTE_3_3_2, GL_UNSIGNED_BYTE_2_3_3_REV, 
+	GL_UNSIGNED_SHORT_5_6_5, GL_UNSIGNED_SHORT_5_6_5_REV, GL_UNSIGNED_SHORT_4_4_4_4, 
+	GL_UNSIGNED_SHORT_4_4_4_4_REV, GL_UNSIGNED_SHORT_5_5_5_1, GL_UNSIGNED_SHORT_1_5_5_5_REV, 
+	GL_UNSIGNED_INT_8_8_8_8, GL_UNSIGNED_INT_8_8_8_8_REV, GL_UNSIGNED_INT_10_10_10_2, and GL_UNSIGNED_INT_2_10_10_10_REV.
+	
+	from macgl.pas:
+	
+	const GL_UNSIGNED_BYTE_3_3_2            = $8032;
+	const GL_UNSIGNED_SHORT_4_4_4_4         = $8033;
+	const GL_UNSIGNED_SHORT_5_5_5_1         = $8034;
+	const GL_UNSIGNED_INT_8_8_8_8           = $8035;
+	const GL_UNSIGNED_INT_10_10_10_2        = $8036;
+	const GL_UNSIGNED_BYTE_2_3_3_REV        = $8362;
+	const GL_UNSIGNED_SHORT_5_6_5           = $8363;
+	const GL_UNSIGNED_SHORT_5_6_5_REV       = $8364;
+	const GL_UNSIGNED_SHORT_4_4_4_4_REV     = $8365;
+	const GL_UNSIGNED_SHORT_1_5_5_5_REV     = $8366;
+	const GL_UNSIGNED_INT_8_8_8_8_REV       = $8367;
+	const GL_UNSIGNED_INT_2_10_10_10_REV    = $8368;
+
+	}
 end;
 
 procedure LoadTexture2D(width, height: GLsizei; data: pointer; options: TTextureImageOptions);
 var
-	pixelFormat: GLenum = 0;
-	pixelType: GLenum = 0;
+	pixelFormat: GLenum;
+	pixelType: GLenum;
+	internalformat: GLenum;
 begin
-	Assert((TTextureImage.RGB in options) or (TTextureImage.RGBA in options), 'Texture2D requires a pixel format.');
-	Assert((TTextureImage.Float in options) or (TTextureImage.UnsignedByte in options), 'Texture2D requires a pixel type.');
-
-	//Assert((TTextureImage.RGB in options) and (TTextureImage.RGBA in options), 
-	//	'Must choose only 1 texture pixel format.');
-
-	//Assert((TTextureImage.Float in options) and (TTextureImage.UnsignedByte in options), 
-	//	'Must choose only 1 texture pixel type.');
-
-	// pixel format
-	if TTextureImage.RGB in options then
-		pixelFormat := GL_RGB
-	else if TTextureImage.RGBA in options then
-		pixelFormat := GL_RGBA;
-
-	// pixel type
-	if TTextureImage.Float in options then
-		pixelType := GL_FLOAT
-	else if TTextureImage.UnsignedByte in options then
-		pixelType := GL_UNSIGNED_BYTE;
-
+	GetPixelFormat(options, pixelFormat, internalformat, pixelType);
 	SetTextureParameters(options);
+	glTexImage2D(GL_TEXTURE_2D, 0, internalformat, width, height, 0, pixelFormat, pixelType, data);
 
-	glTexImage2D(GL_TEXTURE_2D, 0, pixelFormat, width, height, 0, pixelFormat, pixelType, data);
-
-	GLAssert('glTexImage2D');	
+	GLAssert('glTexImage2D');
 end;
 
 procedure LoadSubTexture2D(xoffset, yoffset, width, height: GLsizei; data: pointer; options: TTextureImageOptions);
 var
-	pixelFormat: GLenum = 0;
-	pixelType: GLenum = 0;
+	pixelFormat: GLenum;
+	pixelType: GLenum;
+	internalformat: GLenum;
 begin
-	// Consider using format GL_BGRA and type GL_UNSIGNED_INT_8_8_8_8_REV for a 
-	// faster transfer; yes, it's more data but it will more closely match the 
-	// driver's internal representation and the driver will be more likely to do 
-	// a direct transfer to the GPU rather than having to do any internal format 
-	// conversions of it's own
-
-	Assert((TTextureImage.RGB in options) or (TTextureImage.RGBA in options), 'Texture2D requires a pixel format.');
-	Assert((TTextureImage.Float in options) or (TTextureImage.UnsignedByte in options), 'Texture2D requires a pixel type.');
-
-	// pixel format
-	if TTextureImage.RGB in options then
-		pixelFormat := GL_RGB
-	else if TTextureImage.RGBA in options then
-		pixelFormat := GL_RGBA;
-
-	// pixel type
-	if TTextureImage.Float in options then
-		pixelType := GL_FLOAT
-	else if TTextureImage.UnsignedByte in options then
-		pixelType := GL_UNSIGNED_BYTE;
-
+	GetPixelFormat(options, pixelFormat, internalformat, pixelType);
 	glTexSubImage2D(GL_TEXTURE_2D, 0, xoffset, yoffset, width, height, pixelFormat, pixelType, data);
 
 	GLAssert('glTexSubImage2D');
 end;
+
+procedure RestoreLastBoundTexture;
+begin
+	if RestoreTextureID = -1 then
+		exit;
+	glActiveTexture(GL_TEXTURE0 + RestoreTextureUnit);
+	glBindTexture(GL_TEXTURE_2D, RestoreTextureID);
+	RestoreTextureID := -1;
+	RestoreTextureUnit := -1;
+end;
+
+function TextureImagePixelFormat(format: GLenum): TTextureImage;
+begin
+	case format of
+		GL_RGB:
+			result := TTextureImage.RGB;
+		GL_RGBA:
+			result := TTextureImage.RGBA;
+		otherwise
+			Assert(false, 'pixel format not supported');
+	end;
+end;
+
+function TextureImagePixelType(typ: GLenum): TTextureImage;
+begin
+	case typ of
+		GL_UNSIGNED_BYTE:
+			result := TTextureImage.UnsignedByte;
+		otherwise
+			Assert(false, 'pixel type not supported');
+	end;
+end;
+
+{*****************************************************************************
+ *                              Texture Units
+ *****************************************************************************}
 
 procedure ClearTextureUnit(textureUnit: integer); 
 begin
@@ -630,41 +693,9 @@ begin
 	result := textureUnit;
 end;
 
-procedure RestoreLastBoundTexture;
-begin
-	if RestoreTextureID = -1 then
-		exit;
-	glActiveTexture(GL_TEXTURE0 + RestoreTextureUnit);
-	glBindTexture(GL_TEXTURE_2D, RestoreTextureID);
-	RestoreTextureID := -1;
-	RestoreTextureUnit := -1;
-end;
-
-function TextureImagePixelFormat(format: GLenum): TTextureImage;
-begin
-	case format of
-		GL_RGB:
-			result := TTextureImage.RGB;
-		GL_RGBA:
-			result := TTextureImage.RGBA;
-		otherwise
-			Assert(false, 'pixel format not supported');
-	end;
-end;
-
-function TextureImagePixelType(typ: GLenum): TTextureImage;
-begin
-	case typ of
-		GL_UNSIGNED_BYTE:
-			result := TTextureImage.UnsignedByte;
-		otherwise
-			Assert(false, 'pixel type not supported');
-	end;
-end;
-
-//#########################################################
-// IMAGES
-//#########################################################
+{*****************************************************************************
+ *                                 Images
+ *****************************************************************************}
 
 function Pow2Size(from: single): integer;
 var
@@ -691,9 +722,9 @@ begin
 	height := result.height;
 end;
 
-//#########################################################
-// TEXTURE SOURCE
-//#########################################################
+{*****************************************************************************
+ *                              Texture Source
+ *****************************************************************************}
 
 function TTextureSource.TextureToPixel(textureRect: TRect): TRect;
 begin
@@ -819,9 +850,9 @@ begin
 	result := m_textureUnit;
 end;
 
-//#########################################################
-// TEXTURE COLLECTION
-//#########################################################
+{*****************************************************************************
+ *                            Texture Collection
+ *****************************************************************************}
 
 function TTextureCollection.GetTexture(index: integer): TTexture;
 begin
@@ -832,9 +863,9 @@ begin
 end;
 
 
-//#########################################################
-// TEXTURE PACK
-//#########################################################
+{*****************************************************************************
+ *                              Texture Pack
+ *****************************************************************************}
 
 constructor TTexturePack.Create;
 begin
@@ -1018,9 +1049,9 @@ begin
 	memoryPool.Free;
 end;
 
-//#########################################################
-// TEXTURE COMPOSITE
-//#########################################################
+{*****************************************************************************
+ *                            Texture Composite
+ *****************************************************************************}
 		
 constructor TTextureComposite.Create(canvasSize: TVec2i; images: TImagePathArray);
 begin
@@ -1110,10 +1141,9 @@ begin
 		Unload;
 end;
 
-
-//#########################################################
-// TEXTURE SHEET
-//#########################################################
+{*****************************************************************************
+ *                              Texture Sheet
+ *****************************************************************************}
 
 function TTextureSheet.GetTexture(x, y: integer): TTexture;
 begin
@@ -1312,9 +1342,9 @@ begin
 	Subdivide;
 end;
 
-//#########################################################
-// TEXTURE
-//#########################################################
+{*****************************************************************************
+ *                                Texture
+ *****************************************************************************}
 
 procedure TTexture.SetTextureFrame(newValue: TRect);
 begin
@@ -1498,7 +1528,7 @@ end;
 
 constructor TTexture.Create(width, height: integer; data: pointer; options: TTextureImageOptions = DefaultTextureOptions);
 begin
-	Assert(data <> nil, 'texture data must not be nil');
+	//Assert(data <> nil, 'texture data must not be nil');
 	sourceImage := TImage.Create(width, height, data);
 	Include(flags, TTextureFlag.FreeSourceImage);
 	SetPixelFrame(RectMake(0, 0, width, height));
