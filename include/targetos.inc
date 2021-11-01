@@ -52,7 +52,7 @@
 {$undef TARGET_OS_MAC_PPC64}
 {$endif}
 
-{$if defined(windowscpu)}
+{$if defined(windows)}
 {$define TARGET_OS_WINDOWS}
 {$undef TARGET_OS_IPHONE}
 {$undef TARGET_OS_IPHONE_X64}

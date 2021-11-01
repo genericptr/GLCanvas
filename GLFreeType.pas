@@ -9,7 +9,10 @@
 unit GLFreeType;
 interface
 uses
-  CWString, CTypes, FreeTypeH, FGL;
+  {$ifdef DARWIN}
+  CWString,
+  {$endif}
+  CTypes, FreeTypeH, FGL;
 
 const
   FREETYPE_ANSI_CHARSET = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ!;%:?*()<>_+-=.,/|"''@#$^&{}[]0123456789';
