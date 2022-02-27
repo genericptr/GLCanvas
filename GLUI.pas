@@ -9,10 +9,9 @@
 
 {$interfaces corba}
 {$implicitexceptions off}
-
 {$scopedenums on}
 
-{define GLGUI_DEBUG}
+{$define GLGUI_DEBUG}
 
 unit GLUI;
 interface
@@ -502,7 +501,7 @@ type
 
     protected
       procedure Initialize; override;
-      procedure SetModal(newValue: boolean);    
+      procedure SetModal(newValue: boolean);
       procedure PerformClose(params: TInvocationParams);
 
       function ShouldMoveByBackground(event: TEvent): boolean; virtual;
@@ -1800,7 +1799,7 @@ type
       { Accessors }
       procedure SetCellSize(newValue: TVec2);
       procedure SetCellMargin(newValue: TScalar);
-      procedure SetColumns(newValue: integer);    
+      procedure SetColumns(newValue: integer);
       procedure SetResizeToFit(newValue: boolean);
 
       function GetCellSize: TVec2;
@@ -1824,6 +1823,22 @@ type
       arrangingCells: boolean;
       totalHeight: TScalar;
       resizeToFit: boolean;
+  end;
+
+{ TStackView }
+// TODO: when finished this replaces TWindow layout tables
+type
+  TStackViewOrientation = (Horizontal, Vertical);
+  TStackView = class(TView)
+    private
+      m_orientation: TStackViewOrientation;
+      m_cellSpacing: integer;
+      procedure SetOrientation(newValue: TStackViewOrientation);
+      procedure SetCellSpacing(newValue: integer);
+    public
+      procedure LayoutSubviews; override;
+      property Orientation: TStackViewOrientation read m_orientation write SetOrientation;
+      property CellSpacing: integer read m_cellSpacing write SetCellSpacing;
   end;
 
 { TStatusBar }
@@ -3891,13 +3906,15 @@ constructor TWindow.Create;
 begin
   Initialize;
   SetMoveableByBackground(false);
+  SetAutoresizingOptions(TAutoresizingStretchToFill);
   SetFrame(TWindow.ScreenRect);
 end;
 
+{ Returns the size of a fullscreen window }
 class function TWindow.ScreenRect: TRect;
 begin
   result.origin := 0;
-  result.size := TVec2(GetDisplaySize) / PlatformScreenScale;
+  result.size := TVec2(GetWindowSize) / PlatformScreenScale;
 end;
 
 function TWindow.ShouldMoveByBackground(event: TEvent): boolean;
@@ -4402,7 +4419,6 @@ begin
   result := GLUI.KeyWindow;
 end;
 
-
 { POPOVER }
 
 constructor TPopover.Create(inDelegate: TWindow; inContentSize: TVec2i);
@@ -4838,6 +4854,36 @@ begin
   SetCellSize(V2(32, 32));
   SetCellMargin(4);
   SetColumns(3);
+end;
+
+{ TStackView }
+
+procedure TStackView.SetOrientation(newValue: TStackViewOrientation);
+begin
+  m_orientation := newValue;
+  NeedsLayoutSubviews;
+end;
+
+procedure TStackView.SetCellSpacing(newValue: integer);
+begin
+  m_cellSpacing := newValue;
+  NeedsLayoutSubviews;
+end;
+
+procedure TStackView.LayoutSubviews;
+var
+  view: TView;
+  position: Float;
+begin 
+  inherited;
+
+  position := 0;
+  for view in Subviews do
+    begin
+      view.SetLocation(V2(0, position));
+
+      position += view.GetHeight + CellSpacing;
+    end;
 end;
 
 { MENU ITEM }

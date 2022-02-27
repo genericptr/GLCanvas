@@ -307,7 +307,7 @@ procedure RestoreLastBoundTexture;
 {$ifdef IMPLEMENTATION}
 
 {*****************************************************************************
- *                                  Texture Slots
+ *                              Texture Slots
  *****************************************************************************}
 
 type
@@ -377,7 +377,6 @@ begin
 	result.name := StringReplace(result.name, result.ext, '', []);
 	result.dir := ExtractFileDir(path);
 end;
-
 
 {*****************************************************************************
  *                            OpenGL Utilities
@@ -528,8 +527,13 @@ begin
 		end
 	else if TTextureImage.BGRA in options then
 		begin
+			{$ifdef API_OPENGLES}
+			writeln('GL_BGRA is not available in OpenGLES');
+			halt;
+			{$else}
 			pixelFormat := GL_BGRA;
 			internalformat := GL_RGBA;
+			{$endif}
 		end;
 
 	// pixel type
@@ -1355,7 +1359,6 @@ procedure TTexture.SetPixelFrame(newValue: TRect);
 begin
 	m_textureFrame.pixel := newValue;
 end;
-
 
 function TTexture.Slice(columns: integer; rows: integer = 0): TTextureArray;
 var

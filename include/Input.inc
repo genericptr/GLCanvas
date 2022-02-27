@@ -1,27 +1,13 @@
 
 {$ifdef INTERFACE}
 
-{$if defined(PLATFORM_SDL)}
-const
-  NUM_SCANCODES = SDL_NUM_SCANCODES;
-
-type
-  TKeyCode = SDL.Uint32;
-  TScanCode = SDL_Scancode;
-{$elseif defined(PLATFORM_GLPT)}
-const
-  NUM_SCANCODES = GLPT_NUM_SCANCODES;
-
-type
-  TKeyCode = GLPT_Keycode;
-  TScanCode = GLPT_Scancode;
-{$endif}
-
 // redeclare shift state to override GLPT
 type
   TShiftState = Classes.TShiftState;
+  TTouchMap = specialize TFPGMapObject<SizeUInt, TEvent>;
 
 function GetMouseLocation: TVec2i;
+function GetTouches: TTouchMap;
 function IsMouseDown: boolean;
 function IsLeftMouseDown: boolean;
 function IsRightMouseDown: boolean;
@@ -43,6 +29,8 @@ type
 type
   TGLPT_MessageRec_Helper = record helper for GLPT_MessageRec
     function GetMouseLocation: TVec2i;
+    function GetTouchLocation: TVec2i;
+    function GetGestureLocation: TVec2i;
   end;
 
 {$endif}
@@ -74,8 +62,8 @@ type
 
 type
   TKeyDownState = record
-    state: boolean;
-    dirty: boolean;
+    pressed: boolean;
+    released: boolean;
   end;
   
 type
@@ -91,6 +79,9 @@ type
       mouseLocation: TVec2i;
       mouseDownLocation: TVec2i;
       mouseOffscreen: boolean;
+
+      { touches }
+      touches: TTouchMap;
     public
       actions: TKeyCodeMap;
     public
@@ -105,12 +96,14 @@ var
   i: integer;
 begin
   actions := TKeyCodeMap.Create;
+  touches := TTouchMap.Create;
+
   mouseOffscreen := true;
 
   for i := 0 to NUM_SCANCODES - 1 do
     begin
-      keyDown[i].state := false;
-      keyDown[i].dirty := true;
+      keyDown[i].pressed := false;
+      keyDown[i].released := true;
     end;
 end;
 
@@ -141,6 +134,11 @@ end;
 function GetMouseLocation: TVec2i;
 begin
   result := InputManager.mouseLocation;
+end;
+
+function GetTouches: TTouchMap;
+begin
+  result := InputManager.touches;
 end;
 
 function IsMouseDown: boolean;
@@ -191,16 +189,16 @@ function IsKeyDown(key: TScanCode; repeating: boolean): boolean;
 begin
   if not repeating then
     begin
-      if InputManager.keyDown[key].state and InputManager.keyDown[key].dirty then
+      if InputManager.keyDown[key].pressed and InputManager.keyDown[key].released then
         begin
           result := true;
-          InputManager.keyDown[key].dirty := false;
+          InputManager.keyDown[key].released := false;
         end
       else
         result := false;
     end
   else
-    result := InputManager.keyDown[key].state;
+    result := InputManager.keyDown[key].pressed;
 end;
 
 {$ifdef PLATFORM_SDL}
@@ -212,7 +210,7 @@ begin
       begin
         InputManager.leftMouseDown := false;
         InputManager.rightMouseDown := false;
-        InputManager.mouseDownLocation := 0;
+        InputManager.mouseDownLocation := -1;
       end;
     SDL_WINDOW_EVENT:
       begin
@@ -244,13 +242,13 @@ begin
       end;
     SDL_KEYUP:
       begin
-        InputManager.keyDown[event.key.keysym.scancode].state := false;
-        InputManager.keyDown[event.key.keysym.scancode].dirty := true;
+        InputManager.keyDown[event.key.keysym.scancode].pressed := false;
+        InputManager.keyDown[event.key.keysym.scancode].released := true;
         //InputManager.shiftState := event^.params.keyboard.shiftstate;
       end;
     SDL_KEYDOWN:
       begin
-        InputManager.keyDown[event.key.keysym.scancode].state := true;
+        InputManager.keyDown[event.key.keysym.scancode].pressed := true;
         //InputManager.shiftState := event^.params.keyboard.shiftstate;
       end;
   end;
@@ -271,7 +269,7 @@ begin
       begin
         InputManager.leftMouseDown := false;
         InputManager.rightMouseDown := false;
-        InputManager.mouseDownLocation := 0;
+        InputManager.mouseDownLocation := -1;
       end;
     GLPT_MESSAGE_MOUSEEXIT:
       InputManager.mouseOffscreen := true;
@@ -292,21 +290,37 @@ begin
         InputManager.rightMouseDown := event^.params.mouse.buttons = GLPT_MOUSE_BUTTON_RIGHT;
         InputManager.shiftState := event^.params.mouse.shiftstate;
       end;
-    GLPT_MESSAGE_MOUSEMOVE:
+    GLPT_MESSAGE_TOUCH_DOWN:
       begin
-        //InputManager.mouseOffscreen := false;
-        InputManager.mouseLocation := CanvasMousePosition(event.GetMouseLocation);
+        InputManager.touches.Add(event.params.touch.id, TEvent.Create(event^));
+        //InputManager.mouseLocation := CanvasMousePosition(event.GetTouchLocation);
+        // TODO: computed property which checks touches map
+      end;
+    GLPT_MESSAGE_TOUCH_MOTION:
+      begin
+        if InputManager.touches.IndexOf(event.params.touch.id) > -1 then
+          InputManager.touches.Remove(event.params.touch.id);
+        InputManager.touches.Add(event.params.touch.id, TEvent.Create(event^));
+
+        //InputManager.mouseLocation := CanvasMousePosition(event.GetTouchLocation);
+      end;
+    GLPT_MESSAGE_TOUCH_UP:
+      begin
+        if InputManager.touches.IndexOf(event.params.touch.id) > -1 then
+          InputManager.touches.Remove(event.params.touch.id);
+
+        //InputManager.mouseLocation := -1;
       end;
     GLPT_MESSAGE_KEYRELEASE:
       begin
         // TODO: we need GLPT_GetKeyFromScancode/GLPT_GetScancodeFromKey
-        InputManager.keyDown[event^.params.keyboard.scancode].state := false;
-        InputManager.keyDown[event^.params.keyboard.scancode].dirty := true;
+        InputManager.keyDown[event^.params.keyboard.scancode].pressed := false;
+        InputManager.keyDown[event^.params.keyboard.scancode].released := true;
         InputManager.shiftState := event^.params.keyboard.shiftstate;
       end;
     GLPT_MESSAGE_KEYPRESS:
       begin
-        InputManager.keyDown[event^.params.keyboard.scancode].state := true;
+        InputManager.keyDown[event^.params.keyboard.scancode].pressed := true;
         InputManager.shiftState := event^.params.keyboard.shiftstate;
       end;
   end;
@@ -315,6 +329,16 @@ end;
 function TGLPT_MessageRec_Helper.GetMouseLocation: TVec2i;
 begin
   result := V2i(params.mouse.x, params.mouse.y);
+end;
+
+function TGLPT_MessageRec_Helper.GetTouchLocation: TVec2i;
+begin
+  result := V2i(params.touch.x, params.touch.y);
+end;
+
+function TGLPT_MessageRec_Helper.GetGestureLocation: TVec2i;
+begin
+  result := V2i(params.gesture.x, params.gesture.y);
 end;
 {$endif}
 

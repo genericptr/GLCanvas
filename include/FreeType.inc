@@ -22,9 +22,9 @@ type
 
       { IFont }
       function CharacterRenderFrame(c: TFontChar): TFontRenderFrame;
-      function LineHeight: integer;
-      function SpaceWidth: integer;
-      function TabWidth: integer;
+      function LineHeight: integer; override;
+      function SpaceWidth: integer; override;
+      function TabWidth: integer; override;
       function PreferredTextColor: TVec4;
   end;
 
@@ -119,13 +119,12 @@ end;
 
 function TGLFreeTypeFont.SpaceWidth: integer;
 begin
-  // TODO: this must be derived from pixel size
-  result := 3;
+  result := Round(MaxLineHeight / 1.5);
 end;
 
 function TGLFreeTypeFont.TabWidth: integer;
 begin
-  result := 2;
+  result := SpaceWidth * 2;
 end;
 
 function TGLFreeTypeFont.PreferredTextColor: TVec4;

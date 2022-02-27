@@ -106,6 +106,8 @@ begin
 	StrPCopy(p, text);
 
 	result := TStringList.Create;
+	// TODO: this fails in Windows because LineEnding is 2 chars wide
+	// try
 	count := ExtractStrings([LineEnding], [], p, result);
 	
 	StrDispose(p);
@@ -154,6 +156,8 @@ var
 	longestLine: integer = 0;
 	previousLongestLine: integer = 0;
 begin
+	result := nil;
+	
 	if text = '' then
 		begin
 			actualSize := V2(0, 0);
@@ -238,9 +242,12 @@ begin
 end;
 
 function MeasureText(font: IFont; text: TFontString; maximumWidth: integer = MaxInt): TVec2;
+var
+	lines: TStringList;
 begin
-	// TODO: this is leaking memory!
-	WrapTextInternal(font, text, maximumWidth, result);
+	lines := WrapTextInternal(font, text, maximumWidth, result);
+	if lines <> nil then
+		lines.Free;
 end;
 
 function DrawText(text: TFontString; textAlignment: TTextAlignment; bounds: TRect; color: TColor): TVec2;
@@ -274,19 +281,22 @@ begin
 	if text = '' then
 		exit(V2(0, 0));
 		
-	where := bounds.origin;
-	// TODO: this is leaking memory!
 	lines := WrapTextInternal(font, text, Trunc(bounds.width), result);
-	for line in lines do
+	if lines <> nil then
 		begin
-			case textAlignment of
-				TTextAlignment.Center:
-					where.x := bounds.MidX - (MeasureText(font, line, maxInt).width / 2);
-				otherwise
-					;
-			end;
-			DrawText(font, line, where, color);
-			where.y += font.LineHeight;
+			where := bounds.origin;
+			for line in lines do
+				begin
+					case textAlignment of
+						TTextAlignment.Center:
+							where.x := bounds.MidX - (MeasureText(font, line, maxInt).width / 2);
+						otherwise
+							;
+					end;
+					DrawText(font, line, where, color);
+					where.y += font.LineHeight;
+				end;
+			lines.Free;
 		end;
 end;
 

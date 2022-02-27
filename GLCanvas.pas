@@ -33,7 +33,22 @@
 {$endif}
 
 {$ifdef PLATFORM_SDL}
-{$linklib libSDL2.dylib}
+  {$ifdef TARGET_OS_MAC}
+    //{$linklib libSDL2.dylib}
+    {$linkframework SDL2}
+  {$endif}
+  {$ifdef TARGET_OS_IPHONE}
+    {$linklib libfreetype.a}
+    {$linkframework SDL2}
+    {$pascalmainname SDL_main}
+  {$endif}
+{$endif}
+
+{$ifdef PLATFORM_GLPT}
+  {$ifdef TARGET_OS_IPHONE}
+    {$linklib libfreetype.a}
+    {$pascalmainname GLPT_Main}
+  {$endif}
 {$endif}
 
 unit GLCanvas;
@@ -65,14 +80,13 @@ uses
 {$include include/Shaders.inc}
 {$include include/FreeType.inc}
 {$include include/Keys.inc}
-{$ifndef PLATFORM_NONE}{$include include/Input.inc}{$endif}
 {$include include/Event.inc}
+{$ifndef PLATFORM_NONE}{$include include/Input.inc}{$endif}
 {$undef INTERFACE}
 
 type
   TCanvasOption = (VSync,
                    FullScreen,
-                   WaitForEvents,
                    Resizable
                   );
   TCanvasOptions = set of TCanvasOption;
@@ -217,6 +231,7 @@ function GetViewPort: TRect; inline;
 function GetWindowSize: TVec2i;
 procedure SetWindowTitle(title: string);
 procedure SetWindowFullScreen(newValue: boolean);
+function IsFullScreen: boolean;
 
 { Display }
 function GetDisplaySize: TVec2i;
@@ -321,8 +336,8 @@ var
 {$include include/Shaders.inc}
 {$include include/FreeType.inc}
 {$include include/Keys.inc}
-{$ifndef PLATFORM_NONE}{$include include/Input.inc}{$endif}
 {$include include/Event.inc}
+{$ifndef PLATFORM_NONE}{$include include/Input.inc}{$endif}
 {$undef IMPLEMENTATION}
 
 const
@@ -622,6 +637,19 @@ begin
   DefaultShader.SetUniformMat4('projTransform', CanvasState.projTransform);
   DefaultShader.SetUniformMat4('viewTransform', CanvasState.viewTransform);
   DefaultShader.SetUniformInts('textures', DefaultTextureUnits);
+end;
+
+function IsFullScreen: boolean;
+var
+  flags: LongWord;
+begin
+  {$ifdef PLATFORM_SDL}
+  flags := SDL_GetWindowFlags(CanvasState.window);
+  result := flags = (flags or SDL_WINDOW_FULLSCREEN);
+  {$else}
+  // TODO: not implemented in GLPT!
+  result := false;
+  {$endif}
 end;
 
 procedure SetWindowFullScreen(newValue: boolean);
@@ -1205,7 +1233,12 @@ end;
 
 function GetResourceDirectory: ansistring;
 const
+  {$ifdef TARGET_OS_IPHONE}
+  // the name resources is reserved on iphone otherwise code signing will fail
+  kResourceDirectoryName = 'GameResources';
+  {$else}
   kResourceDirectoryName = 'Resources';
+  {$endif}
 var
   name: string;
 begin
@@ -1300,7 +1333,6 @@ begin
   {$endif}
 
   now := GetTime;
-
   deltaTime := now - lastFrameTime;
   lastFrameTime := now;
   drawCalls := 0;
@@ -1450,13 +1482,6 @@ begin
   if not GLPT_Init then
     halt(-1);
 
-  if TCanvasOption.WaitForEvents in options then
-    begin
-      //Exclude(options, TCanvasOption.VSync);
-      writeln('GLPT presentation mode enabled');
-      GLPT_PresentationMode := true;
-    end;
-
   // allocate the default canvas
   if CanvasState = nil then
     CanvasState := TCanvasState.Create;
@@ -1492,6 +1517,12 @@ begin
       if TCanvasOption.Resizable in options then
         flags += GLPT_WINDOW_RESIZABLE;
 
+      {$ifdef TARGET_OS_IPHONE}
+      // Iphone must set window size since we don't know the screen size of our device before launch
+      GLPT_GetDisplayCoords(displayCoords);
+      width := displayCoords.right - displayCoords.left;
+      height := displayCoords.bottom - displayCoords.top;
+      {$else}
       if TCanvasOption.FullScreen in options then
         begin
           fullScreen := true;
@@ -1500,6 +1531,7 @@ begin
           width := displayCoords.right - displayCoords.left;
           height := displayCoords.bottom - displayCoords.top;
         end;
+      {$endif}
 
       window := GLPT_CreateWindow(GLPT_WINDOW_POS_CENTER, GLPT_WINDOW_POS_CENTER, width, height, '', context, flags);
       if window = nil then
@@ -1526,6 +1558,14 @@ begin
     begin
       FinalizeSetup(V2i(width, height));
     end;
+end;
+{$endif}
+
+{$if defined(PLATFORM_GLPT) and defined(TARGET_OS_IPHONE)}
+// when we define main with $pascalmainname (-XM) we need to declare the rea main function
+function main(argc: cint; argv: pchar): cint; cdecl; public;
+begin
+  result := GLPT_InitializeMain(argc, argv);
 end;
 {$endif}
 

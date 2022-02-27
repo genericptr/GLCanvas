@@ -64,6 +64,9 @@ type
 
       { Accessors }
       function HasGlyph(c: TFontChar): boolean;
+      function LineHeight: integer; virtual; abstract;
+      function SpaceWidth: integer; virtual; abstract;
+      function TabWidth: integer; virtual; abstract;
 
       property Face[c: TFontChar]: TFreeTypeFace read GetFace; default;
       property TextureWidth: integer read m_textureWidth;
