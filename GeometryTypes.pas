@@ -25,6 +25,8 @@ type
       origin: TVec2;
       size: TVec2;
     public
+      class function Infinite: TRect; static; inline;
+
       constructor Create(inX, inY: TScalar; inWidth, inHeight: TScalar);
 
       property X: TScalar read origin.x write origin.x;
@@ -1427,6 +1429,11 @@ begin
     3:
       result := BottomRight;
   end;
+end;
+
+class function TRect.Infinite: TRect;
+begin
+  result := RectMake(MaxInt, -MaxInt);
 end;
 
 constructor TRect.Create(inX, inY: TScalar; inWidth, inHeight: TScalar);
