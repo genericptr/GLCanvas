@@ -86,17 +86,6 @@ begin
 
   numRectanglesToProcess := freeRectangles.Count;
   i := 0;
-  (*
-   for (int i = 0; i < numRectanglesToProcess; ++i)
-   {
-       if (SplitFreeNode(freeRectangles[i], ref newNode))
-       {
-           freeRectangles.RemoveAt(i);
-           --i;
-           --numRectanglesToProcess;
-       }
-   }
-   *)
   while i < numRectanglesToProcess do
     begin
       if SplitFreeNode(freeRectangles[i], newNode) then
