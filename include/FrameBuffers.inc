@@ -8,10 +8,13 @@ type
       m_height: integer;
       m_options: TTextureImageOptions;
       m_texture: TTexture;
+      m_flipped: boolean;
       buffer: GLuint;
       previousViewPort: array[0..3] of GLint;
+
       function GetBounds: TRect; inline;
       function GetTexture: TTexture; inline;
+      procedure SetFlipped(newValue: boolean); 
     public
       { Constructors }
       constructor Create(width, height: integer; options: TTextureImageOptions = DefaultTextureOptions); overload;
@@ -24,6 +27,7 @@ type
       procedure Pop; virtual;
       procedure Bind;
       procedure Unbind;
+      procedure Blit(destBuffer: TFrameBuffer; sourceRect, destRect: TRecti);
       procedure Resize(newWidth, newHeight: integer); virtual;
 
       { Properties }
@@ -32,6 +36,7 @@ type
       property Bounds: TRect read GetBounds;
       property Texture: TTexture read GetTexture;
       property TextureID: GLuint read m_textureID;
+      property Flipped: boolean read m_flipped write SetFlipped;
   end;
 {$endif}
 
@@ -42,6 +47,17 @@ type
 
 var
   FrameBufferStack: TFrameBufferList = nil;
+
+procedure TFrameBuffer.SetFlipped(newValue: boolean); 
+begin
+  if m_texture <> nil then
+    if newValue then
+      m_texture.SetTextureFrame(RectMake(0, 1, 1, -1))
+    else
+      m_texture.SetTextureFrame(RectMake(0, 0, 1, 1));
+
+  m_flipped := newValue;
+end;
 
 function TFrameBuffer.GetBounds: TRect;
 begin
@@ -54,7 +70,10 @@ begin
     begin
       m_texture := TTexture.Create(TextureID, Width, Height, m_options);
       // we have to flip the texture because the frame buffer origin is bottom-left oriented
-      m_texture.SetTextureFrame(RectMake(0, 1, 1, -1));
+      if flipped then
+        m_texture.SetTextureFrame(RectMake(0, 1, 1, -1))
+      else
+        m_texture.SetTextureFrame(RectMake(0, 0, 1, 1));
     end;
   result := m_texture;
 end;
@@ -122,6 +141,27 @@ begin
   glViewPort(previousViewPort[0], previousViewPort[1], previousViewPort[2], previousViewPort[3]);
 end;
 
+procedure TFrameBuffer.Blit(destBuffer: TFrameBuffer; sourceRect, destRect: TRecti);
+begin
+  // TODO: if we have another buffer pushed this will break it?? if so assert hard core
+  glBindFramebuffer(GL_READ_FRAMEBUFFER, self.buffer);
+  glBindFramebuffer(GL_DRAW_FRAMEBUFFER, destBuffer.buffer);
+
+  glBlitFramebuffer(sourceRect.MinX, 
+                    Height - sourceRect.MinY,
+                    sourceRect.MaxX,
+                    Height - sourceRect.MaxY,
+                    destRect.MinX, 
+                    destRect.MinY, 
+                    destRect.MaxX,
+                    destRect.MaxY,
+                    GL_COLOR_BUFFER_BIT,
+                    GL_NEAREST);
+
+  glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
+  glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+end;
+
 function TFrameBuffer.IsActive: boolean;
 begin
   Assert(FrameBufferStack <> nil, 'empty frame buffer stack.');
@@ -154,7 +194,9 @@ end;
 
 constructor TFrameBuffer.Create(width, height: integer; options: TTextureImageOptions);
 begin
+  Assert((width > 0) and (height > 0), 'Frame buffer size must be greater than zero.');
   self.m_options := options;
+  Flipped := true;
   glGenFramebuffers(1, @buffer);
   Resize(width, height);
 end;
