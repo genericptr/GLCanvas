@@ -1466,10 +1466,12 @@ procedure MainEventCallback(event: pGLPT_MessageRec);
 var
   _event: TEvent;
 begin
-  Assert(CanvasState.eventCallback <> nil, 'event callback is not set');
-  _event := TEvent.Create(event^);
-  CanvasState.eventCallback(_event);
-  _event.Free;
+  if CanvasState.eventCallback <> nil then
+    begin
+      _event := TEvent.Create(event^);
+      CanvasState.eventCallback(_event);
+      _event.Free;
+    end;
 end;
 
 procedure SetupCanvas(width, height: integer; eventCallback: TEventCallback; options: TCanvasOptions); 
