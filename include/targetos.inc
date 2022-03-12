@@ -28,7 +28,12 @@
 {$define TARGET_OS_MAC}
 {$endif}
 
-{$if defined(cpuarm) or defined(cpuaarch64) or defined(iphonesim)}
+{$if defined(darwin) and defined(cpuaarch64) and not defined(iphonesim)}
+{$define TARGET_OS_MAC_ARM64}
+{$define TARGET_OS_MAC}
+{$endif}
+
+{$if ((defined(cpuarm) or defined(cpuaarch64)) and not defined(darwin)) or defined(iphonesim)}
 {$define TARGET_OS_IPHONE}
 
 {$if defined(cpuaarch64) or defined(cpux86_64)}
