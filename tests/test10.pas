@@ -11,7 +11,7 @@
 program Test10;
 uses
   CThreads, GeometryTypes, VectorMath,
-  GLPT, GLCanvas;
+  GLCanvas;
 
 const
   window_size_width = 512;

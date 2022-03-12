@@ -10,7 +10,7 @@
 program Test13;
 uses
   CThreads, GeometryTypes, FGL, RectangleBinPack,
-  GLCanvas;
+  GLUI, GLCanvas;
 
 const
   window_size_width = 512;
@@ -25,35 +25,55 @@ type
 
 var
   packer: TBinPacker;
-  node: TNode;
   nodes: TNodeList;
+
+procedure AddRect(min: integer = 128; max: integer = 512);
+var
+  node: TNode;
+begin
+  node := TNode.Create;
+  node.rect := packer.Insert(Rand(min, max), Rand(min, max));
+  // TODO: if the height is 0 we can't find a place
+  node.rect.show;
+  node.color := RGBA(FRand(0, 1), FRand(0, 1), FRand(0, 1), 1);
+  nodes.Add(node);
+end;
+
+procedure EventCallback(event: TEvent);
+begin
+  if event.EventType = TEventType.KeyDown then
+    begin
+      AddRect;
+    end;
+  SharedApp.PollEvent(event.RawEvent);
+end; 
+
+var
+  node: TNode;
   i: integer;
   time: double;
 begin
-  SetupCanvas(window_size_width, window_size_height);
+  SetupCanvas(window_size_width, window_size_height, @EventCallback);
 
-  packer := TBinPacker.Create(window_size_width, window_size_height, false);
+  packer := TBinPacker.Create(1024 * 8, 1024 * 8, false);
   nodes := TNodeList.Create;
 
   time := GetTime;
-  for i := 0 to 256 - 1 do
-    begin
-      node := TNode.Create;
-      node.rect := packer.Insert(Rand(16, 64), Rand(16, 64));
-      node.color := RGBA(FRand(0, 1), FRand(0, 1), FRand(0, 1), 1);
-      nodes.Add(node);
-    end;
-  writeln('pack time: ', Trunc(GetTime - time) * 1000, 'ms');
+  for i := 1 to 15 do
+    AddRect;
+  writeln('pack time: ', Trunc((GetTime - time) * 1000), 'ms');
+
+  SetViewTransform(0, 0, 0.1);
 
   while IsRunning do
     begin
       ClearBackground;
 
       for node in nodes do
-        FillRect(node.rect, node.color);
-      
-      for node in nodes do
-        StrokeRect(node.rect, TColor.Black);
+        begin
+          FillRect(node.rect, node.color);
+          StrokeRect(node.rect, TColor.Black);
+        end;
 
       SwapBuffers;
     end;
