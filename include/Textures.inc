@@ -153,13 +153,14 @@ type
 
 			procedure SetSize(newValue: TVec2);
 			procedure LoadImage(image: TImage);
+			function GetTextureCoords: TRect; inline;
 
 			{ Constructors for sub-textures }
 			constructor Create(source: TTextureSource); overload;
 			constructor Create(source: TTextureSource; inPixelFrame, inTextureFrame: TRect; options: TTextureImageOptions = DefaultTextureOptions); overload;
 	end;
 
-	TTextureCollection = class(TTexture)
+	TTextureCollection = class abstract(TTexture)
 		protected
 			textures: TTextureList;
 			function GetTexture(index: integer): TTexture; overload;
@@ -939,7 +940,7 @@ begin
 			LoadTexture2D(imageWidth, imageHeight, sourceImage.Data, textureOptions);
 			RestoreLastBoundTexture;
 
-			m_textureFrame.texture := RectMake(0, 0, 1, 1);
+			m_textureFrame.texture := GetTextureCoords;
 			m_textureFrame.pixel := RectMake(0, 0, imageWidth, imageHeight);
 		end;
 end;
@@ -1036,7 +1037,7 @@ begin
 			LoadImage(imagePath);
 
 			//textureSize := V2(attributes['width'], attributes['height']);
-			m_textureFrame.texture := RectMake(0, 0, 1, 1);
+			m_textureFrame.texture := GetTextureCoords;
 			m_textureFrame.pixel := RectMake(0, 0, attributes['width'], attributes['height']);
 
 			// loop through all <sprite> tags
@@ -1100,6 +1101,17 @@ begin
 	BindTexture2D(textureID);
 	LoadTexture2D(trunc(textureSize.width), trunc(textureSize.height), nil, textureOptions);
 
+	{
+		1) use bin packer
+		2) allow adding/removing textures
+		3) reload bin packer and update texture
+			3a) the bin packer doesn't keep user data to refer back to the TTexture 
+			    so we need to extend the class to support this.
+		4) notifiy the textures of changes to UV coords
+			4a) if the current batch is using these textures then we need to flush drawing.
+			    we'll need to keep a list of current textures being drawn and determne if these
+			    have been affected. Note, this applies to any of other textures being updated.
+	}
 	offset := 0;
 
 	for imagePath in imagePaths do
@@ -1107,8 +1119,9 @@ begin
 			image := LoadImageFromFile(imagePath, width, height);
 
 			// TODO: respect texture params for target type
-			glTexSubImage2D(GL_TEXTURE_2D, 0, offset.x, offset.y, width, height, GL_RGBA, GL_UNSIGNED_BYTE, image);
-			GLAssert('glTexSubImage2D');
+			LoadSubTexture2D(offset.x, offset.y, width, height, image, textureOptions);
+			//glTexSubImage2D(GL_TEXTURE_2D, 0, offset.x, offset.y, width, height, GL_RGBA, GL_UNSIGNED_BYTE, image);
+			//GLAssert('glTexSubImage2D');
 
 			rect := RectMake(offset, width, height);
 
@@ -1118,7 +1131,7 @@ begin
 			texture.SetPixelFrame(rect);
 			textures.Add(ExtractFileParts(imagePath).name, texture);
 
-			// TODO: replace with bin packer, UPacker works?
+			// TODO: replace with TBinPacker
 			offset.x += width;
 			FreeMem(image);
 		end;
@@ -1496,6 +1509,11 @@ begin
 	result := trunc(GetSize.height);
 end;
 
+function TTexture.GetTextureCoords: TRect;
+begin
+	result := RectMake(0, 0, 1, 1);
+end;
+
 destructor TTexture.Destroy;
 begin	
 	// delete the texture if we own it
@@ -1524,7 +1542,7 @@ begin
 		sourceImage := image;
 	SetSize(image.size);
 	SetPixelFrame(RectMake(0, 0, width, height));
-	SetTextureFrame(RectMake(0, 0, 1, 1));
+	SetTextureFrame(GetTextureCoords);
 	// TODO: how do we get the texture options for the image?
 	textureOptions := DefaultTextureOptions;
 end;
@@ -1535,7 +1553,7 @@ begin
 	sourceImage := TImage.Create(width, height, data);
 	Include(flags, TTextureFlag.FreeSourceImage);
 	SetPixelFrame(RectMake(0, 0, width, height));
-	SetTextureFrame(RectMake(0, 0, 1, 1));
+	SetTextureFrame(GetTextureCoords);
 	textureOptions := options;
 end;
 
@@ -1559,7 +1577,7 @@ begin
 	Assert(texture > 0, 'Must use a valid texture ID.');
 	m_textureID := texture;
 	SetSize(V2(width, height));
-	SetTextureFrame(RectMake(0, 0, 1, 1));
+	SetTextureFrame(GetTextureCoords);
 	textureOptions := options;
 end;
 
@@ -1570,7 +1588,7 @@ begin
 	sourceImage := LoadImageFromFile(path, imageWidth, imageHeight);
 	Include(flags, TTextureFlag.FreeSourceImage);
 	SetSize(V2(imageWidth, imageHeight));
-	SetTextureFrame(RectMake(0, 0, 1, 1));
+	SetTextureFrame(GetTextureCoords);
 	textureOptions := options;
 end;
 
