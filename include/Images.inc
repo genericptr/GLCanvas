@@ -39,13 +39,17 @@ type
       m_data: PPixel;
       m_width: integer;
       m_height: integer;
+      m_filePath: AnsiString;
       function GetSize: TVec2i;
       function GetCount: integer;
       function GetBytes: integer;
       function GetPixel(x, y: integer): TPixel; inline; overload;
       function GetPixel(point: TVec2i): TPixel; inline; overload;
       procedure SetPixel(x, y: integer; constref newValue: TPixel); inline; overload;
+      { File Handling }
       procedure LoadFromFile(path: AnsiString); virtual; abstract;
+      function GetFileName: String;
+      function GetFilePath: String;
     public
       { Constructors }
       constructor Create(_path: AnsiString); overload;
@@ -53,6 +57,7 @@ type
       { Methods }
       function Copy: TBitmap;
       procedure Blit(source: TBitmap; offsetX, offsetY: integer; mode: TBlendMode = TBlendMode.Copy);
+      procedure Fill(newValue: TPixel);
       destructor Destroy; override;
       { Properties }
       property Data: PPixel read m_data;
@@ -60,13 +65,20 @@ type
       property Height: integer read m_height;
       property Size: TVec2i read GetSize;
       property Count: integer read GetCount;
+      property FileName: String read GetFileName;
+      property FilePath: String read GetFilePath;
       property Pixels[x, y: integer]: TPixel read GetPixel write SetPixel; default;
   end;
 
 type
-  TImage4b = class abstract(specialize TBitmap<4, byte>);
-  TImage3b = class abstract(specialize TBitmap<3, byte>);
+  TImage4b = class (specialize TBitmap<4, byte>);
+  TImage3b = class (specialize TBitmap<3, byte>);
   //TImage4f = class abstract(specialize TBitmap<4, float>);
+
+type
+  TImage4bArray = array of TImage4b;
+  TImage3bArray = array of TImage3b;
+  //TImage4fArray = array of TImage4f;
 
 type
   TPNGImage = class(TImage4b)
@@ -262,6 +274,14 @@ begin
   result := specialize TBitmap<TComponents, TComponent>.Create(Width, Height, Data);
 end;
 
+procedure TBitmap.Fill(newValue: TPixel);
+var
+  i: integer;
+begin
+  for i := 0 to Count - 1 do
+    data[i] := newValue;
+end;
+
 procedure TBitmap.Blit(source: TBitmap; offsetX, offsetY: integer; mode: TBlendMode = TBlendMode.Copy);
 
   {
@@ -369,6 +389,16 @@ begin
     end;
 end;
 
+function TBitmap.GetFileName: String;
+begin
+  result := ExtractFileName(FilePath);
+end;
+
+function TBitmap.GetFilePath: String;
+begin
+  result := m_filePath;
+end;
+
 destructor TBitmap.Destroy;
 begin
   FreeMem(data);
@@ -392,13 +422,13 @@ end;
 {*****************************************************************************
  *                               TPNGImage
  *****************************************************************************}
-
 procedure TPNGImage.LoadFromFile(path: AnsiString);
 var
   fileRef: file;
   bytes: pointer = nil;
   extension: string;
 begin
+  m_filePath := path;
   extension := ExtractFileExt(path);
   Assert(extension = '.png', 'only png images are implemented');
   try

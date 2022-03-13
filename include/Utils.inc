@@ -91,4 +91,19 @@ begin
   result := System.Random >= probability;
 end;
 
+type
+  TFileParts = record
+    name: string;
+    dir: ansistring;
+    ext: string;
+  end;
+
+function ExtractFileParts(path: ansistring): TFileParts;
+begin
+  result.ext := ExtractFileExt(path);
+  result.name := ExtractFileName(path);
+  result.name := StringReplace(result.name, result.ext, '', []);
+  result.dir := ExtractFileDir(path);
+end;
+
 {$endif}

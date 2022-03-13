@@ -71,12 +71,12 @@ uses
 {$define INTERFACE}
 {$include include/ExtraTypes.inc}
 {$include include/WebColors.inc}
+{$include include/Utils.inc}
 {$include include/Images.inc}
 {$include include/Textures.inc}
 {$include include/FrameBuffers.inc}
 {$include include/Text.inc}
 {$include include/BitmapFont.inc}
-{$include include/Utils.inc}
 {$include include/Shaders.inc}
 {$include include/FreeType.inc}
 {$include include/Keys.inc}
@@ -310,7 +310,7 @@ var
 
 implementation
 uses
-  GLUtils,
+  GLUtils, RectangleBinPack,
   Variants, CTypes,
   SysUtils, DOM, XMLRead, Strings;
 
@@ -327,12 +327,12 @@ var
 {$define IMPLEMENTATION}
 {$include include/ExtraTypes.inc}
 {$include include/WebColors.inc}
+{$include include/Utils.inc}
 {$include include/Images.inc}
 {$include include/Textures.inc}
 {$include include/FrameBuffers.inc}
 {$include include/Text.inc}
 {$include include/BitmapFont.inc}
-{$include include/Utils.inc}
 {$include include/Shaders.inc}
 {$include include/FreeType.inc}
 {$include include/Keys.inc}
@@ -670,8 +670,7 @@ begin
   {$endif}
 
   {$ifdef PlATFORM_GLPT}
-  //CanvasState.window^.ref.setTitle(NSSTR(title));
-  Assert(false, 'SetWindowTitle not implemented for platform');
+  GLPT_SetWindowTitle(CanvasState.window, title);
   {$endif}
 end;
 

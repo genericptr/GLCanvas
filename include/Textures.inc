@@ -24,6 +24,7 @@ type
 
 type
 	TImage = TImage4b;
+	TImageArray = array of TImage;
 	TImagePixel = TImage4b.TPixel;
 	PImagePixel = ^TImagePixel;
 
@@ -259,11 +260,13 @@ type
 	TTextureComposite = class(TTextureSource, ITexture)
 		private type
 			TImagePathArray = array of string;
+			procedure Initialize(canvasSize: TVec2i; options: TTextureImageOptions = DefaultTextureOptions);
 		public
 			
 			{ Constructors }
-			constructor Create(canvasSize: TVec2i; images: TImagePathArray);
-			
+			constructor Create(canvasSize: TVec2i; paths: TImagePathArray; options: TTextureImageOptions = DefaultTextureOptions);
+			constructor Create(canvasSize: TVec2i; images: TImageArray; options: TTextureImageOptions = DefaultTextureOptions);
+
 			{ Accessors }
 			function GetTexture(name: string): TTexture; overload;
 			function GetCount: integer;
@@ -279,7 +282,7 @@ type
 		private
 			textures: TTextureMap;
 			textureOptions: TTextureImageOptions;
-			imagePaths: TImagePathArray;
+			bitmaps: TImageArray;
 	end;
 
 { Operators }
@@ -362,21 +365,6 @@ end;
 function TTextureSlot.IsUsed: boolean;
 begin
 	result := assigned(obj);
-end;
-
-type
-	TFileParts = record
-		name: string;
-		dir: ansistring;
-		ext: string;
-	end;
-
-function ExtractFileParts(path: ansistring): TFileParts;
-begin
-	result.ext := ExtractFileExt(path);
-	result.name := ExtractFileName(path);
-	result.name := StringReplace(result.name, result.ext, '', []);
-	result.dir := ExtractFileDir(path);
 end;
 
 {*****************************************************************************
@@ -592,6 +580,11 @@ begin
 	glTexSubImage2D(GL_TEXTURE_2D, 0, xoffset, yoffset, width, height, pixelFormat, pixelType, data);
 
 	GLAssert('glTexSubImage2D');
+end;
+
+procedure LoadSubTexture2D(rect: TRect; data: pointer; options: TTextureImageOptions); inline;
+begin
+	LoadSubTexture2D(trunc(rect.x), trunc(rect.y), trunc(rect.width), trunc(rect.height), data, options);
 end;
 
 procedure RestoreLastBoundTexture;
@@ -1057,14 +1050,30 @@ end;
 {*****************************************************************************
  *                            Texture Composite
  *****************************************************************************}
-		
-constructor TTextureComposite.Create(canvasSize: TVec2i; images: TImagePathArray);
+
+procedure TTextureComposite.Initialize(canvasSize: TVec2i; options: TTextureImageOptions);
 begin
-	textureOptions := DefaultTextureOptions;
+	textureOptions := options;
 	textures := TTextureMap.Create;
 	m_textureFrame.texture := RectMake(0, 0, 1, 1);
 	m_textureFrame.pixel := RectMake(0, 0, canvasSize);
-	imagePaths := images;
+end;
+		
+constructor TTextureComposite.Create(canvasSize: TVec2i; paths: TImagePathArray; options: TTextureImageOptions);
+var
+	path: string;
+begin
+	Initialize(canvasSize, options);
+
+	for path in paths do
+		bitmaps += [TPNGImage.Create(path)];
+end;
+
+constructor TTextureComposite.Create(canvasSize: TVec2i; images: TImageArray; options: TTextureImageOptions);
+begin
+	Assert((TTextureImage.RGBA in options) and (TTextureImage.UnsignedByte in options), 'Texture must be RGBA and UnsignedByte.');
+	Initialize(canvasSize, options);
+	bitmaps := images;
 end;
 
 function TTextureComposite.GetTexture(name: string): TTexture;
@@ -1090,52 +1099,36 @@ procedure TTextureComposite.Load;
 var
 	width, height: integer;
 	image: TImage;
-	offset: TVec2i;
-	imagePath: string;
 	rect: TRect;
 	texture: TTexture;
+	packer: TBinPacker;
 begin
 	Assert(not IsLoaded, 'Texture is already loaded.');
 
 	GenerateTexture(m_textureID);
 	BindTexture2D(textureID);
 	LoadTexture2D(trunc(textureSize.width), trunc(textureSize.height), nil, textureOptions);
+	
+  packer := TBinPacker.Create(trunc(textureSize.width), trunc(textureSize.height), false);
 
-	{
-		1) use bin packer
-		2) allow adding/removing textures
-		3) reload bin packer and update texture
-			3a) the bin packer doesn't keep user data to refer back to the TTexture 
-			    so we need to extend the class to support this.
-		4) notifiy the textures of changes to UV coords
-			4a) if the current batch is using these textures then we need to flush drawing.
-			    we'll need to keep a list of current textures being drawn and determne if these
-			    have been affected. Note, this applies to any of other textures being updated.
-	}
-	offset := 0;
+  for image in bitmaps do
+  	begin
+  		rect := packer.Insert(image.width, image.height);
 
-	for imagePath in imagePaths do
-		begin
-			image := LoadImageFromFile(imagePath, width, height);
+  		LoadSubTexture2D(rect, image.Data, textureOptions);
 
-			// TODO: respect texture params for target type
-			LoadSubTexture2D(offset.x, offset.y, width, height, image, textureOptions);
-			//glTexSubImage2D(GL_TEXTURE_2D, 0, offset.x, offset.y, width, height, GL_RGBA, GL_UNSIGNED_BYTE, image);
-			//GLAssert('glTexSubImage2D');
+  		texture := TTexture.Create(self);
+  		texture.SetTextureFrame(PixelToTexture(rect));
+  		texture.SetSize(rect.size);
+  		texture.SetPixelFrame(rect);
 
-			rect := RectMake(offset, width, height);
+  		if image.FileName <> '' then
+				textures.Add(image.FileName, texture);
 
-			texture := TTexture.Create(self);
-			texture.SetTextureFrame(PixelToTexture(rect));
-			texture.SetSize(V2(width, height));
-			texture.SetPixelFrame(rect);
-			textures.Add(ExtractFileParts(imagePath).name, texture);
+			image.Free;
+  	end;
 
-			// TODO: replace with TBinPacker
-			offset.x += width;
-			FreeMem(image);
-		end;
-
+	packer.Free;
 	RestoreLastBoundTexture;
 end;
 
@@ -1458,7 +1451,7 @@ procedure TTexture.Reload(region: TRect; data: pointer);
 begin
 	Assert(IsLoaded, 'Texture must be loaded before reloading sub-region.');
 	BindTexture2D(textureID);
-	LoadSubTexture2D(trunc(region.MinX), trunc(region.MinY), trunc(region.Width), trunc(region.Height), data, textureOptions);
+	LoadSubTexture2D(region, data, textureOptions);
 	RestoreLastBoundTexture;
 end;
 
