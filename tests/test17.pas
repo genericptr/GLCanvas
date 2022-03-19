@@ -21,8 +21,11 @@ var
 begin
   SetupCanvas(480, 480);
 
-  // TODO: make a bunch of random sized TImage's and use those for composite
-
+  { TODO: make TTextureComposite support adding/removing dynamically which will resize the texture if we're out of space
+    this is so we can say `frame := canvas.Insert(100,100)` and get back a new texture frame in a source texture
+    instead of creating new textures each time we need them. if the composite is full is then call Pack which will clear 
+    out unused rects (previously removed) and reclaim any available space. }
+ 
   // create composite texture using images
   j := 0;
   for i := 0 to 32 do

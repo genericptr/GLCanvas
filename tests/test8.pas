@@ -20,7 +20,7 @@ var
   img,
   tile: TPNGImage;
   texture: TTexture;
-  x, y, i: integer;
+  i: integer;
 begin
   SetupCanvas(window_size_width, window_size_height);
 
@@ -33,25 +33,13 @@ begin
 
   // blit other texture
   tile := TPNGImage.Create('16x16.png');
-  //img.Blit(tile, TBlendMode.Multiply, 2, 2);
-  // TODO: wraps! constrain to width
-  img.Blit(tile, TBlendMode.ColorDodge, 18, 2);
+  // TODO: blitting wraps around! constrain to size
+  // TODO: use source/dest rects instead of offsets
+  img.Blit(tile, 8, 8, TBlendMode.ColorDodge);
   tile.Free;
 
-  {
-    1) blit to dest TRects
-    2) copy to rect
-    3) load tga
-    4) don't copy/retain TImage input for TTexture.Create
-    5) Blit with tinting/opacity
-
-    😡 other tests:
-
-    - loading/unloading/freeing (texture manager implementation?)
-    - texture composite
-    - rendering to frame buffers
-
-  }
+  // TODO: blend with color directly
+  //img.Blend(RectMake(0,0,16,16), RGBA(1, 0, 0, 1), TBlendMode.Multiply);
 
   texture := TTexture.Create(img);
 

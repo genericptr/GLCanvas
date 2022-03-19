@@ -20,11 +20,11 @@ var
   textures: array[0..3] of TTexture;
   currentTexture: integer;
 
-procedure EventCallback(event: pGLPT_MessageRec);
+procedure EventCallback(event: TEvent);
 begin
-  case event^.mcode of
-    GLPT_MESSAGE_KEYPRESS:
-      case event^.params.keyboard.keycode of
+  case event.EventType of
+    TEventType.KeyDown:
+      case event.KeyCode of
         GLPT_KEY_SPACE:
           begin
             //textures[currentTexture].Unload;
