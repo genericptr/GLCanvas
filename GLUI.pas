@@ -142,13 +142,7 @@ type
 
   TWindowOptions = set of TWindowOption;
 
-//const
-//  kWindowLevels = 3;
-//  kWindowLevelNormal = 0;
-//  kWindowLevelUtility = 1;
-//  kWindowLevelMenu = 2;
 type
-  // see CGWindowLevelKey for more
   TWindowLevel = (
     Normal = 0,
     Utility = 1,
@@ -1821,7 +1815,6 @@ type
   end;
 
 { TStackView }
-// TODO: when finished this replaces TWindow layout tables
 type
   TStackViewOrientation = (Vertical, Horizontal);
   TStackView = class(TView)
