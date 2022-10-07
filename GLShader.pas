@@ -32,12 +32,14 @@ type
       procedure SetUniformInts(name: pchar; ints: array of GLint); overload;
       procedure SetUniformInt(name: pchar; value: integer);
       procedure SetUniformFloat(name: pchar; value: float);
+      procedure SetUniformBool(name: pchar; value: boolean);
       procedure SetUniformVec2(name: pchar; value: TVec2);
       procedure SetUniformVec3(name: pchar; value: TVec3);
       procedure SetUniformVec4(name: pchar; value: TVec4);
 
       destructor Destroy; override;
   end;
+  TShaderClass = class of TShader;
   TShaderObjectList = specialize TFPGObjectList<TShader>;
 
 var
@@ -63,7 +65,7 @@ begin
 
   // shader source
   glShaderSource(vertexShaderID, 1, @vertexShaderSource, nil);
-  glShaderSource(fragmentShaderID, 1, @fragmentShaderSource, nil);  
+  glShaderSource(fragmentShaderID, 1, @fragmentShaderSource, nil);
 
   // compile shader
   glCompileShader(vertexShaderID);
@@ -122,7 +124,6 @@ procedure TShader.Use;
 begin
   glUseProgram(programID);
 	GLAssert('glUseProgram '+IntToStr(programID));
-  //writeln('use shader ', programID);
 end;
 
 function TShader.IsActive: boolean;
@@ -141,6 +142,13 @@ procedure TShader.SetUniformFloat(name: pchar; value: float);
 begin
   Assert(IsActive, 'shader must be active before setting uniforms.');
   glUniform1f(GetUniformLocation(name), value);
+  GLAssert('glUniform1f '+name);
+end;
+
+procedure TShader.SetUniformBool(name: pchar; value: boolean);
+begin
+  Assert(IsActive, 'shader must be active before setting uniforms.');
+  glUniform1ui(GetUniformLocation(name), GLuint(value));
   GLAssert('glUniform1f '+name);
 end;
 

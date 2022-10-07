@@ -47,8 +47,8 @@ begin
                  RectMake(CELL_SIZE * Rand(2), CELL_SIZE * Rand(2), CELL_SIZE, CELL_SIZE), 
                  RectMake(Rand(WINDOW_SIZE), Rand(WINDOW_SIZE), CELL_SIZE, CELL_SIZE));
 
-      // Draw the output texture
-      DrawTexture(output.Texture, GetViewPort);
+      // Blir the output texture to screen
+      output.Blit(nil, output.Bounds, GetViewPort);
 
       SetWindowTitle('FPS: '+GetFPS.ToString);
       SwapBuffers;

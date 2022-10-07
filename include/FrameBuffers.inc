@@ -4,6 +4,7 @@ type
   TFrameBuffer = class
     private
       m_textureID: GLuint;
+      m_depthTextureID: GLuint;
       m_width: integer;
       m_height: integer;
       m_options: TTextureImageOptions;
@@ -11,24 +12,29 @@ type
       m_flipped: boolean;
       buffer: GLuint;
       previousViewPort: array[0..3] of GLint;
+      enableDepthBuffer: boolean;
 
       function GetBounds: TRect; inline;
       function GetTexture: TTexture; inline;
       procedure SetFlipped(newValue: boolean); 
     public
       { Constructors }
-      constructor Create(width, height: integer; options: TTextureImageOptions = DefaultTextureOptions); overload;
-      constructor Create(size: TVec2i; options: TTextureImageOptions = DefaultTextureOptions); overload;
+      constructor Create(width, height: integer; depthBuffer: boolean = false; options: TTextureImageOptions = DefaultTextureOptions); overload;
+      constructor Create(size: TVec2i; depthBuffer: boolean = false; options: TTextureImageOptions = DefaultTextureOptions); overload;
       destructor Destroy; override;
 
       { Methods }
       function IsActive: boolean;
+      function IsBound: boolean;
+      function PixelAt(x, y: integer): TColor;
+
       procedure Push; virtual;
       procedure Pop; virtual;
       procedure Bind;
       procedure Unbind;
       procedure Blit(destBuffer: TFrameBuffer; sourceRect, destRect: TRecti);
       procedure Resize(newWidth, newHeight: integer); virtual;
+      procedure Clear;
 
       { Properties }
       property Width: integer read m_width;
@@ -36,6 +42,7 @@ type
       property Bounds: TRect read GetBounds;
       property Texture: TTexture read GetTexture;
       property TextureID: GLuint read m_textureID;
+      property TextureOptions: TTextureImageOptions read m_options;
       property Flipped: boolean read m_flipped write SetFlipped;
   end;
 {$endif}
@@ -78,6 +85,18 @@ begin
   result := m_texture;
 end;
 
+procedure TFrameBuffer.Clear;
+var
+  flags: GLbitfield;
+begin
+  flags := GL_COLOR_BUFFER_BIT;
+
+  if enableDepthBuffer then
+    flags += GL_DEPTH_BUFFER_BIT;
+  
+  glClear(flags);
+end;
+
 procedure TFrameBuffer.Resize(newWidth, newHeight: integer);
 var
   prevTexture,
@@ -114,6 +133,15 @@ begin
                         GL_TEXTURE_2D,
                         TextureID,
                         0);
+  
+  if enableDepthBuffer then
+    begin
+      glGenTextures(1, @m_depthTextureID);
+      glBindTexture(GL_TEXTURE_2D, m_depthTextureID);
+      glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, width, height, 0, GL_DEPTH_COMPONENT, GL_FLOAT, nil);
+      glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, m_depthTextureID, 0);
+    end;
+
   Assert(glCheckFramebufferStatus(GL_FRAMEBUFFER) = GL_FRAMEBUFFER_COMPLETE, 'glFramebufferTexture2D failed with error $'+HexStr(glCheckFramebufferStatus(GL_FRAMEBUFFER), 4));
 
   glFrameBufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, TextureID, 0);
@@ -143,16 +171,20 @@ end;
 
 procedure TFrameBuffer.Blit(destBuffer: TFrameBuffer; sourceRect, destRect: TRecti);
 begin
-  // TODO: if we have another buffer pushed this will break it?? if so assert hard core
   glBindFramebuffer(GL_READ_FRAMEBUFFER, self.buffer);
-  glBindFramebuffer(GL_DRAW_FRAMEBUFFER, destBuffer.buffer);
 
-  glBlitFramebuffer(sourceRect.MinX, 
-                    Height - sourceRect.MinY,
+  // use the application created frame buffer if none is specified
+  if destBuffer <> nil then
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, destBuffer.buffer)
+  else
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+
+  glBlitFramebuffer(sourceRect.MinX,
+                    sourceRect.MinY,
                     sourceRect.MaxX,
-                    Height - sourceRect.MaxY,
-                    destRect.MinX, 
-                    destRect.MinY, 
+                    sourceRect.MaxY,
+                    destRect.MinX,
+                    destRect.MinY,
                     destRect.MaxX,
                     destRect.MaxY,
                     GL_COLOR_BUFFER_BIT,
@@ -166,6 +198,35 @@ function TFrameBuffer.IsActive: boolean;
 begin
   Assert(FrameBufferStack <> nil, 'empty frame buffer stack.');
   result := FrameBufferStack.Last = self;
+end;
+
+function TFrameBuffer.IsBound: boolean;
+var
+  id: GLUint;
+begin
+  glGetIntegerv(GL_FRAMEBUFFER_BINDING, @id);
+  result := buffer = id;
+end;
+
+function TFrameBuffer.PixelAt(x, y: integer): TColor;
+var
+  pixel: array[0..3] of GLubyte;
+begin
+  Assert(IsBound, 'Frame buffer must be bound before inspecting pixels');
+
+  // flip-y
+  y := Height - y;
+  glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+
+  case TextureOptions.Format of
+    GL_UNSIGNED_BYTE:
+      begin
+        glReadPixels(x, y, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, @pixel);
+        result := RGBA(pixel[0]/255,pixel[1]/255,pixel[2]/255,pixel[3]/255);
+      end;
+    GL_FLOAT:
+      glReadPixels(x, y, 1, 1, GL_RGBA, GL_FLOAT, @result);
+  end;
 end;
 
 procedure TFrameBuffer.Push;
@@ -192,18 +253,19 @@ begin
   Texture.Free;
 end;
 
-constructor TFrameBuffer.Create(width, height: integer; options: TTextureImageOptions);
+constructor TFrameBuffer.Create(width, height: integer; depthBuffer: boolean; options: TTextureImageOptions);
 begin
   Assert((width > 0) and (height > 0), 'Frame buffer size must be greater than zero.');
   self.m_options := options;
+  enableDepthBuffer := depthBuffer;
   Flipped := true;
   glGenFramebuffers(1, @buffer);
   Resize(width, height);
 end;
 
-constructor TFrameBuffer.Create(size: TVec2i; options: TTextureImageOptions);
+constructor TFrameBuffer.Create(size: TVec2i; depthBuffer: boolean; options: TTextureImageOptions);
 begin
-  Create(size.width, size.height, options);
+  Create(size.width, size.height, depthBuffer, options);
 end;
 
 {$endif}

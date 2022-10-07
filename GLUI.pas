@@ -11,7 +11,8 @@
 {$implicitexceptions off}
 {$scopedenums on}
 
-{$define GLGUI_DEBUG}
+{define GLGUI_DEBUG}
+{define BUFFERED_RENDERING}
 
 unit GLUI;
 interface
@@ -214,7 +215,7 @@ type
       function FrontWindowOfLevel(level: TWindowLevel): TWindow;
 
       procedure AfterConstruction; override;
-  end;  
+  end;
 
   { TView }
 
@@ -261,6 +262,8 @@ type
       function GetParent: TView; inline;
       function GetTag: integer; inline;
 
+      function IsOpaque: boolean; virtual;
+
       { Properties }
       property Window: TWindow read GetWindow;
       property Subviews: TViewList read GetSubviews;
@@ -270,14 +273,15 @@ type
 
       { Managing Subviews }
       procedure AddSubview(view: TView);
+      procedure AddSubviews(views: array of TView);
       procedure InsertSubview(view: TView; index: integer);
       procedure RemoveSubview(view: TView);
       procedure RemoveSubviews;
       procedure RemoveFromParent;
 
-      { Searching }
       function FindParent(ofClass: TViewClass): TView;
       function FindSubview(withTag: integer): TView;  
+      function GetChildIndex: integer;
 
       { Controls }
       // TODO: remove these to helpers so we can decouple TControl from TView
@@ -288,9 +292,10 @@ type
       procedure SendKeyDown(event: TEvent);
       function IsFocused(global: boolean = false): boolean;
       procedure GiveFocus;
+      procedure AdvanceFocus; virtual;
 
       { Methods }
-      function IsMember(viewClass: TViewClass): boolean;
+      function IsMember(viewClass: TViewClass): boolean; inline;
       destructor Destroy; override;
       procedure ChangeAutoresizingOptions(newValue: TAutoresizingOptions; add: boolean);
 
@@ -397,8 +402,10 @@ type
       didAutoResize: boolean;
       postingFrameChangeNotification: boolean;
       m_needsLayoutSubviews: boolean;
+      m_needsDisplay: boolean;
 
       procedure SetParent(newValue: TView);
+      procedure SetNeedsDisplay(newValue: boolean);
       function GetResolution: TScalar;
       procedure DisplayNeedsUpdate;
       procedure PostFrameChangedNotification;
@@ -409,6 +416,8 @@ type
       procedure SubviewsAreClipping(var clipping: boolean; deep: boolean = true);
       procedure TestMouseTracking(event: TEvent);
       procedure TestDragTracking(event: TEvent);
+    public
+      property NeedsDisplay: boolean read m_needsDisplay write SetNeedsDisplay;
   end;
 
   { TScreen }
@@ -422,18 +431,6 @@ type
       class function MainScreen: TScreen;
       property VisibleFrame: TRect read GetVisibleFrame;
   end;
-
-  TLayoutTable = class
-    origin: TVec2;
-    rowHeight: integer;
-    totalHeight: integer;
-    views: TViewList;
-    function AddView(view: TView): TRect;
-    constructor Create;
-    destructor Destroy; override;
-  end;
-  PLayoutTable = ^TLayoutTable;
-  TLayoutTableList = specialize TFPGObjectList<TLayoutTable>;
 
   IWindowDelegate = interface (IDelegate) ['IWindowDelegate']
     function HandleWindowShouldClose(window: TWindow): boolean;
@@ -478,13 +475,6 @@ type
       { IDelegation }
       procedure SetDelegate(newValue: TObject);
       function GetDelegate: TObject;
-      
-      { Layout Tables }
-      procedure BeginLayout(position: TVec2; rowHeight: integer);
-      procedure EndLayout;
-      function LayoutViews: TViewList;
-      procedure AddRow(view: TView);
-      procedure AddColumn(view: TView);
 
       { Methods }
       function IsOpen: boolean;
@@ -493,8 +483,8 @@ type
       procedure Close;
       procedure OrderFront;
       procedure Center;
-      procedure AdvanceFocus;
       procedure SendDefaultAction;
+      procedure AdvanceFocus; override;
       function ShouldConstrainToSafeArea: boolean;
 
       destructor Destroy; override;
@@ -554,7 +544,9 @@ type
       focusedView: TView;
       mouseInsideView: TView;
       defaultButton: TView;
-      layoutTableStack: TLayoutTableList;
+      frameBuffer: TFrameBuffer;
+      tempBuffer: TFrameBuffer;
+      dirtyRect: TRect;
 
       function GetWindowLevel: TWindowLevel;
       procedure HandleDefaultAction(var msg); message 'DefaultAction';
@@ -564,6 +556,7 @@ type
       function PollEvent(event: TEvent): boolean;
       procedure FinalizeClose;
       function ShouldAllowEnabling: boolean;
+      procedure Render;
   end;
 
   { TDraggingSession }
@@ -948,7 +941,7 @@ type
 type
   TButton = class (TControl)
     public
-      constructor Create(_frame: TRect; _title: string; _font: IFont = nil); overload;
+      constructor Create(_frame: TRect; _title: string; _font: IFont = nil; _action: TInvocation = nil); overload;
 
       procedure SetTitle(newValue: string);
       procedure SetFont(newValue: IFont);
@@ -982,6 +975,7 @@ type
       function GetContainerFrame: TRect; virtual;
 
       procedure HandleValueChanged; override;
+      procedure HandleStateChanged; override;
       procedure HandleWillAddToWindow(win: TWindow); override;
 
       { Handlers }
@@ -1091,6 +1085,7 @@ type
       procedure HandleInputDragged(event: TEvent); override;
       procedure HandleInputEnded(event: TEvent); override;
       procedure HandleValueChanged; override;
+      procedure HandleStateChanged; override;
 
       function GetTrackSize: TVec2;
       function GetTrackFrame: TRect; virtual;
@@ -1828,17 +1823,23 @@ type
 { TStackView }
 // TODO: when finished this replaces TWindow layout tables
 type
-  TStackViewOrientation = (Horizontal, Vertical);
+  TStackViewOrientation = (Vertical, Horizontal);
   TStackView = class(TView)
     private
       m_orientation: TStackViewOrientation;
       m_cellSpacing: integer;
+      m_centerSubviews: boolean;
       procedure SetOrientation(newValue: TStackViewOrientation);
       procedure SetCellSpacing(newValue: integer);
+      procedure SetCenterSubviews(newValue: boolean);
     public
+      { Methods }
+      constructor Create(_frame: TRect; orientation: TStackViewOrientation = TStackViewOrientation.Vertical; cellSpacing: integer = 0; centerSubviews: boolean = false); overload;
       procedure LayoutSubviews; override;
+      { Properties }
       property Orientation: TStackViewOrientation read m_orientation write SetOrientation;
       property CellSpacing: integer read m_cellSpacing write SetCellSpacing;
+      property CenterSubviews: boolean read m_centerSubviews write SetCenterSubviews;
   end;
 
 { TStatusBar }
@@ -2249,7 +2250,6 @@ var
   index: integer;
   window: TWindow;
 begin
-  // TODO: push/pop view transform
   locked := true;
   for level in TWindowLevel do
     for index := list[level].Count - 1 downto 0 do
@@ -2257,12 +2257,10 @@ begin
         window := self[level, index];
         if window.IsHidden then
           continue;
+
         window.LayoutRoot;
         window.Update;
-        // TODO: we can kill this once we make a render backend that doesn't need shaders
-        PushViewTransform(0, 0, PlatformScreenScale);
-        window.DrawInternal(0);
-        PopViewTransform;
+        window.Render;
       end;
   locked := false;
 
@@ -2307,10 +2305,8 @@ begin
   case event.EventType of
     TEventType.KeyDown:
       begin
-        writeln(event.KeyCode);
         // get key combinations and propogate through "HandleKeyEquivalent(event)/HandleKeyEquivalent"
         // also see NSMenuItemValidation to enabling menu items based
-        //writeln('perform key equivalent: ', event.KeyCode);
         HandleKeyEquivalent(event);
         if event.IsAccepted then
           goto Finished;
@@ -2451,6 +2447,7 @@ end;
 
 class function TApplication.FirstResponder: TObject;
 begin
+  // TODO: front window + focused view and bubble up from there
   result := SharedApp;
 end;
 
@@ -2597,6 +2594,10 @@ begin
     wantsFocus := true;
 end;
 
+procedure TView.AdvanceFocus;
+begin
+end;
+
 function TView.IsFocused(global: boolean = false): boolean;
 begin
   if GetWindow <> nil then
@@ -2633,6 +2634,14 @@ end;
 procedure TView.AddSubview(view: TView);
 begin
   InsertSubview(view, subviews.Count);
+end;
+
+procedure TView.AddSubviews(views: array of TView);
+var
+  view: TView;
+begin
+  for view in views do
+    InsertSubview(view, subviews.Count);
 end;
 
 procedure TView.RemoveSubview(view: TView);
@@ -2711,6 +2720,8 @@ procedure TView.LayoutSubviews;
 var
   child: TView;
 begin
+  //NeedsDisplay := true;
+
   for child in subviews do
     begin
       child.InternalLayoutSubviews;
@@ -2729,6 +2740,37 @@ begin
     begin
       child.LayoutIfNeeded;
       child.LayoutRoot;
+    end;
+end;
+
+procedure TView.SetNeedsDisplay(newValue: boolean);
+var
+  view: TView;
+begin
+  {$ifndef BUFFERED_RENDERING}
+  exit;
+  {$endif}
+
+  if newValue and not NeedsDisplay then
+    begin
+      // look up the view hierarchy to find non-opaue views need to be redrawn also
+      view := self;
+      while (view <> nil) and not view.IsOpaque and (GetParent <> nil) do
+        begin
+          view.m_needsDisplay := true;
+          view := view.GetParent;
+        end;
+      // TODO: during on draw cycle multiple views may redraw so we need to union these
+      window.dirtyRect := window.dirtyRect.Union(ConvertRectFrom(frame, self));
+      //writeln(classname, ' -> ', window.dirtyRect.tostr);
+    end
+  else if not newValue and NeedsDisplay then
+    begin
+      m_needsDisplay := false;
+      if subviews <> nil then
+        for view in subviews do
+          if view.NeedsDisplay then
+            view.NeedsDisplay := false;
     end;
 end;
 
@@ -2810,6 +2852,25 @@ function TView.FindSubview(withTag: integer): TView;
 begin
   result := nil;
   FindSubviewInternal(self, result);
+end;
+
+{ Get the index of the view in it's parent subviews
+  Returns -1 if the view has no parent }
+function TView.GetChildIndex: integer;
+var
+  i: integer;
+begin
+  if GetParent = nil then
+    exit(-1);
+
+  if GetParent.Subviews.Count = 0 then
+    exit(-1);
+
+  for i := 0 to GetParent.Subviews.Count - 1 do
+    if GetParent.Subviews[i] = self then
+      exit(i);
+
+  result := -1;
 end;
 
 procedure TView.ChangeAutoresizingOptions(newValue: TAutoresizingOptions; add: boolean);
@@ -3032,6 +3093,17 @@ begin
   if m_subviews = nil then
     m_subviews := TViewList.Create;
   result := m_subviews;
+end;
+
+function TView.IsOpaque: boolean;
+begin
+  { The default value of this property is false to reflect the fact that 
+    views do no drawing by default. Subclasses can override this property 
+    and return true to indicate that the view completely covers its frame 
+    rectangle with opaque content. Doing so can improve performance during 
+    drawing operations by eliminating the need to render content behind the view. }
+
+  result := false;
 end;
 
 function TView.GetTag: longint;
@@ -3447,6 +3519,7 @@ end;
 procedure TView.Initialize;
 begin 
   m_visible := true;
+  m_needsDisplay := true;
   SetAutoresizingOptions([TAutoresizingOption.MinXMargin, TAutoresizingOption.MinYMargin]);
 end;
 
@@ -3498,6 +3571,9 @@ procedure TView.DrawInternal(parentOrigin: TVec2);
 
   function ShouldDraw: boolean; inline;
   begin
+    //writeln('hit: ', {ConvertRectFrom(window.dirtyRect, Window).tostr}frame.Intersects(window.dirtyRect));
+    //if not frame.Intersects(window.dirtyRect) then
+    //  exit(false);
     if assigned(GetParent) then
       result := GetParent.ShouldDrawSubview(self)
     else
@@ -3506,33 +3582,39 @@ procedure TView.DrawInternal(parentOrigin: TVec2);
 
 var
   child: TView;
-  savedOrigin: TVec2;
 begin
-  // TODO: we need to flush for SetViewTransform since it's a shader property
-  // once we have a render backend for GUI's we can add the view transform into the root functions
-  savedOrigin := parentOrigin;
   renderOrigin := GetFrame.origin * PlatformScreenScale + parentOrigin;
+
+  {$ifdef BUFFERED_RENDERING}
+  if IsMember(TWindow) then
+    renderOrigin := 0;
+  {$endif}
+
   FlushDrawing;
 
   if not IsHidden then
     begin
-      PushViewTransform(renderOrigin.x, renderOrigin.y, PlatformScreenScale);
-
-      if enableClipping then
-        PushClipRect(GetClipRect);
+      // TODO: why do we push the transform ShowDraw is false??
       if ShouldDraw then
-        Draw;
-      FlushDrawing;
-      if enableClipping then
-        PopClipRect;
+        begin
+          PushViewTransform(renderOrigin.x, renderOrigin.y, PlatformScreenScale);
 
-      // draw outside of clip rect
-      {$ifdef GLGUI_DEBUG}
-      DrawDebugWidgets;
-      FlushDrawing;
-      {$endif}
+          if enableClipping then
+            PushClipRect(GetClipRect);
+          //if ShouldDraw then
+            Draw;
+          FlushDrawing;
+          if enableClipping then
+            PopClipRect;
 
-      PopViewTransform;
+          // draw outside of clip rect
+          {$ifdef GLGUI_DEBUG}
+          DrawDebugWidgets;
+          FlushDrawing;
+          {$endif}
+
+          PopViewTransform;
+        end;
     end
   else
     begin
@@ -3614,30 +3696,6 @@ end;
 class function TScreen.MainScreen: TScreen;
 begin
   result := GLUI.MainScreen;
-end;
-
-{ LAYOUT TABLE }
-
-function TLayoutTable.AddView(view: TView): TRect;
-var
-  newFrame: TRect;
-begin
-  newFrame := view.GetFrame;
-  newFrame.origin := V2(origin.x, origin.y + totalHeight);
-  views.Add(view);
-  totalHeight += rowHeight;
-  result := newFrame;
-end;
-
-constructor TLayoutTable.Create; 
-begin
-  views := TViewList.Create;
-end;
-
-destructor TLayoutTable.Destroy; 
-begin
-  FreeAndNil(views);
-  inherited;
 end;
 
 { WINDOW }
@@ -3723,46 +3781,48 @@ begin
   Close;
 end;
 
-procedure TWindow.BeginLayout(position: TVec2; rowHeight: integer);
+procedure TWindow.AdvanceFocus;
+
+  procedure _AdvanceFocus(topLevel: boolean; startIndex: integer; root: TView; var found: TView);
+  var
+    view: TView;
+    i: integer;
+  begin
+    for i := startIndex to root.subviews.Count - 1 do
+      begin
+        view := root.subviews[i];
+
+        // Give focus to the view
+        if view.canAcceptFocus and not view.IsFocused then
+          begin
+            view.GiveFocus;
+            found := view;
+            break;
+          end;
+
+        // recurse in to subviews
+        if view.subviews.Count > 0 then
+          begin
+            _AdvanceFocus(false, 0, view, found);
+            if found <> nil then
+              break;
+          end;
+      end;
+
+    // go up if we've reached the top of the hierarchy
+    if topLevel and (found = nil) then
+      _AdvanceFocus(false, root.GetChildIndex, root.GetParent, found);
+  end;
+
 var
-  table: TLayoutTable;
+  target: TView = nil;
 begin
-  if layoutTableStack = nil then
-    layoutTableStack := TLayoutTableList.Create;
-
-  table := TLayoutTable.Create;
-  table.origin := position;
-  table.rowHeight := rowHeight;
-  layoutTableStack.Add(table);
+  if focusedView = nil then
+    _AdvanceFocus(true, 0, self, target)
+  else
+    _AdvanceFocus(true, focusedView.GetChildIndex, focusedView.GetParent, target);
 end;
 
-function TWindow.LayoutViews: TViewList;
-begin
-  Assert((layoutTableStack <> nil) and (layoutTableStack.Count > 0), 'empty layout stack');
-  result := layoutTableStack.Last.views;
-end;
-
-procedure TWindow.AddRow(view: TView);
-var
-  newFrame: TRect;
-begin
-  Assert((layoutTableStack <> nil) and (layoutTableStack.Count > 0), 'empty layout stack');
-  newFrame := layoutTableStack.Last.AddView(view);
-  view.SetFrame(newFrame);
-  AddSubview(view);
-end;
-
-procedure TWindow.AddColumn(view: TView);
-begin
-  Assert((layoutTableStack <> nil) and (layoutTableStack.Count > 0), 'empty layout stack');
-end;
-
-procedure TWindow.EndLayout;
-begin
-  Assert(layoutTableStack <> nil, 'no layout table stack');
-  Assert(layoutTableStack.Count > 0, 'trying to close empty layout table stack');
-  layoutTableStack.Delete(layoutTableStack.Count - 1);
-end;
 
 procedure TWindow.Center;
 begin 
@@ -3897,8 +3957,69 @@ begin
   else if IsFloating then
     result := false
   else
-    result :=
-     true;
+    result := true;
+end;
+
+procedure TWindow.Render; 
+begin
+  {$ifdef BUFFERED_RENDERING}
+  if frameBuffer = nil then
+    begin
+      writeln('CREATE BUFFER: ',frame.size.tostr);
+      frameBuffer := TFrameBuffer.Create(frame.size);
+      frameBuffer.Flipped := false;
+      dirtyRect := Bounds;
+    end;
+
+  if tempBuffer = nil then
+    tempBuffer := TFrameBuffer.Create(frame.size);
+
+  if NeedsDisplay then
+    begin
+      tempBuffer.Push;
+      ClearBackground;
+      PushViewTransform(0, 0, PlatformScreenScale);
+
+      {
+        1) does subview intersect dirty rect?
+        2) after drawing is complete blit temp buffer to final buffer at the dirty rect
+      }
+      writeln('-- draw window ', dirtyRect.tostr);
+      DrawInternal(0);
+      writeln('-- done ');
+
+      PopViewTransform;
+      tempBuffer.Pop;
+      NeedsDisplay := false;
+    end;
+
+    tempBuffer.Blit(frameBuffer, dirtyRect, dirtyRect);
+    dirtyRect := TRect.Infinite;
+
+    DrawTexture(frameBuffer.Texture, frame);
+    FlushDrawing;
+  {$else}
+  PushViewTransform(0, 0, PlatformScreenScale);
+  DrawInternal(0);
+  PopViewTransform;
+  {$endif}
+end;
+
+procedure TWindow.Initialize;
+begin
+  inherited Initialize;
+  
+  freeWhenClosed := false;
+  dragOrigin := -1;
+  resizeOrigin := -1;
+end;
+
+destructor TWindow.Destroy;
+begin
+  FreeAndNil(frameBuffer);
+  FreeAndNil(tempBuffer);
+  delegate := nil;
+  inherited;
 end;
 
 { Fullscreen constructor }
@@ -4210,38 +4331,10 @@ begin
     end;
 end;
 
-procedure TWindow.Initialize;
-begin
-  inherited Initialize;
-  
-  freeWhenClosed := false;
-  dragOrigin := -1;
-  resizeOrigin := -1;
-end;
-
-destructor TWindow.Destroy;
-begin
-  FreeAndNil(layoutTableStack);
-  delegate := nil;
-  inherited;
-end;
-
 procedure TWindow.SendDefaultAction;
 begin
   if defaultButton <> nil then
     TButton(defaultButton).InvokeAction;
-end;
-
-procedure TWindow.AdvanceFocus;
-var
-  child: TView;
-begin
-  for child in subviews do
-    if child.canAcceptFocus and(child <> focusedView) then  
-      begin
-        child.GiveFocus;
-        break;
-      end;
 end;
 
 function TWindow.ShouldAllowEnabling: boolean;
@@ -4268,21 +4361,22 @@ begin
     TEventType.WindowResize:
       HandleScreenDidResize;
     TEventType.MouseDown:
-      begin
-        Assert(SharedCursor.inputStarted = nil, 'mouse up wasn''t processed');
+      if SharedCursor.inputStarted = nil then
+        begin
+          // Assert(SharedCursor.inputStarted = nil, 'mouse up wasn''t processed');
 
-        SharedCursor.mouseDown := true;
-        HandleMouseDown(event);
-        if event.IsAccepted then
-          exit(true);
-
-        HandleInputStarted(event);
-        if event.IsAccepted then
-          begin
-            SharedCursor.inputStarted := event.acceptedObject as TView;
+          SharedCursor.mouseDown := true;
+          HandleMouseDown(event);
+          if event.IsAccepted then
             exit(true);
-          end;
-      end;
+
+          HandleInputStarted(event);
+          if event.IsAccepted then
+            begin
+              SharedCursor.inputStarted := event.acceptedObject as TView;
+              exit(true);
+            end;
+        end;
     TEventType.MouseUp:
       begin
         event.m_inputSender := SharedCursor.inputStarted;
@@ -4870,20 +4964,38 @@ begin
   NeedsLayoutSubviews;
 end;
 
+procedure TStackView.SetCenterSubviews(newValue: boolean);
+begin
+  m_centerSubviews := newValue;
+  NeedsLayoutSubviews;
+end;
+
 procedure TStackView.LayoutSubviews;
 var
   view: TView;
-  position: Float;
+  position, yPos: Float;
 begin 
   inherited;
 
   position := 0;
   for view in Subviews do
     begin
-      view.SetLocation(V2(0, position));
+      if CenterSubviews then
+        yPos := frame.MidX - view.frame.width / 2
+      else
+        yPos := 0;
+      view.SetLocation(V2(yPos, position));
 
       position += view.GetHeight + CellSpacing;
     end;
+end;
+
+constructor TStackView.Create(_frame: TRect; orientation: TStackViewOrientation; cellSpacing: integer; centerSubviews: boolean);
+begin
+  inherited Create(_frame);
+  self.Orientation := orientation;
+  self.CellSpacing := cellSpacing;
+  self.CenterSubviews := centerSubviews;
 end;
 
 { MENU ITEM }
@@ -6165,6 +6277,8 @@ var
   total, 
   percent: float;
 begin
+  inherited;
+
   if scrollView <> nil then
     if IsVertical then
       begin
@@ -6416,7 +6530,16 @@ end;
 procedure TSlider.HandleValueChanged; 
 begin
   inherited;
+
   InvokeAction;
+  NeedsDisplay := true;
+end;
+
+procedure TSlider.HandleStateChanged; 
+begin
+  inherited;
+
+  NeedsDisplay := true;
 end;
 
 procedure TSlider.HandleInputStarted(event: TEvent);
@@ -9042,11 +9165,14 @@ end;
 
 { BUTTON }
 
-constructor TButton.Create(_frame: TRect; _title: string; _font: IFont = nil);
+constructor TButton.Create(_frame: TRect; _title: string; _font: IFont; _action: TInvocation);
 begin
   Initialize;
   SetTitle(_title);
-  SetFont(_font);
+  if _font <> nil then
+    SetFont(_font);
+  if _action <> nil then
+    SetAction(_action);
   SetFrame(_frame);
 end;
 
@@ -9054,6 +9180,7 @@ procedure TButton.SetTitle(newValue: string);
 begin
   textView.SetText(newValue);
   SetIdentifierFromTitle(newValue);
+  NeedsDisplay := true;
 end;
 
 procedure TButton.SetFont(newValue: IFont);
@@ -9145,15 +9272,15 @@ procedure TButton.HandleInputEnded(event: TEvent);
 begin
   if pressed then
     begin
-      // TODO: sounds and timers
-      //if sound <> '' then
-      //  TSound.Play(sound);
-      //if action <> nil then
-      //  TTimer.Invoke(0.0, action);
       HandlePressed;
       HandleAction;
+      DepressButton;
+    end
+  else
+    begin
+      tracking := false;
+      pressed := false;
     end;
-  DepressButton;
 end;
 
 procedure TButton.HandleInputDragged(event: TEvent);
@@ -9186,6 +9313,7 @@ procedure TButton.DepressButton;
 begin
   pressed := false;
   tracking := false;
+  needsDisplay := true;
   HandleStateChanged;
 end;
 
@@ -9266,6 +9394,12 @@ procedure TButton.HandleValueChanged;
 begin
   inherited;
   NeedsLayoutSubviews;
+end;
+
+procedure TButton.HandleStateChanged;
+begin
+  inherited;
+  NeedsDisplay := true;
 end;
 
 procedure TButton.HandleWillAddToWindow(win: TWindow);

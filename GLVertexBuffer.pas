@@ -1,6 +1,7 @@
 {$mode objfpc}
 {$modeswitch advancedrecords}
 {$include include/targetos.inc}
+{$scopedenums on}
 
 unit GLVertexBuffer;
 interface
@@ -14,9 +15,25 @@ uses
   FGL;
 
 type
+  TVertexAttributeKind = (
+    GL_BYTE,
+    GL_UNSIGNED_BYTE,
+    GL_SHORT,
+    GL_UNSIGNED_SHORT,
+    GL_INT,
+    GL_UNSIGNED_INT,
+    GL_FLOAT,
+    GL_2_BYTES,
+    GL_3_BYTES,
+    GL_4_BYTES,
+    GL_DOUBLE
+  );
+
+type
   TVertexAttribute = record
     public
       constructor Create(name: string; kind: GLenum; count: integer);
+      constructor Create(name: string; kind: TVertexAttributeKind; count: integer);
     public
       name: string;
     private
@@ -28,11 +45,7 @@ type
 type
   generic TVertexBuffer<TVertex> = class
     private type
-      PVertex = ^TVertex;
-      PQuad = ^TQuad;
-      TQuad = array[0..5] of TVertex;
       TVertexArray = array[0..0] of TVertex;
-      PVertexArray = ^TVertexArray;
       TVertexList = specialize TFPGList<TVertex>;
     private
       list: TVertexList;
@@ -41,17 +54,23 @@ type
       attributes: TVertexAttributes;
       vertexCount: integer;
       staticDraw: boolean;
+      function GetVertex(index: integer): TVertex; inline;
+      procedure SetVertex(index: integer; vertex: TVertex); inline;
       function SizeofAttribute(kind: GLuint): integer;
       procedure EnableVertexAttributes; 
     public
+      { Constructors }
       constructor Create(_attributes: TVertexAttributes; _static: boolean = false);
+      destructor Destroy; override;
+      { Methods }
       procedure Add(constref vertex: TVertex); overload; inline;
-      procedure Add(constref quad: TQuad); overload; inline;
+      procedure Add(constref verticies: array of TVertex); overload;
       function Count: integer;
       procedure Draw(mode: GLenum = GL_TRIANGLES);
       procedure Clear;
       procedure Flush(mode: GLenum = GL_TRIANGLES);
-      destructor Destroy; override;
+      { Properties }
+      property Verticies[index: integer]: TVertex read GetVertex write SetVertex; default; 
   end;
 
 implementation
@@ -62,6 +81,25 @@ constructor TVertexAttribute.Create(name: string; kind: GLenum; count: integer);
 begin
   self.name := name;
   self.kind := kind;
+  self.count := count;
+end;
+
+constructor TVertexAttribute.Create(name: string; kind: TVertexAttributeKind; count: integer);
+begin
+  self.name := name;
+  case kind of
+    TVertexAttributeKind.GL_BYTE: self.kind := GL.GL_BYTE;
+    TVertexAttributeKind.GL_UNSIGNED_BYTE: self.kind := GL.GL_UNSIGNED_BYTE;
+    TVertexAttributeKind.GL_SHORT: self.kind := GL.GL_SHORT;
+    TVertexAttributeKind.GL_UNSIGNED_SHORT: self.kind := GL.GL_UNSIGNED_SHORT;
+    TVertexAttributeKind.GL_INT: self.kind := GL.GL_INT;
+    TVertexAttributeKind.GL_UNSIGNED_INT: self.kind := GL.GL_UNSIGNED_INT;
+    TVertexAttributeKind.GL_FLOAT: self.kind := GL.GL_FLOAT;
+    TVertexAttributeKind.GL_2_BYTES: self.kind := GL.GL_2_BYTES;
+    TVertexAttributeKind.GL_3_BYTES: self.kind := GL.GL_3_BYTES;
+    TVertexAttributeKind.GL_4_BYTES: self.kind := GL.GL_4_BYTES;
+    TVertexAttributeKind.GL_DOUBLE: self.kind := GL.GL_DOUBLE;
+  end;
   self.count := count;
 end;
 
@@ -79,17 +117,15 @@ end;
 
 procedure TVertexBuffer.Add(constref vertex: TVertex);
 begin
-  list.Add(vertex);  
+  list.Add(vertex);
 end;
 
-procedure TVertexBuffer.Add(constref quad: TQuad);
+procedure TVertexBuffer.Add(constref verticies: array of TVertex);
+var
+  i: integer;
 begin
-  list.Add(quad[0]);
-  list.Add(quad[1]);
-  list.Add(quad[2]);
-  list.Add(quad[3]);
-  list.Add(quad[4]);
-  list.Add(quad[5]);
+  for i := 0 to high(verticies) do
+    list.Add(verticies[i]);
 end;
 
 function TVertexBuffer.Count: integer;
@@ -126,6 +162,7 @@ begin
     end;
 end;
 
+{ Draws the buffer and clears data }
 procedure TVertexBuffer.Flush(mode: GLenum);
 begin
   if Count > 0 then
@@ -140,6 +177,7 @@ begin
   EnableVertexAttributes;
   if staticDraw then
     begin
+      // clear the local memory buffer once it's written to the GPU
       if list.Count > 0 then
         begin
           glBufferData(GL_ARRAY_BUFFER, sizeof(TVertex) * list.Count, TFPSList(list).First, GL_STATIC_DRAW);
@@ -157,6 +195,17 @@ begin
       glDrawArrays(mode, 0, list.Count);
       GLAssert('glDrawArrays');
     end;
+  glBindVertexArray(0);
+end;
+
+function TVertexBuffer.GetVertex(index: integer): TVertex;
+begin
+  result := list[index];
+end;
+
+procedure TVertexBuffer.SetVertex(index: integer; vertex: TVertex);
+begin
+  list[index] := vertex;
 end;
 
 procedure TVertexBuffer.Clear;

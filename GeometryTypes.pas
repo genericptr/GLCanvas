@@ -219,7 +219,8 @@ type
       function Intersects(constref circle: TCircle; out hitPoint: TVec2): boolean; inline; overload; 
       function Intersects(constref rect: TRect): boolean; inline; overload;
       function Distance(constref circle: TCircle; fromDiameter: boolean = true): TScalar;
-      
+      function BoundingRect: TRect;
+
       function ToStr: string;
       procedure Show;
   end;
@@ -284,8 +285,8 @@ type
   end;
 
 { Operators }
-operator explicit (right: TRect): TCircle; inline;
-operator in (left: TVec2; right: TRect): boolean;
+operator explicit(right: TRect): TCircle; inline;
+operator in(left: TVec2; right: TRect): boolean;
 
 { Circles }
 function CircleIntersectsRect(origin: TVec2; radius: TScalar; constref rect: TRect): boolean; 
@@ -319,7 +320,7 @@ function Barycentric(a, b, c, p: TVec3): float;
 
 implementation
 
-operator in (left: TVec2; right: TRect): boolean;
+operator in(left: TVec2; right: TRect): boolean;
 begin
   result := right.Contains(left);
 end;
@@ -1185,6 +1186,11 @@ begin
     result := origin.Distance(circle.origin) - (radius + circle.radius)
   else
     result := origin.Distance(circle.origin);
+end;
+
+function TCircle.BoundingRect: TRect;
+begin
+  result := RectMake(origin.x - radius, origin.y - radius, radius * 2, radius * 2);
 end;
 
 function TCircle.ToStr: string;

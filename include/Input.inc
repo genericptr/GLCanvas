@@ -16,7 +16,8 @@ function IsCommandKeyDown: boolean;
 function IsShiftKeyDown: boolean;
 function IsOptionKeyDown: boolean;
 function IsControlKeyDown: boolean;
-function IsKeyDown(key: TScanCode; repeating: boolean = true): boolean;
+function IsKeyDown(key: TScanCode; repeating: boolean = true): boolean; overload;
+function IsKeyDown(key: char; repeating: boolean = true): boolean; overload;
 
 {$ifdef PLATFORM_SDL}
 type
@@ -181,10 +182,6 @@ begin
   result := ssCtrl in InputManager.shiftState;
 end;
 
-// TODO: we need GLPT_GetKeyFromScancode/GLPT_GetScancodeFromKey
-// so we can start using real keycodes instead of scancodes
-// which will break on different keyboard layouts
-
 function IsKeyDown(key: TScanCode; repeating: boolean): boolean;
 begin
   if not repeating then
@@ -199,6 +196,17 @@ begin
     end
   else
     result := InputManager.keyDown[key].pressed;
+end;
+
+function IsKeyDown(key: char; repeating: boolean = true): boolean;
+begin
+  {$ifdef PLATFORM_GLPT}
+  result := IsKeyDown(GLPT_GetScancodeFromKey(Ord(key)), repeating);
+  {$endif}
+
+  {$ifdef PLATFORM_SDL}
+  result := IsKeyDown(SDL_GetScancodeFromKey(Ord(key)), repeating);
+  {$endif}
 end;
 
 {$ifdef PLATFORM_SDL}

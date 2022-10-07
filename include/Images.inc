@@ -12,9 +12,19 @@ type
   );
 
 type
+  TFileFormat = (
+    PNG,
+    JPEG,
+    TIFF,
+    BMP
+  );
+
+type
   generic TBitmap<const U: integer; T> = class 
     public const
       TComponents = U;
+    private type
+      TClass = class of TBitmap;
     public type
       TComponent = T;
       TPixel = packed record
@@ -28,6 +38,7 @@ type
         class operator + (left: TPixel; right: TPixel): TPixel;
         class operator := (right: TPixel): TVec4;
         class operator := (right: TVec4): TPixel;
+        class operator := (right: array of TComponent): TPixel;
         { Properties }
         property R: TComponent read components[0] write components[0];
         property G: TComponent read components[1] write components[1];
@@ -48,37 +59,42 @@ type
       procedure SetPixel(x, y: integer; constref newValue: TPixel); inline; overload;
       { File Handling }
       procedure LoadFromFile(path: AnsiString); virtual; abstract;
+      function SaveToFile(path: AnsiString; format: TFileFormat; components: integer; hasAlpha: boolean): Boolean; overload;
       function GetFileName: String;
       function GetFilePath: String;
     public
       { Constructors }
       constructor Create(_path: AnsiString); overload;
       constructor Create(_width, _height: integer; _data: pointer = nil); overload;
+      destructor Destroy; override;
       { Methods }
-      function Copy: TBitmap;
+      function Copy: TBitmap; overload;
+      function Copy(offsetX, offsetY, width, height: integer): TBitmap; overload;
       procedure Blit(source: TBitmap; offsetX, offsetY: integer; mode: TBlendMode = TBlendMode.Copy);
       procedure Fill(newValue: TPixel);
-      destructor Destroy; override;
       { Properties }
       property Data: PPixel read m_data;
       property Width: integer read m_width;
       property Height: integer read m_height;
       property Size: TVec2i read GetSize;
       property Count: integer read GetCount;
+      property Bytes: integer read GetBytes;
       property FileName: String read GetFileName;
       property FilePath: String read GetFilePath;
       property Pixels[x, y: integer]: TPixel read GetPixel write SetPixel; default;
   end;
 
 type
-  TImage4b = class (specialize TBitmap<4, byte>);
-  TImage3b = class (specialize TBitmap<3, byte>);
-  //TImage4f = class abstract(specialize TBitmap<4, float>);
+  TImage4b = class (specialize TBitmap<4, byte>)
+    function SaveToFile(path: AnsiString; format: TFileFormat): Boolean; overload;
+  end;
+  TImage3b = class (specialize TBitmap<3, byte>)
+    function SaveToFile(path: AnsiString; format: TFileFormat): Boolean; overload;
+  end;
 
 type
   TImage4bArray = array of TImage4b;
   TImage3bArray = array of TImage3b;
-  //TImage4fArray = array of TImage4f;
 
 type
   TPNGImage = class(TImage4b)
@@ -109,6 +125,15 @@ begin
   for i := 0 to TComponents - 1 do
     result.components[i] := right.components[i] / high(TComponent);
 end;
+
+class operator TBitmap.TPixel.:= (right: array of TComponent): TPixel;
+var
+  i: integer;
+begin
+  for i := 0 to Length(right) - 1 do
+    result.components[i] := right[i];
+end;
+
 
 class operator TBitmap.TPixel.= (left: TPixel; right: TPixel): boolean;
 begin
@@ -274,6 +299,18 @@ begin
   result := specialize TBitmap<TComponents, TComponent>.Create(Width, Height, Data);
 end;
 
+function TBitmap.Copy(offsetX, offsetY, width, height: integer): TBitmap;
+var
+  x, y: integer;
+begin
+  result := TClass(ClassType).Create(Width, Height);
+
+  for y := 0 to height - 1 do
+  for x := 0 to width - 1 do
+    // TODO: copy by row
+    result.Pixels[x, y] := self.Pixels[offsetX + x, offsetY + y];
+end;
+
 procedure TBitmap.Fill(newValue: TPixel);
 var
   i: integer;
@@ -399,6 +436,53 @@ begin
   result := m_filePath;
 end;
 
+function TBitmap.SaveToFile(path: AnsiString; format: TFileFormat; components: integer; hasAlpha: boolean): Boolean;
+{$ifdef TARGET_OS_MAC}
+var
+  bitmap: NSBitmapImageRep;
+  output: NSData;
+  fileType: NSBitmapImageFileType;
+begin
+  bitmap := NSBitmapImageRep.alloc.initWithBitmapDataPlanes_pixelsWide_pixelsHigh_bitsPerSample_samplesPerPixel_hasAlpha_isPlanar_colorSpaceName_bitmapFormat_bytesPerRow_bitsPerPixel(
+      @Data,
+      Width,
+      Height,
+      8, {bitsPerSample}
+      components, {samplesPerPixel}
+      hasAlpha,
+      false, {isPlanar}
+      NSDeviceRGBColorSpace,
+      NSAlphaNonpremultipliedBitmapFormat,
+      Width * 4, {bytesPerRow}
+      32 {bitsPerPixel}
+    );
+
+  case format of
+    TFileFormat.PNG:
+      fileType := NSPNGFileType;
+    TFileFormat.JPEG:
+      fileType := NSJPEGFileType;
+    TFileFormat.TIFF:
+      fileType := NSTIFFFileType;
+    TFileFormat.BMP:
+      fileType := NSBMPFileType;
+  end;
+
+  output := bitmap.representationUsingType_properties(fileType, nil);
+  if output <> nil then
+    begin
+      result := output.writeToFile_atomically(NSSTR(path), true);
+      output.release;
+    end
+  else
+    result := false;
+
+  bitmap.release;
+{$else}
+  Assert(false, 'TPNGImage.SaveToFile not implemented for platform');
+{$endif}
+end;
+
 destructor TBitmap.Destroy;
 begin
   FreeMem(data);
@@ -425,7 +509,7 @@ end;
 procedure TPNGImage.LoadFromFile(path: AnsiString);
 var
   fileRef: file;
-  bytes: pointer = nil;
+  rawBytes: pointer = nil;
   extension: string;
 begin
   m_filePath := path;
@@ -435,16 +519,34 @@ begin
     AssignFile(fileRef, path);
     FileMode := fmOpenRead;
     Reset(fileRef, 1);
-    bytes := GetMem(FileSize(fileRef));
-    BlockRead(fileRef, bytes^, FileSize(fileRef));
+    rawBytes := GetMem(FileSize(fileRef));
+    BlockRead(fileRef, rawBytes^, FileSize(fileRef));
     CloseFile(fileRef);
-    if not LoadPNG(bytes, MemSize(bytes), m_data, m_width, m_height, false) then
+    if not LoadPNG(rawBytes, MemSize(rawBytes), m_data, m_width, m_height, false) then
       raise Exception.Create('Failed to load PNG image '+path);
   except
-    if bytes <> nil then
-      FreeMem(bytes);
+    if rawBytes <> nil then
+      FreeMem(rawBytes);
     raise Exception.Create('Failed to load file '+path);
   end;
+end;
+
+{*****************************************************************************
+ *                                 TImage4b
+ *****************************************************************************}
+
+function TImage4b.SaveToFile(path: AnsiString; format: TFileFormat): Boolean;
+begin
+  result := SaveToFile(path, format, 4, true);
+end;
+
+{*****************************************************************************
+ *                                 TImage3b
+ *****************************************************************************}
+
+function TImage3b.SaveToFile(path: AnsiString; format: TFileFormat): Boolean;
+begin
+  result := SaveToFile(path, format, 3, false);
 end;
 
 {$endif}

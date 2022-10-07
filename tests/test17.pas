@@ -50,7 +50,6 @@ begin
       inc(j);
     end;
 
-  //texture := TTextureComposite.Create(128, ['centaur.png', 'dwarf.png', 'human.png', 'orc.png']);
   texture := TTextureComposite.Create(480, images);
 
   while IsRunning do

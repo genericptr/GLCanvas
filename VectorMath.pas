@@ -43,7 +43,7 @@ type
       function Offset(by: TVec2): TVec2; overload; inline;
       function Clamp(lowest, highest: TVec2): TVec2; inline;
       function Clamp(lowest, highest: TScalar): TVec2; inline;
-      function Pinch(max, min: TScalar): TVec2; inline;
+      function Contains(value: TScalar): boolean;
       function Min: TScalar;
       function Max: TScalar;
       function Sum: TScalar;
@@ -95,6 +95,7 @@ type
       function Offset(by: TVec3): TVec3; overload; inline;
       function Clamp(lowest, highest: TVec3): TVec3; inline;
       function Clamp(lowest, highest: TScalar): TVec3; inline;
+      function Contains(value: TScalar): boolean; inline;
       function IsZero: boolean; inline;
       function Sum: TScalar; inline;
       function XY: TVec2; inline;
@@ -204,7 +205,7 @@ type
     public
       property Components[column, row:integer]:TScalar read GetComponent write SetComponent; default;
     public
-      class operator := (a:TScalar):TMat4;
+      class operator := (right:TScalar):TMat4;
       class operator = (constref a,b:TMat4):boolean;
       class operator <> (constref a,b:TMat4):boolean;
       class operator + (constref a,b:TMat4):TMat4;
@@ -439,6 +440,14 @@ function V4(constref vec: TVec3; w: TScalar): TVec4; overload;
 function V4(constref vec: TVec2; z, w: TScalar): TVec4; overload;
 function V4(constref vec: TVec4i): TVec4; overload;
 
+function Angle(constref a,b,c: TVec3): TScalar;
+function Clamp(int: integer; lowest, highest: integer): integer; overload; inline;
+function Clamp(int: TScalar; lowest, highest: TScalar): TScalar; overload; inline;
+function RoundTo(Number: TScalar; Places: longint): TScalar;
+function RoundUp(Number: TScalar): longint;
+function FloatToStr(number: single; places: integer): string; overload;
+
+{ Vector Trunctation }
 function Trunc(vec: TVec2): TVec2; overload;
 function Trunc(vec: TVec3): TVec3; overload;
 function Trunc(vec: TVec4): TVec4; overload;
@@ -447,16 +456,17 @@ function Abs(vec: TVec2): TVec2; overload; inline;
 function Abs(vec: TVec3): TVec3; overload; inline;
 function Abs(vec: TVec4): TVec4; overload; inline;
 
-function Angle(constref a,b,c: TVec3): TScalar;
-function Clamp(int: integer; lowest, highest: integer): integer; overload; inline;
-function Clamp(int: TScalar; lowest, highest: TScalar): TScalar; overload; inline;
-function RoundTo(Number: TScalar; Places: longint): TScalar;
-function RoundUp(Number: TScalar): longint;
+function Round(vec: TVec2): TVec2; overload; inline;
+function Round(vec: TVec3): TVec3; overload; inline;
+function Round(vec: TVec4): TVec4; overload; inline;
+
+{ Procedural wrappers for translating from other languages }
+function Dot(left, right: TVec3): TScalar; inline;
+function Cross(left, right: TVec3): TVec3; inline;
 
 function Normalize(vec: TVec2): TVec2; overload; inline;
 function Normalize(vec: TVec3): TVec3; overload; inline;
 
-function FloatToStr(number: single; places: integer): string; overload;
 
 implementation
 
@@ -930,6 +940,16 @@ end;
  *                               Procedural
  *****************************************************************************}
 
+function Dot(left, right: TVec3): TScalar;
+begin
+  result := left.Dot(right);
+end;
+
+function Cross(left, right: TVec3): TVec3;
+begin
+  result := left.Cross(right);
+end;
+
 function Normalize(vec: TVec2): TVec2;
 begin
   result := vec.Normalize;
@@ -1012,6 +1032,27 @@ begin
   result.y := abs(vec.y);
   result.z := abs(vec.z);
   result.w := abs(vec.w);
+end;
+
+function Round(vec: TVec2): TVec2;
+begin
+  result.x := round(vec.x);
+  result.y := round(vec.y);
+end;
+
+function Round(vec: TVec3): TVec3;
+begin
+  result.x := round(vec.x);
+  result.y := round(vec.y);
+  result.z := round(vec.z);
+end;
+
+function Round(vec: TVec4): TVec4;
+begin
+  result.x := round(vec.x);
+  result.y := round(vec.y);
+  result.z := round(vec.z);
+  result.w := round(vec.w);
 end;
 
 function Trunc(vec: TVec2): TVec2;
@@ -1294,13 +1335,10 @@ begin
   result := x + y;
 end;
 
-function TVec2.Pinch(max, min: TScalar): TVec2;
+{ Returns true if the the vector contains the value }
+function TVec2.Contains(value: TScalar): boolean;
 begin
-  result := self;
-  if abs(result.x) < max then
-    result.x := min;
-  if abs(result.y) < max then
-    result.y := min;
+  result := (x = value) or (y = value);
 end;
 
 function TVec2.Clamp(lowest, highest: TVec2): TVec2;
@@ -1561,6 +1599,12 @@ begin
     result.y := highest;
   if result.z > highest then
     result.z := highest;
+end;
+
+{ Returns true if the the vector contains the value }
+function TVec3.Contains(value: TScalar): boolean;
+begin
+  result := (x = value) or (y = value) or (z = value);
 end;
 
 function TVec3.IsZero: boolean;
@@ -2211,24 +2255,24 @@ begin
     end;
 end;
 
-class operator TMat4.:= (a:TScalar):TMat4;
+class operator TMat4.:= (right:TScalar):TMat4;
 begin
- result.m[0,0]:=a;
- result.m[0,1]:=a;
- result.m[0,2]:=a;
- result.m[0,3]:=a;
- result.m[1,0]:=a;
- result.m[1,1]:=a;
- result.m[1,2]:=a;
- result.m[1,3]:=a;
- result.m[2,0]:=a;
- result.m[2,1]:=a;
- result.m[2,2]:=a;
- result.m[2,3]:=a;
- result.m[3,0]:=a;
- result.m[3,1]:=a;
- result.m[3,2]:=a;
- result.m[3,3]:=a;
+ result.m[0,0]:=right;
+ result.m[0,1]:=right;
+ result.m[0,2]:=right;
+ result.m[0,3]:=right;
+ result.m[1,0]:=right;
+ result.m[1,1]:=right;
+ result.m[1,2]:=right;
+ result.m[1,3]:=right;
+ result.m[2,0]:=right;
+ result.m[2,1]:=right;
+ result.m[2,2]:=right;
+ result.m[2,3]:=right;
+ result.m[3,0]:=right;
+ result.m[3,1]:=right;
+ result.m[3,2]:=right;
+ result.m[3,3]:=right;
 end;
 
 class operator TMat4.=(constref a,b:TMat4):boolean;

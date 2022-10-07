@@ -5,10 +5,7 @@
 {$modeswitch multihelpers}
 {$modeswitch nestedprocvars}
 {$modeswitch arrayoperators}
-
-{$ifdef COCOA_EVENTS}
 {$modeswitch objectivec1}
-{$endif}
 
 {$interfaces corba}
 {$implicitexceptions off}
@@ -34,7 +31,6 @@
 
 {$ifdef PLATFORM_SDL}
   {$ifdef TARGET_OS_MAC}
-    //{$linklib libSDL2.dylib}
     {$linkframework SDL2}
   {$endif}
   {$ifdef TARGET_OS_IPHONE}
@@ -62,9 +58,10 @@ uses
   {$endif}
   Contnrs, FGL, Classes, Math,
   GLVertexBuffer, GLShader, GLFreeType,
-  BeRoPNG, VectorMath, GeometryTypes
-  {$ifdef COCOA_EVENTS},CocoaAll{$endif}
-  {$ifdef PLATFORM_GLPT},GLPT, GLPT_Threads{$endif}
+  BeRoPNG, VectorMath, GeometryTypes,
+  { note: CocoaAll is required to prevent a crash in SDL }
+  CocoaAll
+  {$ifdef PLATFORM_GLPT},GLPT{$endif}
   {$ifdef PLATFORM_SDL},SDL{$endif}
   ;
 
@@ -166,7 +163,8 @@ procedure PushClipRect(rect: TRect);
 procedure PopClipRect; 
 
 { Shaders }
-function CreateShader(vertexSource, fragmentSource: pchar): TShader;
+function CreateShader(shaderClass: TShaderClass; const vertexSource, fragmentSource: pchar): TShader; overload;
+function CreateShader(const vertexSource, fragmentSource: pchar): TShader; overload;
 
 { Buffers }
 function CreateVertexBuffer(static: boolean = false): TDefaultVertexBuffer;
@@ -216,6 +214,10 @@ procedure PopViewTransform;
 
 procedure PushModelTransform(constref mat: TMat4); 
 procedure PopModelTransform; 
+
+function GetProjectionTransform: TMat4;
+function GetViewTransform: TMat4;
+function GetModelTransform: TMat4;
 
 { Viewport }
 procedure ResizeCanvas(width, height: integer); overload;
@@ -342,7 +344,8 @@ var
 
 const
   TWOPI = 3.14159 * 2;
-
+  Z_NEAR = -10000;
+  Z_FAR = 10000;
 
 { Globals }
 
@@ -434,13 +437,13 @@ end;
 procedure SetProjectionTransform(constref mat: TMat4);
 begin
   CanvasState.projTransform := mat;
-  Assert(ShaderStack.Last = DefaultShader, 'active shader must be default.');
-  DefaultShader.SetUniformMat4('projTransform', CanvasState.projTransform);
+  Assert(ShaderStack.Last.GetUniformLocation('projTransform') <> -1, 'active shader must have "projTransform" uniform.');
+  ShaderStack.Last.SetUniformMat4('projTransform', CanvasState.projTransform);
 end;
 
 procedure SetProjectionTransform(x, y, width, height: integer);
 begin
-  SetProjectionTransform(TMat4.Ortho(x, width, height, y, -MaxInt, MaxInt));
+  SetProjectionTransform(TMat4.Ortho(x, width, height, y, Z_NEAR, Z_FAR));
 end;
 
 procedure PushProjectionTransform(constref mat: TMat4); 
@@ -459,7 +462,7 @@ end;
 
 procedure PushProjectionTransform(x, y, width, height: integer); 
 begin
-  PushProjectionTransform(TMat4.Ortho(x, width, height, y, -MaxInt, MaxInt));
+  PushProjectionTransform(TMat4.Ortho(x, width, height, y, Z_NEAR, Z_FAR));
 end;
 
 procedure PopProjectionTransform; 
@@ -480,8 +483,8 @@ end;
 procedure SetViewTransform(constref mat: TMat4);
 begin
   CanvasState.viewTransform := mat;
-  Assert(ShaderStack.Last = DefaultShader, 'active shader must be default.');
-  DefaultShader.SetUniformMat4('viewTransform', CanvasState.viewTransform);
+  Assert(ShaderStack.Last.GetUniformLocation('viewTransform') <> -1, 'active shader must have "viewTransform" uniform.');
+  ShaderStack.Last.SetUniformMat4('viewTransform', CanvasState.viewTransform);
 end;
 
 procedure SetViewTransform(x, y, scale: single);
@@ -538,8 +541,26 @@ begin
     end;
 end;
 
+function GetProjectionTransform: TMat4;
+begin
+  result := CanvasState.projectionTransformStack.Last;
+end;
+
+function GetViewTransform: TMat4;
+begin
+  result := CanvasState.viewTransformStack.Last;
+end;
+
+function GetModelTransform: TMat4;
+begin
+  result := CanvasState.modelTransformStack.Last;
+end;
+
+
 procedure PushVertexBuffer(buffer: TDefaultVertexBuffer); 
 begin
+  FlushDrawing;
+  
   with CanvasState do
     begin
       VertexBuffer := buffer;
@@ -549,6 +570,8 @@ end;
 
 procedure PopVertexBuffer;
 begin
+  FlushDrawing;
+
   with CanvasState do
     begin
       vertexBufferList.Delete(vertexBufferList.Count - 1);
@@ -559,6 +582,7 @@ end;
 
 procedure DrawBuffer(buffer: TDefaultVertexBuffer); 
 begin
+  FlushDrawing;
   buffer.Draw(GL_TRIANGLES);
 end;
 
@@ -596,7 +620,7 @@ end;
 procedure ResizeCanvas(width, height: integer);
 begin
   CanvasState.viewPortRatio := V2(1, 1);
-  CanvasState.projTransform := TMat4.Ortho(0, width, height, 0, -MaxInt, MaxInt);
+  CanvasState.projTransform := TMat4.Ortho(0, width, height, 0, Z_NEAR, Z_FAR);
   CanvasState.viewTransform := TMat4.Identity;
 
   DefaultShader.SetUniformMat4('projTransform', CanvasState.projTransform);
@@ -623,12 +647,12 @@ begin
   if respectNative then
     begin
       CanvasState.viewPortRatio := V2(1, 1);
-      CanvasState.projTransform := TMat4.Ortho(0, width, height, 0, -MaxInt, MaxInt);
+      CanvasState.projTransform := TMat4.Ortho(0, width, height, 0, Z_NEAR, Z_FAR);
     end
   else
     begin
       CanvasState.viewPortRatio := destRect.Size / nativeSize;
-      CanvasState.projTransform := TMat4.Ortho(0, width, height, 0, -MaxInt, MaxInt) * 
+      CanvasState.projTransform := TMat4.Ortho(0, width, height, 0, Z_NEAR, Z_FAR) * 
                                    TMat4.Scale(CanvasState.viewPortRatio, 1);
     end;
 
@@ -676,6 +700,10 @@ end;
 
 function GetWindowSize: TVec2i;
 begin
+  // the window is not available yet
+  if (CanvasState = nil) or (CanvasState.window = nil) then
+    exit(0);
+
   {$ifdef PLATFORM_SDL}
   SDL_GetWindowSize(CanvasState.window, result.x, result.y);
   {$endif}
@@ -993,7 +1021,6 @@ procedure StrokeRect(constref rect: TRect; constref color: TColor; lineWidth: si
 var
   texCoord: TVec2;
 begin
-
   ChangePrimitiveType(GL_LINE_LOOP);
 
   // TODO: line width doesn't work now???
@@ -1008,7 +1035,7 @@ begin
   {$endif}
 
   texCoord := V2(0, 0);
-  VertexBuffer.Add(TDefaultVertex.Create(V2(rect.MinX, rect.MinY), texCoord, color, 255));
+  VertexBuffer.Add(TDefaultVertex.Create(V2(rect.MinX - 0.5 { bias to connect lines }, rect.MinY), texCoord, color, 255));
   VertexBuffer.Add(TDefaultVertex.Create(V2(rect.MaxX, rect.MinY), texCoord, color, 255));
   VertexBuffer.Add(TDefaultVertex.Create(V2(rect.MaxX, rect.MaxY), texCoord, color, 255));
   VertexBuffer.Add(TDefaultVertex.Create(V2(rect.MinX, rect.MaxY), texCoord, color, 255));
@@ -1200,17 +1227,22 @@ begin
   CanvasState.SwapBuffers;
 end;
 
-function CreateShader(vertexSource, fragmentSource: pchar): TShader;
+function CreateShader(shaderClass: TShaderClass; const vertexSource, fragmentSource: pchar): TShader;
 begin
-  result := TShader.Create(vertexSource, fragmentSource);
+  result := shaderClass.Create(vertexSource, fragmentSource);
   result.Push;
   result.SetUniformMat4('projTransform', CanvasState.projTransform);
-  result.SetUniformMat4('viewTransform', CanvasState.viewTransform);
+  result.SetUniformMat4('viewTransform', TMat4.Identity);
   result.SetUniformInts('textures', DefaultTextureUnits);
 
   // don't pop the default shader
   if DefaultShader <> nil then
     result.Pop;
+end;
+
+function CreateShader(const vertexSource, fragmentSource: pchar): TShader;
+begin
+  result := CreateShader(TShader, vertexSource, fragmentSource);
 end;
 
 function CreateVertexBuffer(static: boolean): TDefaultVertexBuffer;
@@ -1299,6 +1331,7 @@ begin
   self.FlushDrawing;
 
   {$ifdef PLATFORM_SDL}
+  SDL_GL_MakeCurrent(window, context);
   SDL_GL_SwapWindow(window);
   
   while SDL_PollEvent(event) > 0 do
@@ -1340,7 +1373,7 @@ begin
   inc(totalFrameCount);
   inc(frameCount);
 
-  if now - sampleTime > 1.0 then
+  if now - sampleTime >= 1.0 then
     begin
       fps := frameCount;
       sampleTime := now;
@@ -1350,7 +1383,7 @@ end;
 
 procedure TCanvasState.ClearBackground;
 begin
-  glClear(GL_COLOR_BUFFER_BIT);
+  glClear(GL_COLOR_BUFFER_BIT or GL_DEPTH_BUFFER_BIT);
 end;
 
 procedure TCanvasState.FinalizeSetup(windowSize: TVec2i);
@@ -1397,7 +1430,7 @@ begin
   VertexBuffer := CreateVertexBuffer;
   DefaultShader := CreateShader(DefaultVertexShader, DefaultFragmentShader);
 
-  PushProjectionTransform(TMat4.Ortho(0, windowSize.width, windowSize.height, 0, -MaxInt, MaxInt));
+  PushProjectionTransform(TMat4.Ortho(0, windowSize.width, windowSize.height, 0, Z_NEAR, Z_FAR));
   PushViewTransform(TMat4.Identity);
   PushBlendMode(TBlendingFactor.SRC_ALPHA, TBlendingFactor.ONE_MINUS_SRC_ALPHA);
   PushVertexBuffer(VertexBuffer);
@@ -1418,6 +1451,11 @@ begin
   SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
   SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 2);
   SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
+  SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 16);
+
+  // multi-samples
+  //SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 1);
+  //SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, 4);
 
   // allocate the default canvas
   if CanvasState = nil then
