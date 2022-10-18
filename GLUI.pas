@@ -739,71 +739,6 @@ type
   end;
 
 type
-  PLineLayout = ^TLineLayout;
-  TLineLayout = record
-    {
-      TODO: keep the parent node (which is above us)
-      so we when line wrapping is implemented we can find
-      the literal line number which preceeds the line and
-      use that determine the line number of the current line (and lines below)
-      a concept of dirty flags needs to be added also so that
-      when lines are removed we know to track the parent and recalculate
-    }
-    offset: LongInt;
-    line: integer;
-    columns: integer;
-    prev: PLineLayout;
-    next: PLineLayout;
-    class operator = (left: TLineLayout; right: TLineLayout): boolean;
-  end;
-
-type
-  TTextStorage = class
-    // text storage will be used for style runs
-    m_text: pchar;
-    length: integer;
-
-    //function FindCharacterAtPoint(point: TVec2i): LongInt;
-    //function FindPointAtLocation(location: LongInt): TVec2i;
-    //function FindWordAtPoint(point: TVec2i): TTextRange;
-    //function FindLineAtPoint(point: TVec2i): TTextRange;
-  end;
-
-type
-  TLayoutManager = class
-    private type
-      TLineList = specialize TFPGList<TLineLayout>;
-    private
-      lines: TLineList;
-      // TODO: this needs to be a pointer with a range
-      text: TFontString;
-      //range: TTextRange;
-      //where: TVec2;
-      color: TColor;
-      scale: float;
-      textAlignment: TTextAlignment;
-      wrap: TTextWrapping;
-      // TODO: make this another record for an overload
-      //testPoint: TVec2;
-      //testOffset: TTextOffset;
-      //hitPoint: TVec2;
-      //hitOffset: TTextOffset;
-      //textSize: TVec2;
-      function GetLineHeight: integer; inline;
-      procedure DrawLine(origin: TVec2; line: TLineLayout);
-      procedure DrawGutter(origin: TVec2; startLine, endLine: integer; out gutterWidth: integer);
-    public
-      cursor: TTextRange;
-      font: IFont;
-
-      constructor Create;
-      procedure SetText(const newText: ansistring);
-      procedure Draw(origin: TVec2; visibleRect: TRect);
-
-      property LineHeight: integer read GetLineHeight;
-  end;
-
-type
   TTextViewOption = (
       WidthTracksContainer,
       HeightTracksContainer,
@@ -1923,6 +1858,12 @@ var
 {$include include/NotificationCenter.inc}
 {$include include/Timer.inc}
 {$undef IMPLEMENTATION}
+
+{$macro on}
+{$define TCharSetLineEnding:=#10, #12, #13}
+{$define TCharSetWhiteSpace:=#32, #9, TCharSetLineEnding}
+{$define TCharSetWord:='a'..'z','A'..'Z','_'}
+{$define TCharSetInteger:='0'..'9'}
 
 const
   kNormalPressDelay = 0.2;
@@ -8121,235 +8062,6 @@ begin
   NeedsLayoutSubviews;
 end;
 
-
-{$macro on}
-{$define TCharSetLineEnding:=#10, #12, #13}
-{$define TCharSetWhiteSpace:=#32, #9, TCharSetLineEnding}
-{$define TCharSetWord:='a'..'z','A'..'Z','_'}
-{$define TCharSetInteger:='0'..'9'}
-
-function AdvanceNextWord(text: UnicodeString; location: LongWord): LongWord;
-var
-  offset: LongWord;
-begin
-  offset := location + 1;
-
-  while offset < Length(text) do
-    begin
-      if text[offset] in [TCharSetWhiteSpace] then
-        inc(offset)
-      else
-        break
-    end;
-
-  location := offset;
-
-  for offset := location to High(text) do
-    case text[offset] of
-      TCharSetWord, TCharSetInteger:
-        continue;
-      otherwise
-        exit(offset - 1);
-    end;
-  result := High(text);
-end;
-
-function AdvancePreviousWord(text: UnicodeString; location: LongWord): LongWord;
-var
-  offset: LongInt;
-begin
-  offset := location;
-
-  while offset >= 0 do
-    begin
-      if text[offset] in [TCharSetWhiteSpace] then
-        dec(offset)
-      else
-        break
-    end;
-
-  location := offset;
-
-  for offset := location downto 0 do
-    case text[offset] of
-      TCharSetWord, TCharSetInteger:
-        continue;
-      otherwise
-        exit(offset);
-    end;
-  result := 0;
-end;
-
-function AdvanceLineStart(text: UnicodeString; location: LongWord): LongWord;
-var
-  offset: LongWord;
-begin
-  for offset := location downto 0 do
-    case text[offset] of
-      TCharSetLineEnding:
-        exit(offset);
-    end;
-  result := 0;
-end;
-
-class operator TLineLayout.= (left: TLineLayout; right: TLineLayout): boolean;
-begin
-  result := left.offset = right.offset;
-end;
-
-procedure TLayoutManager.SetText(const newText: ansistring);
-var
-  i,
-  offset, rows, columns: integer;
-  line: TLineLayout;
-begin
-  offset := 0;
-  rows := 0;
-  columns := 0;
-  lines.Clear;
-
-  text := newText;//Copy(newText, 0, length);
-
-  for i := 0 to Length(newText) - 1 do
-    begin
-      {
-        wrap to column/word or line ending
-      }
-      if newText[i] in [LineEnding] then
-        begin
-          //writeln(rows,'x',offset,':',columns,': ', Copy(newText, offset, columns));
-
-          line.line := rows;
-          line.offset := offset;
-          line.columns := columns;
-          if lines.Count > 0 then
-            line.prev := TFPSList(lines).Last
-          else
-            line.prev := nil;
-
-          if line.prev <> nil then
-            line.prev.next := @self;
-
-          lines.Add(line);
-
-          inc(rows);
-          columns :=0;
-          offset := i;
-          continue;
-        end;
-      inc(columns);
-    end;
-end;
-
-procedure TLayoutManager.DrawLine(origin: TVec2; line: TLineLayout);
-var
-  offset: integer;
-  c: char;
-  renderFrame: TFontRenderFrame;
-  newOrigin: TVec2;
-  charFrame: TRect;
-begin
-  //writeln(line.line,':',line.offset);
-  for offset := line.offset to (line.offset + line.columns) - 1 do
-    begin
-      c := text[offset + 1];
-
-      if not font.HasGlyph(c) then
-        begin
-          /// TODO: SpaceWidth is character width for monospace fonts
-          case c of
-            #32: origin.x += font.SpaceWidth;                   // space
-            #9: origin.x += font.SpaceWidth * font.TabWidth;    // tab
-            otherwise
-              origin.x += font.SpaceWidth;                      // other characters
-          end;
-
-          continue;
-        end;
-
-      renderFrame := font.CharacterRenderFrame(c);
-
-      newOrigin.x := origin.x + renderFrame.bearing.x;
-      newOrigin.y := origin.y + renderFrame.bearing.y;
-
-      {
-        H: 4.0/8.0
-        e: 6.0/6.0
-        l: 4.0/8.0
-        o: 6.0/6.0
-        j: 4.0/10.0
-        g: 6.0/8.0
-      }
-      // "originY": (options.font.LineHeight - (renderFrame.bearing.y + renderFrame.faceSize.y)):1:1
-      //writeln(char(c),':',renderFrame.bearing.y:1:1,'/',renderFrame.faceSize.y:1:1);
-
-      charFrame := RectMake(newOrigin, renderFrame.faceSize) * scale;
-
-      { TODO: move to direct quad drawing
-        charQuad.SetOrigin(origin);
-        charQuad.SetSize(face.size);
-        charQuad.SetTexture(face.textureFrame);
-        DrawQuad(charQuad);
-      }
-
-      DrawTexture(font, charFrame, renderFrame.textureFrame, color);
-      {$ifdef DEBUG_FONTS}
-      FillRect(charFrame, RGBA(1, 0, 0, 0.2));
-      {$endif}
-
-      origin.x += renderFrame.advance;
-    end;
-end;
-
-procedure TLayoutManager.DrawGutter(origin: TVec2; startLine, endLine: integer; out gutterWidth: integer);
-var
-  i: integer;
-  lineColor: TColor;
-begin
-  lineColor := RGBA(0, 1);
-
-  gutterWidth := 32;
-
-  FillRect(RectMake(origin.x, origin.y, gutterWidth, (endLine - startLine) * LineHeight), RGBA(0.8, 1));
-
-  for i := startLine to endLine do
-    begin
-      DrawText(font, lines[i].line.ToString, origin, lineColor);
-      origin.y += LineHeight;
-    end;
-end;
-
-procedure TLayoutManager.Draw(origin: TVec2; visibleRect: TRect);
-var
-  i, startLine, endLine: integer;
-  gutterWidth: integer;
-begin
-  startLine := Trunc(visibleRect.MinY / LineHeight);
-  endLine := Trunc(visibleRect.MaxY / LineHeight);
-
-  DrawGutter(origin, startLine, endLine, gutterWidth);
-
-  origin.x += gutterWidth;
-
-  for i := startLine to endLine do
-    begin
-      DrawLine(origin, lines[i]);
-      origin.y += LineHeight;
-    end;
-end;
-
-function TLayoutManager.GetLineHeight: integer;
-begin
-  result := font.LineHeight;
-end;
-
-constructor TLayoutManager.Create;
-begin
-  lines := TLineList.Create;
-  scale := 1;
-  color := RGBA(0, 1);
-end;
-
 procedure LayoutText(var options: TTextLayoutOptions);
 
   procedure DrawCursor(origin: TVec2); inline;
@@ -8746,6 +8458,71 @@ begin
 end;
 
 procedure TTextView.HandleKeyDown(event: TEvent);
+
+  function AdvanceNextWord(text: UnicodeString; location: LongWord): LongWord;
+  var
+    offset: LongWord;
+  begin
+    offset := location + 1;
+
+    while offset < Length(text) do
+      begin
+        if text[offset] in [TCharSetWhiteSpace] then
+          inc(offset)
+        else
+          break
+      end;
+
+    location := offset;
+
+    for offset := location to High(text) do
+      case text[offset] of
+        TCharSetWord, TCharSetInteger:
+          continue;
+        otherwise
+          exit(offset - 1);
+      end;
+    result := High(text);
+  end;
+
+  function AdvancePreviousWord(text: UnicodeString; location: LongWord): LongWord;
+  var
+    offset: LongInt;
+  begin
+    offset := location;
+
+    while offset >= 0 do
+      begin
+        if text[offset] in [TCharSetWhiteSpace] then
+          dec(offset)
+        else
+          break
+      end;
+
+    location := offset;
+
+    for offset := location downto 0 do
+      case text[offset] of
+        TCharSetWord, TCharSetInteger:
+          continue;
+        otherwise
+          exit(offset);
+      end;
+    result := 0;
+  end;
+
+  function AdvanceLineStart(text: UnicodeString; location: LongWord): LongWord;
+  var
+    offset: LongWord;
+  begin
+    for offset := location downto 0 do
+      case text[offset] of
+        TCharSetLineEnding:
+          exit(offset);
+      end;
+    result := 0;
+  end;
+
 var
   newLocation, 
   deleteLength,
