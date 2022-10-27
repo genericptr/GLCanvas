@@ -10,7 +10,7 @@
 
 program Test16;
 uses
-  CThreads, SysUtils, GeometryTypes, VectorMath,
+  SysUtils, GeometryTypes, VectorMath,
   GLCanvas;
 
 const

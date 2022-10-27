@@ -10,8 +10,7 @@
 
 program Test7;
 uses
-  CThreads, VectorMath,
-  GLCanvas, GLShader, GLPT;
+  VectorMath, GLCanvas, GLShader, GLPT;
 
 var
   VertexShader: pchar =       '#version 330 core'#10+

@@ -11,7 +11,7 @@
 program Test1;
 uses
   // rtl
-  CThreads, 
+  {$ifdef unix}CThreads,{$endif}
   // GLCanvas
   GLCanvas, 
   GLVertexBuffer, 

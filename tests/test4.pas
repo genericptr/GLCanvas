@@ -14,7 +14,6 @@
 
 program Test4;
 uses
-  CThreads, 
   VectorMath, GLCanvas, GLPT;
 
 const

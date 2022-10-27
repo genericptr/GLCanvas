@@ -12,7 +12,7 @@
 
 program Test19;
 uses
-  CThreads, GeometryTypes, VectorMath,
+  GeometryTypes, VectorMath,
   GLCanvas,
   GL, GLext, GLUtils;
 

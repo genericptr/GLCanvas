@@ -12,7 +12,7 @@
 
 program Test5;
 uses
-  CThreads, GeometryTypes, VectorMath, Math, FGL,
+  GeometryTypes, VectorMath, Math, FGL,
   GLPT, GLCanvas;
 
 const

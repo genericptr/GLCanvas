@@ -9,8 +9,7 @@
 
 program Test20;
 uses
-  CThreads, GeometryTypes, VectorMath,
-  GLCanvas;
+  GeometryTypes, VectorMath, GLCanvas;
 
 var
   pngImage: TPNGImage;

@@ -11,7 +11,7 @@
 
 program Test21;
 uses
-  CThreads, SysUtils, FGL, Math,
+  SysUtils, FGL, Math,
   GeometryTypes, VectorMath,
   GLVertexBuffer, GLShader, GLCanvas;
 

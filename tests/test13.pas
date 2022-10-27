@@ -9,7 +9,7 @@
 
 program Test13;
 uses
-  CThreads, GeometryTypes, FGL, RectangleBinPack,
+  GeometryTypes, FGL, RectangleBinPack,
   GLUI, GLCanvas;
 
 const

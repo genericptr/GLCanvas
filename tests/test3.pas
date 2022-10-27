@@ -10,7 +10,7 @@
 
 program Test3;
 uses
-  CThreads, GeometryTypes, GLCanvas, GLPT;
+  GeometryTypes, GLCanvas, GLPT;
 
 const
   window_size_width = 600;

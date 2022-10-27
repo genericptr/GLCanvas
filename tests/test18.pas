@@ -9,7 +9,7 @@
 
 program test18;
 uses
-  CThreads, SysUtils, VectorMath, GeometryTypes,
+  SysUtils, VectorMath, GeometryTypes,
   GLCanvas;
 
 var

@@ -9,8 +9,7 @@
 
 program Test8;
 uses
-  CThreads, GeometryTypes, VectorMath,
-  GLCanvas, GLPT;
+  GeometryTypes, VectorMath, GLCanvas, GLPT;
 
 const
   window_size_width = 512;

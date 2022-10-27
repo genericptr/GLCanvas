@@ -12,8 +12,7 @@
 
 program Test6;
 uses
-  // rtl
-  CThreads, GeometryTypes, VectorMath,
+  GeometryTypes, VectorMath,
   GLCanvas, GLPT;
 
 const

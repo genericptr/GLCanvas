@@ -9,7 +9,7 @@
 
 program Test11;
 uses
-  CThreads, SysUtils, GeometryTypes, VectorMath,
+  SysUtils, GeometryTypes, VectorMath,
   GLPT, GLCanvas;
 
 const

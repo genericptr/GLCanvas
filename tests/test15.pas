@@ -14,7 +14,7 @@
 
 program Test15;
 uses
-  CThreads, SysUtils, GeometryTypes, VectorMath,
+  SysUtils, GeometryTypes, VectorMath,
   GLCanvas, GLPT;
 
 const
