@@ -478,10 +478,12 @@ begin
     result := false;
 
   bitmap.release;
-{$else}
-  Assert(false, 'TPNGImage.SaveToFile not implemented for platform');
-{$endif}
 end;
+{$else}
+begin
+  Assert(false, 'TPNGImage.SaveToFile not implemented for platform');
+end;
+{$endif}
 
 destructor TBitmap.Destroy;
 begin

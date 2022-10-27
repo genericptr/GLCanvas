@@ -5,7 +5,6 @@
 {$modeswitch multihelpers}
 {$modeswitch nestedprocvars}
 {$modeswitch arrayoperators}
-{$modeswitch objectivec1}
 
 {$interfaces corba}
 {$implicitexceptions off}
@@ -14,6 +13,10 @@
 {$scopedenums on}
 
 {$include include/targetos.inc}
+
+{$ifdef TARGET_OS_MAC}
+  {$modeswitch objectivec1}
+{$endif}
 
 {
   GLPT supports the following platform macros:
@@ -56,11 +59,11 @@ uses
   {$ifdef API_OPENGLES}
   GLES30,
   {$endif}
+  { note: CocoaAll is required to prevent a crash in SDL }
+  {$ifdef TARGET_OS_MAC}CocoaAll,{$endif}
   Contnrs, FGL, Classes, Math,
   GLVertexBuffer, GLShader, GLFreeType,
-  BeRoPNG, VectorMath, GeometryTypes,
-  { note: CocoaAll is required to prevent a crash in SDL }
-  CocoaAll
+  BeRoPNG, VectorMath, GeometryTypes
   {$ifdef PLATFORM_GLPT},GLPT{$endif}
   {$ifdef PLATFORM_SDL},SDL{$endif}
   ;
