@@ -104,11 +104,13 @@ begin
 	
 	p := StrAlloc(length(text) + 1);
 	StrPCopy(p, text);
-
+	
+	{$ifdef unix}
 	result := TStringList.Create;
-	// TODO: this fails in Windows because LineEnding is 2 chars wide
-	// try
 	count := ExtractStrings([LineEnding], [], p, result);
+	{$else}
+	Assert(false, 'SplitString on windows is not supported');
+	{$endif}
 	
 	StrDispose(p);
 end;
