@@ -6,6 +6,7 @@
 (*                                                      *)
 (********************************************************)
 {$mode objfpc}
+{$macro on}
 
 unit SDL;
 interface
@@ -23,6 +24,7 @@ interface
     {$define libsdl2 := external 'SDL2.dll'}
   {$endif}
 {$endif}
+
 {$packrecords c}
 
 type
