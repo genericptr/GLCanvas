@@ -36,7 +36,7 @@ const
   NUM_SCANCODES = SDL_NUM_SCANCODES;
 
 type
-  TKeyCode = SDL.Uint32;
+  TKeyCode = SDL_Keycode;
   TScanCode = SDL_Scancode;
 {$endif}
 

@@ -7,11 +7,22 @@
 (********************************************************)
 {$mode objfpc}
 
-{ <include docs/bare.interop.sdl2.txt> }
 unit SDL;
-
 interface
 
+{$ifdef SDL_STATIC}
+  {$define libsdl2 := external}
+{$else}
+  {$ifdef darwin}
+    {$define libsdl2 := external}
+  {$endif}
+  {$ifdef linux}
+    {$define libsdl2 := external 'libSDL2.so'}
+  {$endif}
+  {$ifdef windows}
+    {$define libsdl2 := external 'SDL2.dll'}
+  {$endif}
+{$endif}
 {$packrecords c}
 
 type
@@ -34,11 +45,11 @@ type
   PSDL_GLContext = Pointer;
 
 type
-	SDL_UInt32_Array = array[0..0] of UInt32;
-	PSDL_UInt32_Array = ^SDL_UInt32_Array;
-	
-	SDL_UInt8_Array = array[0..0] of UInt8;
-	PSDL_UInt8_Array = ^SDL_UInt8_Array;
+  SDL_UInt32_Array = array[0..0] of UInt32;
+  PSDL_UInt32_Array = ^SDL_UInt32_Array;
+  
+  SDL_UInt8_Array = array[0..0] of UInt8;
+  PSDL_UInt8_Array = ^SDL_UInt8_Array;
 
 { SDL_version.h }
 
@@ -67,16 +78,16 @@ const
     SDL_INIT_TIMER or SDL_INIT_AUDIO or SDL_INIT_VIDEO or
     SDL_INIT_JOYSTICK or SDL_INIT_HAPTIC or SDL_INIT_GAMECONTROLLER;
 
-function SDL_Init(flags: Uint32): LongInt; cdecl; external;
-function SDL_InitSubSystem(flags: Uint32): LongInt; cdecl; external;
-procedure SDL_QuitSubSystem(flags: Uint32); cdecl; external;
-function SDL_WasInit(flags: Uint32): LongInt; cdecl; external;
-procedure SDL_Quit; cdecl; external;
+function SDL_Init(flags: Uint32): LongInt; cdecl; libsdl2;
+function SDL_InitSubSystem(flags: Uint32): LongInt; cdecl; libsdl2;
+procedure SDL_QuitSubSystem(flags: Uint32); cdecl; libsdl2;
+function SDL_WasInit(flags: Uint32): LongInt; cdecl; libsdl2;
+procedure SDL_Quit; cdecl; libsdl2;
 
 { SDL_error.h }
 
-function SDL_GetError: SDL_Char; cdecl; external;
-procedure SDL_ClearError; cdecl; external;
+function SDL_GetError: SDL_Char; cdecl; libsdl2;
+procedure SDL_ClearError; cdecl; libsdl2;
 
 { SDL_rect.h }
 
@@ -97,13 +108,13 @@ type
   TSDL_Rect = SDL_Rect;
   PSDL_Rect = ^TSDL_Rect;
 
-function SDL_HasIntersection(constref A, B: TSDL_Rect): SDL_Bool; cdecl; external;
-function SDL_IntersectRect(constref A, B: TSDL_Rect; var R: TSDL_Rect): SDL_Bool; cdecl; external;
-procedure SDL_UnionRect(constref A, B: TSDL_Rect; var R: TSDL_Rect); cdecl; external;
+function SDL_HasIntersection(constref A, B: TSDL_Rect): SDL_Bool; cdecl; libsdl2;
+function SDL_IntersectRect(constref A, B: TSDL_Rect; out R: TSDL_Rect): SDL_Bool; cdecl; libsdl2;
+procedure SDL_UnionRect(constref A, B: TSDL_Rect; out R: TSDL_Rect); cdecl; libsdl2;
 function SDL_EnclosePoints(var points: TSDL_Point; count: LongInt;
-  clip: PSDL_Rect; var result): SDL_Bool; cdecl; external;
+  clip: PSDL_Rect; var result): SDL_Bool; cdecl; libsdl2;
 function SDL_IntersectRectAndLine(constref rect: TSDL_Rect;
-  var x1, y1, x2, y2: LongInt): SDL_Bool; cdecl; external;
+  var x1, y1, x2, y2: LongInt): SDL_Bool; cdecl; libsdl2;
 
 { SDL_pixels.h }
 
@@ -246,22 +257,22 @@ type
   end;
   TSDL_PixelFormat = SDL_PixelFormat;
 
-function SDL_GetPixelFormatName(format: SDL_Char): SDL_Char; cdecl; external;
-function SDL_PixelFormatEnumToMasks(format: Uint32; var bpp: LongInt;
-  var Rmask, Gmask, Bmask, Amask: Uint32): SDL_Bool; cdecl; external;
-function SDL_MasksToPixelFormatEnum(bpp: LongInt; Rmask, Gmask, Bmask, Amask: Uint32): Uint32; cdecl; external;
-function SDL_AllocFormat(pixel_format: Uint32): PSDL_PixelFormat; cdecl; external;
-procedure SDL_FreeFormat(format: PSDL_PixelFormat); cdecl; external;
-function SDL_AllocPalette(ncolors: LongInt): PSDL_Palette; cdecl; external;
-function SDL_SetPixelFormatPalette(format: PSDL_PixelFormat; palette: PSDL_Palette): LongInt; cdecl; external;
+function SDL_GetPixelFormatName(format: SDL_Char): SDL_Char; cdecl; libsdl2;
+function SDL_PixelFormatEnumToMasks(format: Uint32; out bpp: LongInt;
+  out Rmask, Gmask, Bmask, Amask: Uint32): SDL_Bool; cdecl; libsdl2;
+function SDL_MasksToPixelFormatEnum(bpp: LongInt; Rmask, Gmask, Bmask, Amask: Uint32): Uint32; cdecl; libsdl2;
+function SDL_AllocFormat(pixel_format: Uint32): PSDL_PixelFormat; cdecl; libsdl2;
+procedure SDL_FreeFormat(format: PSDL_PixelFormat); cdecl; libsdl2;
+function SDL_AllocPalette(ncolors: LongInt): PSDL_Palette; cdecl; libsdl2;
+function SDL_SetPixelFormatPalette(format: PSDL_PixelFormat; palette: PSDL_Palette): LongInt; cdecl; libsdl2;
 function SDL_SetPaletteColors(palette: PSDL_Palette; var colors: TSDL_Color;
-  firstcolor, ncolors: LongInt): LongInt; cdecl; external;
-procedure SDL_FreePalette(palette: PSDL_Palette); cdecl; external;
-function SDL_MapRGB(format: PSDL_PixelFormat; r, g, b: Uint8): LongInt; cdecl; external;
-function SDL_MapRGBA(format: PSDL_PixelFormat; r, g, b, a: Uint8): LongInt; cdecl; external;
-procedure SDL_GetRGB(pixel: Uint32; format: PSDL_PixelFormat; var r, g, b: Uint8); cdecl; external;
-procedure SDL_GetRGBA(pixel: Uint32; format: PSDL_PixelFormat; var r, g, b, a: Uint8); cdecl; external;
-procedure SDL_CalculateGammaRamp(gamma: SDL_Float; var ramp: Uint16); cdecl; external;
+  firstcolor, ncolors: LongInt): LongInt; cdecl; libsdl2;
+procedure SDL_FreePalette(palette: PSDL_Palette); cdecl; libsdl2;
+function SDL_MapRGB(format: PSDL_PixelFormat; r, g, b: Uint8): LongInt; cdecl; libsdl2;
+function SDL_MapRGBA(format: PSDL_PixelFormat; r, g, b, a: Uint8): LongInt; cdecl; libsdl2;
+procedure SDL_GetRGB(pixel: Uint32; format: PSDL_PixelFormat; out r, g, b: Uint8); cdecl; libsdl2;
+procedure SDL_GetRGBA(pixel: Uint32; format: PSDL_PixelFormat; out r, g, b, a: Uint8); cdecl; libsdl2;
+procedure SDL_CalculateGammaRamp(gamma: SDL_Float; out ramp: Uint16); cdecl; libsdl2;
 
 { SDL_rwops.h }
 
@@ -290,10 +301,10 @@ type
   end;
   TSDL_RWops = SDL_RWops;
 
-function SDL_RWFromFile(fileName, mode: SDL_Char): PSDL_RWops; cdecl; external;
-function SDL_RWFromMem(mem: Pointer; size: LongWord): PSDL_RWops; cdecl; external;
-function SDL_AllocRW: PSDL_RWops; cdecl; external;
-procedure SDL_FreeRW(area: PSDL_RWops); cdecl; external;
+function SDL_RWFromFile(fileName, mode: SDL_Char): PSDL_RWops; cdecl; libsdl2;
+function SDL_RWFromMem(mem: Pointer; size: LongWord): PSDL_RWops; cdecl; libsdl2;
+function SDL_AllocRW: PSDL_RWops; cdecl; libsdl2;
+procedure SDL_FreeRW(area: PSDL_RWops); cdecl; libsdl2;
 
 { omitted functions SDL_RWFromFP, SDL_RWFromConstMem }
 
@@ -336,39 +347,39 @@ type
     dst: PSDL_Surface; var dstrect: TSDL_Rect): LongInt; cdecl;
 
 function SDL_CreateRGBSurface(flags: Uint32; width, height, depth: LongInt;
-  Rmask, Gmask, Bmask, Amask: Uint32): PSDL_Surface; cdecl; external;
+  Rmask, Gmask, Bmask, Amask: Uint32): PSDL_Surface; cdecl; libsdl2;
 function SDL_CreateRGBSurfaceFrom(pixels: Pointer; width, height, depth: LongInt;
-  Rmask, Gmask, Bmask, Amask: Uint32): PSDL_Surface; cdecl; external;
-procedure SDL_FreeSurface(surface: PSDL_Surface); cdecl; external;
-function SDL_SetSurfacePalette(surface: PSDL_Surface; palette: PSDL_Palette): LongInt; cdecl; external;
-function SDL_LockSurface(surface: PSDL_Surface): LongInt; cdecl; external;
-procedure SDL_UnlockSurface(surface: PSDL_Surface); cdecl; external;
-function SDL_LoadBMP_RW(src: PSDL_RWops; freesrc: LongInt): PSDL_Surface; cdecl; external;
-function SDL_SaveBMP_RW(surface: PSDL_Surface; dst: PSDL_RWops; freedst: LongInt): LongInt; cdecl; external;
-function SDL_SetSurfaceRLE(surface: PSDL_Surface; flag: LongInt): LongInt; cdecl; external;
-function SDL_SetColorKey(surface: PSDL_Surface; flag: LongInt; key: Uint32): LongInt; cdecl; external;
-function SDL_GetColorKey(surface: PSDL_Surface; var key: Uint32): LongInt; cdecl; external;
-function SDL_SetSurfaceColorMod(surface: PSDL_Surface; r, g, b: Uint8): LongInt; cdecl; external;
-function SDL_GetSurfaceColorMod(surface: PSDL_Surface; var r, g, b: Uint8): LongInt; cdecl; external;
-function SDL_SetSurfaceAlphaMod(surface: PSDL_Surface; alpha: Uint8): LongInt; cdecl; external;
-function SDL_GetSurfaceAlphaMod(surface: PSDL_Surface; var alpha: Uint8): LongInt; cdecl; external;
-function SDL_SetSurfaceBlendMode(surface: PSDL_Surface; blendMode: LongInt): LongInt; cdecl; external;
-function SDL_GetSurfaceBlendMode(surface: PSDL_Surface; var blendMode: LongInt): LongInt; cdecl; external;
-function SDL_SetSurfaceClipRect(surface: PSDL_Surface; constref rect: TSDL_Rect): LongInt; cdecl; external;
-function SDL_GetSurfaceClipRect(surface: PSDL_Surface; var rect: TSDL_Rect): LongInt; cdecl; external;
-function SDL_ConvertSurface(src: PSDL_Surface; fmt: PSDL_PixelFormat; flags: Uint32): PSDL_Surface; cdecl; external;
-function SDL_ConvertSurfaceFormat(src: PSDL_Surface; pixel_format: Uint32; flags: Uint32): PSDL_Surface; cdecl; external;
+  Rmask, Gmask, Bmask, Amask: Uint32): PSDL_Surface; cdecl; libsdl2;
+procedure SDL_FreeSurface(surface: PSDL_Surface); cdecl; libsdl2;
+function SDL_SetSurfacePalette(surface: PSDL_Surface; palette: PSDL_Palette): LongInt; cdecl; libsdl2;
+function SDL_LockSurface(surface: PSDL_Surface): LongInt; cdecl; libsdl2;
+procedure SDL_UnlockSurface(surface: PSDL_Surface); cdecl; libsdl2;
+function SDL_LoadBMP_RW(src: PSDL_RWops; freesrc: LongInt): PSDL_Surface; cdecl; libsdl2;
+function SDL_SaveBMP_RW(surface: PSDL_Surface; dst: PSDL_RWops; freedst: LongInt): LongInt; cdecl; libsdl2;
+function SDL_SetSurfaceRLE(surface: PSDL_Surface; flag: LongInt): LongInt; cdecl; libsdl2;
+function SDL_SetColorKey(surface: PSDL_Surface; flag: LongInt; key: Uint32): LongInt; cdecl; libsdl2;
+function SDL_GetColorKey(surface: PSDL_Surface; out key: Uint32): LongInt; cdecl; libsdl2;
+function SDL_SetSurfaceColorMod(surface: PSDL_Surface; r, g, b: Uint8): LongInt; cdecl; libsdl2;
+function SDL_GetSurfaceColorMod(surface: PSDL_Surface; out r, g, b: Uint8): LongInt; cdecl; libsdl2;
+function SDL_SetSurfaceAlphaMod(surface: PSDL_Surface; alpha: Uint8): LongInt; cdecl; libsdl2;
+function SDL_GetSurfaceAlphaMod(surface: PSDL_Surface; out alpha: Uint8): LongInt; cdecl; libsdl2;
+function SDL_SetSurfaceBlendMode(surface: PSDL_Surface; blendMode: LongInt): LongInt; cdecl; libsdl2;
+function SDL_GetSurfaceBlendMode(surface: PSDL_Surface; out blendMode: LongInt): LongInt; cdecl; libsdl2;
+function SDL_SetSurfaceClipRect(surface: PSDL_Surface; constref rect: TSDL_Rect): LongInt; cdecl; libsdl2;
+function SDL_GetSurfaceClipRect(surface: PSDL_Surface; out rect: TSDL_Rect): LongInt; cdecl; libsdl2;
+function SDL_ConvertSurface(src: PSDL_Surface; fmt: PSDL_PixelFormat; flags: Uint32): PSDL_Surface; cdecl; libsdl2;
+function SDL_ConvertSurfaceFormat(src: PSDL_Surface; pixel_format: Uint32; flags: Uint32): PSDL_Surface; cdecl; libsdl2;
 function SDL_ConvertPixels(width, height: LongInt; src_format: Uint32; src: Pointer;
-  src_pitch: LongInt; dst_format: Uint32; dst: Pointer; dst_pitch: LongInt): LongInt; cdecl; external;
-function SDL_FillRect(dst: PSDL_Surface; constref rect: TSDL_Rect; color: Uint32): LongInt; cdecl; external;
-function SDL_FillRects(dst: PSDL_Surface; var rects: TSDL_Rect; count: LongInt; color: Uint32): LongInt; cdecl; external;
+  src_pitch: LongInt; dst_format: Uint32; dst: Pointer; dst_pitch: LongInt): LongInt; cdecl; libsdl2;
+function SDL_FillRect(dst: PSDL_Surface; constref rect: TSDL_Rect; color: Uint32): LongInt; cdecl; libsdl2;
+function SDL_FillRects(dst: PSDL_Surface; var rects: TSDL_Rect; count: LongInt; color: Uint32): LongInt; cdecl; libsdl2;
 { These functions might need to be reviewed as SDL_surface.h currently mixes
   const and var rect arguments. I suspect the final version may fix this }
-function SDL_UpperBlit(src: PSDL_Surface; constref srcrect: TSDL_Rect; dst: PSDL_Surface; var dstrect: TSDL_Rect): LongInt; cdecl; external;
-function SDL_LowerBlit(src: PSDL_Surface; var srcrect: TSDL_Rect; dst: PSDL_Surface; var dstrect: TSDL_Rect): LongInt; cdecl; external;
-function SDL_SoftStretch(src: PSDL_Surface; constref srcrect: TSDL_Rect; dst: PSDL_Surface; constref dstrect: TSDL_Rect): LongInt; cdecl; external;
-function SDL_UpperBlitScaled(src: PSDL_Surface; var srcrect: TSDL_Rect; dst: PSDL_Surface; var dstrect: TSDL_Rect): LongInt; cdecl; external;
-function SDL_LowerBlitScaled(src: PSDL_Surface; var srcrect: TSDL_Rect; dst: PSDL_Surface; var dstrect: TSDL_Rect): LongInt; cdecl; external;
+function SDL_UpperBlit(src: PSDL_Surface; constref srcrect: TSDL_Rect; dst: PSDL_Surface; var dstrect: TSDL_Rect): LongInt; cdecl; libsdl2;
+function SDL_LowerBlit(src: PSDL_Surface; var srcrect: TSDL_Rect; dst: PSDL_Surface; var dstrect: TSDL_Rect): LongInt; cdecl; libsdl2;
+function SDL_SoftStretch(src: PSDL_Surface; constref srcrect: TSDL_Rect; dst: PSDL_Surface; constref dstrect: TSDL_Rect): LongInt; cdecl; libsdl2;
+function SDL_UpperBlitScaled(src: PSDL_Surface; var srcrect: TSDL_Rect; dst: PSDL_Surface; var dstrect: TSDL_Rect): LongInt; cdecl; libsdl2;
+function SDL_LowerBlitScaled(src: PSDL_Surface; var srcrect: TSDL_Rect; dst: PSDL_Surface; var dstrect: TSDL_Rect): LongInt; cdecl; libsdl2;
 
 { SDL_video.h }
 
@@ -460,78 +471,78 @@ type
   TSDL_DisplayMode = SDL_DisplayMode;
   PSDL_DisplayMode = ^TSDL_DisplayMode;
 
-function SDL_GetNumVideoDrivers: LongInt; cdecl; external;
-function SDL_GetVideoDriver(index: LongInt): SDL_Char; cdecl; external;
-function SDL_VideoInit(driver_name: SDL_Char): LongInt; cdecl; external;
-procedure SDL_VideoQuit; cdecl; external;
-function SDL_GetCurrentVideoDriver: SDL_Char; cdecl; external;
-function SDL_GetNumVideoDisplays: LongInt; cdecl; external;
-function SDL_GetDisplayName(displayIndex: LongInt): SDL_Char; cdecl; external;
-function SDL_GetDisplayBounds(displayIndex: LongInt; var rect: TSDL_Rect): LongInt; cdecl; external;
-function SDL_GetNumDisplayModes(displayIndex: LongInt): LongInt; cdecl; external;
-function SDL_GetDisplayMode(displayIndex, modeIndex: LongInt; var mode: TSDL_DisplayMode): LongInt; cdecl; external;
-function SDL_GetDesktopDisplayMode(displayIndex: LongInt; var mode: TSDL_DisplayMode): LongInt; cdecl; external;
-function SDL_GetCurrentDisplayMode(displayIndex: LongInt; var mode: TSDL_DisplayMode): LongInt; cdecl; external;
+function SDL_GetNumVideoDrivers: LongInt; cdecl; libsdl2;
+function SDL_GetVideoDriver(index: LongInt): SDL_Char; cdecl; libsdl2;
+function SDL_VideoInit(driver_name: SDL_Char): LongInt; cdecl; libsdl2;
+procedure SDL_VideoQuit; cdecl; libsdl2;
+function SDL_GetCurrentVideoDriver: SDL_Char; cdecl; libsdl2;
+function SDL_GetNumVideoDisplays: LongInt; cdecl; libsdl2;
+function SDL_GetDisplayName(displayIndex: LongInt): SDL_Char; cdecl; libsdl2;
+function SDL_GetDisplayBounds(displayIndex: LongInt; out rect: TSDL_Rect): LongInt; cdecl; libsdl2;
+function SDL_GetNumDisplayModes(displayIndex: LongInt): LongInt; cdecl; libsdl2;
+function SDL_GetDisplayMode(displayIndex, modeIndex: LongInt; out mode: TSDL_DisplayMode): LongInt; cdecl; libsdl2;
+function SDL_GetDesktopDisplayMode(displayIndex: LongInt; out mode: TSDL_DisplayMode): LongInt; cdecl; libsdl2;
+function SDL_GetCurrentDisplayMode(displayIndex: LongInt; out mode: TSDL_DisplayMode): LongInt; cdecl; libsdl2;
 function SDL_GetClosestDisplayMode(displayIndex: LongInt; constref mode: TSDL_DisplayMode;
-  var closest: TSDL_DisplayMode): LongInt; cdecl; external;
-function SDL_GetWindowDisplayIndex(window: PSDL_Window): LongInt; cdecl; external;
-function SDL_SetWindowDisplayMode(window: PSDL_Window; constref mode: TSDL_DisplayMode): LongInt; cdecl; external;
-function SDL_GetWindowDisplayMode(window: PSDL_Window; var mode: TSDL_DisplayMode): LongInt; cdecl; external;
-function SDL_GetWindowPixelFormat(window: PSDL_Window): Uint32; cdecl; external;
-function SDL_CreateWindow(title: SDL_Char; x, y, w, h: LongInt; flags: Uint32): PSDL_Window; cdecl; external;
-function SDL_CreateWindowFrom(data: Pointer): PSDL_Window; cdecl; external;
-function SDL_GetWindowID(window: PSDL_Window): Uint32; cdecl; external;
-function SDL_GetWindowFromID(id: Uint32): PSDL_Window; cdecl; external;
-function SDL_GetWindowFlags(window: PSDL_Window): Uint32; cdecl; external;
-procedure SDL_SetWindowTitle(window: PSDL_Window; title: SDL_Char); cdecl; external;
-function SDL_GetWindowTitle(window: PSDL_Window): SDL_Char; cdecl; external;
-procedure SDL_SetWindowIcon(window: PSDL_Window; icon: PSDL_Surface); cdecl; external;
-function SDL_SetWindowData(window: PSDL_Window; name: SDL_Char; userdata: Pointer): Pointer; cdecl; external;
-function SDL_GetWindowData(window: PSDL_Window; name: SDL_Char): Pointer; cdecl; external;
-procedure SDL_SetWindowPosition(window: PSDL_Window; x, y: LongInt); cdecl; external;
-procedure SDL_GetWindowPosition(window: PSDL_Window; var x, y: LongInt); cdecl; external;
-procedure SDL_SetWindowSize(window: PSDL_Window; w, h: LongInt); cdecl; external;
-procedure SDL_GetWindowSize(window: PSDL_Window; var w, h: LongInt); cdecl; external;
-procedure SDL_SetWindowMinimumSize(window: PSDL_Window; w, h: LongInt); cdecl; external;
-procedure SDL_GetWindowMinimumSize(window: PSDL_Window; var w, h: LongInt); cdecl; external;
-procedure SDL_SetWindowMaximumSize(window: PSDL_Window; w, h: LongInt); cdecl; external;
-procedure SDL_GetWindowMaximumSize(window: PSDL_Window; var w, h: LongInt); cdecl; external;
-procedure SDL_SetWindowBordered(window: PSDL_Window; bordered: SDL_Bool); cdecl; external;
-procedure SDL_ShowWindow(window: PSDL_Window); cdecl; external;
-procedure SDL_HideWindow(window: PSDL_Window); cdecl; external;
-procedure SDL_RaiseWindow(window: PSDL_Window); cdecl; external;
-procedure SDL_MaximizeWindow(window: PSDL_Window); cdecl; external;
-procedure SDL_MinimizeWindow(window: PSDL_Window); cdecl; external;
-procedure SDL_RestoreWindow(window: PSDL_Window); cdecl; external;
-function SDL_SetWindowFullscreen(window: PSDL_Window; flags: Uint32): LongInt; cdecl; external;
-function SDL_GetWindowSurface(window: PSDL_Window): PSDL_Surface; cdecl; external;
-function SDL_UpdateWindowSurface(window: PSDL_Window): LongInt; cdecl; external;
-function SDL_UpdateWindowSurfaceRects(window: PSDL_Window; var rects: TSDL_Rect; numrects: LongInt): LongInt; cdecl; external;
-procedure SDL_SetWindowGrab(window: PSDL_Window; grabbed: SDL_Bool); cdecl; external;
-function SDL_GetWindowGrab(window: PSDL_Window): SDL_Bool; cdecl; external;
-procedure SDL_SetWindowBrightness(window: PSDL_Window; brightness: SDL_Float); cdecl; external;
-function SDL_GetWindowBrightness(window: PSDL_Window): SDL_Float; cdecl; external;
-function SDL_SetWindowGammaRamp(window: PSDL_Window; var red, green, blue: Uint16): SDL_Float; cdecl; external;
-function SDL_GetWindowGammaRamp(window: PSDL_Window; var red, green, blue: Uint16): SDL_Float; cdecl; external;
-procedure SDL_DestroyWindow(window: PSDL_Window); cdecl; external;
-function SDL_IsScreenSaverEnabled: SDL_Bool; cdecl; external;
-procedure SDL_EnableScreenSaver; cdecl; external;
-procedure SDL_DisableScreenSaver; cdecl; external;
+  out closest: TSDL_DisplayMode): LongInt; cdecl; libsdl2;
+function SDL_GetWindowDisplayIndex(window: PSDL_Window): LongInt; cdecl; libsdl2;
+function SDL_SetWindowDisplayMode(window: PSDL_Window; constref mode: TSDL_DisplayMode): LongInt; cdecl; libsdl2;
+function SDL_GetWindowDisplayMode(window: PSDL_Window; out mode: TSDL_DisplayMode): LongInt; cdecl; libsdl2;
+function SDL_GetWindowPixelFormat(window: PSDL_Window): Uint32; cdecl; libsdl2;
+function SDL_CreateWindow(title: SDL_Char; x, y, w, h: LongInt; flags: Uint32): PSDL_Window; cdecl; libsdl2;
+function SDL_CreateWindowFrom(data: Pointer): PSDL_Window; cdecl; libsdl2;
+function SDL_GetWindowID(window: PSDL_Window): Uint32; cdecl; libsdl2;
+function SDL_GetWindowFromID(id: Uint32): PSDL_Window; cdecl; libsdl2;
+function SDL_GetWindowFlags(window: PSDL_Window): Uint32; cdecl; libsdl2;
+procedure SDL_SetWindowTitle(window: PSDL_Window; title: SDL_Char); cdecl; libsdl2;
+function SDL_GetWindowTitle(window: PSDL_Window): SDL_Char; cdecl; libsdl2;
+procedure SDL_SetWindowIcon(window: PSDL_Window; icon: PSDL_Surface); cdecl; libsdl2;
+function SDL_SetWindowData(window: PSDL_Window; name: SDL_Char; userdata: Pointer): Pointer; cdecl; libsdl2;
+function SDL_GetWindowData(window: PSDL_Window; name: SDL_Char): Pointer; cdecl; libsdl2;
+procedure SDL_SetWindowPosition(window: PSDL_Window; x, y: LongInt); cdecl; libsdl2;
+procedure SDL_GetWindowPosition(window: PSDL_Window; out x, y: LongInt); cdecl; libsdl2;
+procedure SDL_SetWindowSize(window: PSDL_Window; w, h: LongInt); cdecl; libsdl2;
+procedure SDL_GetWindowSize(window: PSDL_Window; out w, h: LongInt); cdecl; libsdl2;
+procedure SDL_SetWindowMinimumSize(window: PSDL_Window; w, h: LongInt); cdecl; libsdl2;
+procedure SDL_GetWindowMinimumSize(window: PSDL_Window; out w, h: LongInt); cdecl; libsdl2;
+procedure SDL_SetWindowMaximumSize(window: PSDL_Window; w, h: LongInt); cdecl; libsdl2;
+procedure SDL_GetWindowMaximumSize(window: PSDL_Window; out w, h: LongInt); cdecl; libsdl2;
+procedure SDL_SetWindowBordered(window: PSDL_Window; bordered: SDL_Bool); cdecl; libsdl2;
+procedure SDL_ShowWindow(window: PSDL_Window); cdecl; libsdl2;
+procedure SDL_HideWindow(window: PSDL_Window); cdecl; libsdl2;
+procedure SDL_RaiseWindow(window: PSDL_Window); cdecl; libsdl2;
+procedure SDL_MaximizeWindow(window: PSDL_Window); cdecl; libsdl2;
+procedure SDL_MinimizeWindow(window: PSDL_Window); cdecl; libsdl2;
+procedure SDL_RestoreWindow(window: PSDL_Window); cdecl; libsdl2;
+function SDL_SetWindowFullscreen(window: PSDL_Window; fullscreen: UInt32): LongInt; cdecl; libsdl2;
+function SDL_GetWindowSurface(window: PSDL_Window): PSDL_Surface; cdecl; libsdl2;
+function SDL_UpdateWindowSurface(window: PSDL_Window): LongInt; cdecl; libsdl2;
+function SDL_UpdateWindowSurfaceRects(window: PSDL_Window; var rects: TSDL_Rect; numrects: LongInt): LongInt; cdecl; libsdl2;
+procedure SDL_SetWindowGrab(window: PSDL_Window; grabbed: SDL_Bool); cdecl; libsdl2;
+function SDL_GetWindowGrab(window: PSDL_Window): SDL_Bool; cdecl; libsdl2;
+procedure SDL_SetWindowBrightness(window: PSDL_Window; brightness: SDL_Float); cdecl; libsdl2;
+function SDL_GetWindowBrightness(window: PSDL_Window): SDL_Float; cdecl; libsdl2;
+function SDL_SetWindowGammaRamp(window: PSDL_Window; var red, green, blue: Uint16): SDL_Float; cdecl; libsdl2;
+function SDL_GetWindowGammaRamp(window: PSDL_Window; out red, green, blue: Uint16): SDL_Float; cdecl; libsdl2;
+procedure SDL_DestroyWindow(window: PSDL_Window); cdecl; libsdl2;
+function SDL_IsScreenSaverEnabled: SDL_Bool; cdecl; libsdl2;
+procedure SDL_EnableScreenSaver; cdecl; libsdl2;
+procedure SDL_DisableScreenSaver; cdecl; libsdl2;
 
 { OpenGL support }
 
-function SDL_GL_LoadLibrary(path: SDL_Char): LongInt; cdecl; external;
-function SDL_GL_GetProcAddress(proc: SDL_Char): Pointer; cdecl; external;
-procedure SDL_GL_UnloadLibrary; cdecl; external;
-function SDL_GL_ExtensionSupported(extension: SDL_Char): SDL_Bool; cdecl; external;
-function SDL_GL_SetAttribute(attr, value: LongInt): LongInt; cdecl; external;
-function SDL_GL_GetAttribute(attr: LongInt; var value: LongInt): LongInt; cdecl; external;
-function SDL_GL_CreateContext(window: PSDL_Window): PSDL_GLContext; cdecl; external;
-function SDL_GL_MakeCurrent(window: PSDL_Window; context: PSDL_GLContext): LongInt; cdecl; external;
-function SDL_GL_SetSwapInterval(interval: LongInt): LongInt; cdecl; external;
-function SDL_GL_GetSwapInterval: LongInt; cdecl; external;
-procedure SDL_GL_SwapWindow(window: PSDL_Window); cdecl; external;
-procedure SDL_GL_DeleteContext(context: PSDL_GLContext); cdecl; external;
+function SDL_GL_LoadLibrary(path: SDL_Char): LongInt; cdecl; libsdl2;
+function SDL_GL_GetProcAddress(proc: SDL_Char): Pointer; cdecl; libsdl2;
+procedure SDL_GL_UnloadLibrary; cdecl; libsdl2;
+function SDL_GL_ExtensionSupported(extension: SDL_Char): SDL_Bool; cdecl; libsdl2;
+function SDL_GL_SetAttribute(attr, value: LongInt): LongInt; cdecl; libsdl2;
+function SDL_GL_GetAttribute(attr: LongInt; out value: LongInt): LongInt; cdecl; libsdl2;
+function SDL_GL_CreateContext(window: PSDL_Window): PSDL_GLContext; cdecl; libsdl2;
+function SDL_GL_MakeCurrent(window: PSDL_Window; context: PSDL_GLContext): LongInt; cdecl; libsdl2;
+function SDL_GL_SetSwapInterval(interval: LongInt): LongInt; cdecl; libsdl2;
+function SDL_GL_GetSwapInterval: LongInt; cdecl; libsdl2;
+procedure SDL_GL_SwapWindow(window: PSDL_Window); cdecl; libsdl2;
+procedure SDL_GL_DeleteContext(context: PSDL_GLContext); cdecl; libsdl2;
 
 { SDL_shape.h }
 
@@ -563,10 +574,10 @@ type
   TSDL_WindowShapeMode = SDL_WindowShapeMode;
   PSDL_WindowShapeMode = ^TSDL_WindowShapeMode;
 
-function SDL_CreateShapedWindow(title: SDL_Char; x, y, w, h: LongWord; flags: Uint32): PSDL_Window; cdecl; external;
-function SDL_IsShapedWindow(window: PSDL_Window): SDL_Bool; cdecl; external;
-function SDL_SetWindowShape(window: PSDL_Window; shape: PSDL_Surface; var mode: TSDL_WindowShapeMode): LongInt; cdecl; external;
-function SDL_GetShapedWindowMode(window: PSDL_Window; var mode: TSDL_WindowShapeMode): LongInt; cdecl; external;
+function SDL_CreateShapedWindow(title: SDL_Char; x, y, w, h: LongWord; flags: Uint32): PSDL_Window; cdecl; libsdl2;
+function SDL_IsShapedWindow(window: PSDL_Window): SDL_Bool; cdecl; libsdl2;
+function SDL_SetWindowShape(window: PSDL_Window; shape: PSDL_Surface; var mode: TSDL_WindowShapeMode): LongInt; cdecl; libsdl2;
+function SDL_GetShapedWindowMode(window: PSDL_Window; var mode: TSDL_WindowShapeMode): LongInt; cdecl; libsdl2;
 
 { SDL_render.h }
 
@@ -611,59 +622,59 @@ type
   PSDL_Renderer = Pointer;
   PSDL_Texture = Pointer;
 
-function SDL_GetNumRenderDrivers: LongInt; cdecl; external;
-function SDL_GetRenderDriverInfo(index: LongInt; var info: TSDL_RendererInfo): LongInt; cdecl; external;
+function SDL_GetNumRenderDrivers: LongInt; cdecl; libsdl2;
+function SDL_GetRenderDriverInfo(index: LongInt; var info: TSDL_RendererInfo): LongInt; cdecl; libsdl2;
 function SDL_CreateWindowAndRenderer(width, height: LongInt; window_flags: Uint32;
-  var window: PSDL_Window; var renderer: PSDL_Renderer): LongInt; cdecl; external;
-function SDL_CreateRenderer(window: PSDL_Window; index: LongInt; flags: Uint32): PSDL_Renderer; cdecl; external;
-function SDL_CreateSoftwareRenderer(surface: PSDL_Surface): PSDL_Renderer; cdecl; external;
-function SDL_GetRenderer(window: PSDL_Window): PSDL_Renderer; cdecl; external;
-function SDL_GetRendererInfo(renderer: PSDL_Renderer; var info: TSDL_RendererInfo): LongInt; cdecl; external;
-function SDL_CreateTexture(renderer: PSDL_Renderer; format: Uint32; access, w, h: LongInt): PSDL_Texture; cdecl; external;
-function SDL_CreateTextureFromSurface(renderer: PSDL_Renderer; surface: PSDL_Surface): PSDL_Texture; cdecl; external;
-function SDL_QueryTexture(texture: PSDL_Texture; format: Uint32; var access, w, h: LongInt): LongInt; cdecl; external;
-function SDL_SetTextureColorMod(texture: PSDL_Texture; r, g, b: Uint8): LongInt; cdecl; external;
-function SDL_GetTextureColorMod(texture: PSDL_Texture; var r, g, b: Uint8): LongInt; cdecl; external;
-function SDL_SetTextureAlphaMod(texture: PSDL_Texture; alpha: Uint8): LongInt; cdecl; external;
-function SDL_GetTextureAlphaMod(texture: PSDL_Texture; var alpha: Uint8): LongInt; cdecl; external;
-function SDL_SetTextureBlendMode(texture: PSDL_Texture; blendMode: LongInt): LongInt; cdecl; external;
-function SDL_GetTextureBlendMode(texture: PSDL_Texture; var blendMode: LongInt): LongInt; cdecl; external;
-function SDL_UpdateTexture(texture: PSDL_Texture; constref rect: TSDL_Rect; pixels: Pointer; pitch: LongInt): LongInt; cdecl; external;
-function SDL_LockTexture(texture: PSDL_Texture; constref rect: TSDL_Rect; var pixels: Pointer; var pitch: LongInt): LongInt; cdecl; external;
-procedure SDL_UnlockTexture(texture: PSDL_Texture); cdecl; external;
-function SDL_RenderTargetSupported(texture: PSDL_Texture): SDL_Bool; cdecl; external;
-function SDL_SetRenderTarget(renderer: PSDL_Renderer; texture: PSDL_Texture): LongInt; cdecl; external;
-function SDL_GetRenderTarget(renderer: PSDL_Renderer): PSDL_Texture; cdecl; external;
-function SDL_RenderSetLogicalSize(renderer: PSDL_Renderer; w, h: LongInt): LongInt; cdecl; external;
-procedure SDL_RenderGetLogicalSize(renderer: PSDL_Renderer; var w, h: LongInt); cdecl; external;
-function SDL_RenderSetViewport(renderer: PSDL_Renderer; constref rect: TSDL_Rect): LongInt; cdecl; external;
-procedure SDL_RenderGetViewport(renderer: PSDL_Renderer; var rect: TSDL_Rect); cdecl; external;
-function SDL_RenderSetScale(renderer: PSDL_Renderer; scaleX, scaleY: SDL_Float): LongInt; cdecl; external;
-procedure SDL_RenderGetScale(renderer: PSDL_Renderer; var scaleX, scaleY: SDL_Float); cdecl; external;
-function SDL_SetRenderDrawColor(renderer: PSDL_Renderer; r, g, b, a: Uint8): LongInt; cdecl; external;
-function SDL_GetRenderDrawColor(renderer: PSDL_Renderer; var r, g, b, a: Uint8): LongInt; cdecl; external;
-function SDL_SetRenderDrawBlendMode(renderer: PSDL_Renderer; blendMode: LongInt): LongInt; cdecl; external;
-function SDL_GetRenderDrawBlendMode(renderer: PSDL_Renderer; var blendMode: LongInt): LongInt; cdecl; external;
-function SDL_RenderClear(renderer: PSDL_Renderer): LongInt; cdecl; external;
-function SDL_RenderDrawPoint(renderer: PSDL_Renderer; x, y: LongInt): LongInt; cdecl; external;
-function SDL_RenderDrawPoints(renderer: PSDL_Renderer; var points: TSDL_Point; count: LongInt): LongInt; cdecl; external;
-function SDL_RenderDrawLine(renderer: PSDL_Renderer; x1, y1, x2, y2: LongInt): LongInt; cdecl; external;
-function SDL_RenderDrawLines(renderer: PSDL_Renderer; var points: TSDL_Point; count: LongInt): LongInt; cdecl; external;
-function SDL_RenderDrawRect(renderer: PSDL_Renderer; constref rect: TSDL_Rect): LongInt; cdecl; external;
-function SDL_RenderDrawRects(renderer: PSDL_Renderer; var rect: TSDL_Rect; count: LongInt): LongInt; cdecl; external;
-function SDL_RenderFillRect(renderer: PSDL_Renderer; constref rect: TSDL_Rect): LongInt; cdecl; external;
-function SDL_RenderFillRects(renderer: PSDL_Renderer; var rect: TSDL_Rect; count: LongInt): LongInt; cdecl; external;
-function SDL_RenderCopy(renderer: PSDL_Renderer; texture: PSDL_Texture; constref srcrect, dstrect: TSDL_Rect): LongInt; cdecl; external;
+  out window: PSDL_Window; out renderer: PSDL_Renderer): LongInt; cdecl; libsdl2;
+function SDL_CreateRenderer(window: PSDL_Window; index: LongInt; flags: Uint32): PSDL_Renderer; cdecl; libsdl2;
+function SDL_CreateSoftwareRenderer(surface: PSDL_Surface): PSDL_Renderer; cdecl; libsdl2;
+function SDL_GetRenderer(window: PSDL_Window): PSDL_Renderer; cdecl; libsdl2;
+function SDL_GetRendererInfo(renderer: PSDL_Renderer; out info: TSDL_RendererInfo): LongInt; cdecl; libsdl2;
+function SDL_CreateTexture(renderer: PSDL_Renderer; format: Uint32; access, w, h: LongInt): PSDL_Texture; cdecl; libsdl2;
+function SDL_CreateTextureFromSurface(renderer: PSDL_Renderer; surface: PSDL_Surface): PSDL_Texture; cdecl; libsdl2;
+function SDL_QueryTexture(texture: PSDL_Texture; format: Uint32; out access, w, h: LongInt): LongInt; cdecl; libsdl2;
+function SDL_SetTextureColorMod(texture: PSDL_Texture; r, g, b: Uint8): LongInt; cdecl; libsdl2;
+function SDL_GetTextureColorMod(texture: PSDL_Texture; out r, g, b: Uint8): LongInt; cdecl; libsdl2;
+function SDL_SetTextureAlphaMod(texture: PSDL_Texture; alpha: Uint8): LongInt; cdecl; libsdl2;
+function SDL_GetTextureAlphaMod(texture: PSDL_Texture; out alpha: Uint8): LongInt; cdecl; libsdl2;
+function SDL_SetTextureBlendMode(texture: PSDL_Texture; blendMode: LongInt): LongInt; cdecl; libsdl2;
+function SDL_GetTextureBlendMode(texture: PSDL_Texture; out blendMode: LongInt): LongInt; cdecl; libsdl2;
+function SDL_UpdateTexture(texture: PSDL_Texture; constref rect: TSDL_Rect; pixels: Pointer; pitch: LongInt): LongInt; cdecl; libsdl2;
+function SDL_LockTexture(texture: PSDL_Texture; constref rect: TSDL_Rect; out pixels: Pointer; out pitch: LongInt): LongInt; cdecl; libsdl2;
+procedure SDL_UnlockTexture(texture: PSDL_Texture); cdecl; libsdl2;
+function SDL_RenderTargetSupported(texture: PSDL_Texture): SDL_Bool; cdecl; libsdl2;
+function SDL_SetRenderTarget(renderer: PSDL_Renderer; texture: PSDL_Texture): LongInt; cdecl; libsdl2;
+function SDL_GetRenderTarget(renderer: PSDL_Renderer): PSDL_Texture; cdecl; libsdl2;
+function SDL_RenderSetLogicalSize(renderer: PSDL_Renderer; w, h: LongInt): LongInt; cdecl; libsdl2;
+procedure SDL_RenderGetLogicalSize(renderer: PSDL_Renderer; out w, h: LongInt); cdecl; libsdl2;
+function SDL_RenderSetViewport(renderer: PSDL_Renderer; constref rect: TSDL_Rect): LongInt; cdecl; libsdl2;
+procedure SDL_RenderGetViewport(renderer: PSDL_Renderer; out rect: TSDL_Rect); cdecl; libsdl2;
+function SDL_RenderSetScale(renderer: PSDL_Renderer; scaleX, scaleY: SDL_Float): LongInt; cdecl; libsdl2;
+procedure SDL_RenderGetScale(renderer: PSDL_Renderer; out scaleX, scaleY: SDL_Float); cdecl; libsdl2;
+function SDL_SetRenderDrawColor(renderer: PSDL_Renderer; r, g, b, a: Uint8): LongInt; cdecl; libsdl2;
+function SDL_GetRenderDrawColor(renderer: PSDL_Renderer; out r, g, b, a: Uint8): LongInt; cdecl; libsdl2;
+function SDL_SetRenderDrawBlendMode(renderer: PSDL_Renderer; blendMode: LongInt): LongInt; cdecl; libsdl2;
+function SDL_GetRenderDrawBlendMode(renderer: PSDL_Renderer; out blendMode: LongInt): LongInt; cdecl; libsdl2;
+function SDL_RenderClear(renderer: PSDL_Renderer): LongInt; cdecl; libsdl2;
+function SDL_RenderDrawPoint(renderer: PSDL_Renderer; x, y: LongInt): LongInt; cdecl; libsdl2;
+function SDL_RenderDrawPoints(renderer: PSDL_Renderer; var points: TSDL_Point; count: LongInt): LongInt; cdecl; libsdl2;
+function SDL_RenderDrawLine(renderer: PSDL_Renderer; x1, y1, x2, y2: LongInt): LongInt; cdecl; libsdl2;
+function SDL_RenderDrawLines(renderer: PSDL_Renderer; var points: TSDL_Point; count: LongInt): LongInt; cdecl; libsdl2;
+function SDL_RenderDrawRect(renderer: PSDL_Renderer; constref rect: TSDL_Rect): LongInt; cdecl; libsdl2;
+function SDL_RenderDrawRects(renderer: PSDL_Renderer; var rect: TSDL_Rect; count: LongInt): LongInt; cdecl; libsdl2;
+function SDL_RenderFillRect(renderer: PSDL_Renderer; constref rect: TSDL_Rect): LongInt; cdecl; libsdl2;
+function SDL_RenderFillRects(renderer: PSDL_Renderer; var rect: TSDL_Rect; count: LongInt): LongInt; cdecl; libsdl2;
+function SDL_RenderCopy(renderer: PSDL_Renderer; texture: PSDL_Texture; constref srcrect, dstrect: TSDL_Rect): LongInt; cdecl; libsdl2;
 function SDL_RenderCopyEx(renderer: PSDL_Renderer; texture: PSDL_Texture;
   constref srcrect, dstrect: TSDL_Rect; angle: SDL_Double; constref center: TSDL_Point;
-  flip: Uint32): LongInt; cdecl; external;
+  flip: Uint32): LongInt; cdecl; libsdl2;
 function SDL_RenderReadPixels(renderer: PSDL_Renderer; constref rect: TSDL_Rect;
-  format: Uint32; pixels: Pointer; pitch: LongInt): LongInt; cdecl; external;
-procedure SDL_RenderPresent(renderer: PSDL_Renderer); cdecl; external;
-procedure SDL_DestroyTexture(texture: PSDL_Texture); cdecl; external;
-procedure SDL_DestroyRenderer(renderer: PSDL_Renderer); cdecl; external;
-function SDL_GL_BindTexture(texture: PSDL_Texture; var texw, texh: SDL_Float): LongInt; cdecl; external;
-function SDL_GL_UnbindTexture(texture: PSDL_Texture): LongInt; cdecl; external;
+  format: Uint32; pixels: Pointer; pitch: LongInt): LongInt; cdecl; libsdl2;
+procedure SDL_RenderPresent(renderer: PSDL_Renderer); cdecl; libsdl2;
+procedure SDL_DestroyTexture(texture: PSDL_Texture); cdecl; libsdl2;
+procedure SDL_DestroyRenderer(renderer: PSDL_Renderer); cdecl; libsdl2;
+function SDL_GL_BindTexture(texture: PSDL_Texture; out texw, texh: SDL_Float): LongInt; cdecl; libsdl2;
+function SDL_GL_UnbindTexture(texture: PSDL_Texture): LongInt; cdecl; libsdl2;
 
 { SDL_messagebox.h }
 
@@ -721,15 +732,14 @@ type
   TSDL_MessageBoxData = SDL_MessageBoxData;
   PSDL_MessageBoxData = ^SDL_MessageBoxData;
 
-function SDL_ShowMessageBox(constref messageboxdata: TSDL_MessageBoxData; var buttonid: LongInt): LongInt; cdecl; external;
-//function SDL_ShowMessageBox(messageboxdata: PSDL_MessageBoxData; var buttonid: LongInt): LongInt; cdecl; external;
-function SDL_ShowSimpleMessageBox(flags: Uint32; title, message: SDL_Char; window: PSDL_Window): LongInt; cdecl; external;
-
-{ SDL_keycode.h }
+function SDL_ShowMessageBox(constref messageboxdata: TSDL_MessageBoxData; out buttonid: LongInt): LongInt; cdecl; libsdl2;
+function SDL_ShowSimpleMessageBox(flags: Uint32; title, message: SDL_Char; window: PSDL_Window): LongInt; cdecl; libsdl2;
 
 { SDL_Scancode }
+
 type
-	SDL_Scancode = Uint32;
+  SDL_Scancode = UInt32;
+
 const
   SDL_SCANCODE_UNKNOWN = 0;
   SDL_SCANCODE_A = 4;
@@ -976,6 +986,10 @@ const
 
 { SDL_Keycode }
 
+type
+  SDL_Keycode = UInt32;
+
+const
   SDLK_RETURN = $D;
   SDLK_ESCAPE = $1B;
   SDLK_BACKSPACE = $8;
@@ -1236,41 +1250,34 @@ const
 { SDL_keyboard.h }
 
 type
-	SDL_Keymod = Uint32;
-
-type
   SDL_Keysym = record
-    scancode: SDL_Scancode; { SDL_Scancode }
-    sym: Uint32; { SDL_Keycode }
+    scancode: SDL_Scancode;
+    sym: SDL_Keycode;
     modifiers: Uint16;
     unicode: Uint32;
   end;
   TSDL_Keysym = SDL_Keysym;
   PSDL_Keysym = ^TSDL_Keysym;
 
-type
-	TSDL_KeyboardState_Array = array[0..0] of Uint8;
-	PSDL_KeyboardState_Array = ^TSDL_KeyboardState_Array;
-	
-function SDL_GetKeyboardFocus: PSDL_Window; cdecl; external;
+function SDL_GetKeyboardFocus: PSDL_Window; cdecl; libsdl2;
 { Returns global array of 0 or 1 bytes indexed using SDL_Scancode }
-function SDL_GetKeyboardState(numkeys: PLongInt): PSDL_KeyboardState_Array; cdecl; external;
+function SDL_GetKeyboardState(numkeys: PLongInt): PUint8; cdecl; libsdl2;
 { SDL_Keymod (modstate) }
-function SDL_GetModState: Uint32; cdecl; external;
-procedure SDL_SetModState(modstate: Uint32); cdecl; external;
+function SDL_GetModState: Uint32; cdecl; libsdl2;
+procedure SDL_SetModState(modstate: Uint32); cdecl; libsdl2;
 { Translate between SDL_Keycode (key) <-> SDL_Scancode (scancode) values }
-function SDL_GetKeyFromScancode(scancode: SDL_Scancode): Uint32; cdecl; external;
-function SDL_GetScancodeFromKey(key: Uint32): SDL_Scancode; cdecl; external;
-function SDL_GetScancodeName(scancode: SDL_Scancode): SDL_Char; cdecl; external;
-function SDL_GetScancodeFromName(name: SDL_Char): SDL_Scancode; cdecl; external;
-function SDL_GetKeyName(key: Uint32): SDL_Char; cdecl; external;
-function SDL_GetKeyFromName(name: SDL_Char): Uint32; cdecl; external;
-procedure SDL_StartTextInput; cdecl; external;
-function SDL_IsTextInputActive: SDL_Bool; cdecl; external;
-procedure SDL_StopTextInput; cdecl; external;
-procedure SDL_SetTextInputRect(constref rect: TSDL_Rect); cdecl; external;
-function SDL_HasScreenKeyboardSupport: SDL_Bool; cdecl; external;
-function SDL_IsScreenKeyboardShown(window: PSDL_Window): SDL_Bool; cdecl; external;
+function SDL_GetKeyFromScancode(scancode: Uint32): Uint32; cdecl; libsdl2;
+function SDL_GetScancodeFromKey(key: Uint32): Uint32; cdecl; libsdl2;
+function SDL_GetScancodeName(scancode: Uint32): SDL_Char; cdecl; libsdl2;
+function SDL_GetScancodeFromName(name: SDL_Char): Uint32; cdecl; libsdl2;
+function SDL_GetKeyName(key: Uint32): SDL_Char; cdecl; libsdl2;
+function SDL_GetKeyFromName(name: SDL_Char): Uint32; cdecl; libsdl2;
+procedure SDL_StartTextInput; cdecl; libsdl2;
+function SDL_IsTextInputActive: SDL_Bool; cdecl; libsdl2;
+procedure SDL_StopTextInput; cdecl; libsdl2;
+procedure SDL_SetTextInputRect(constref rect: TSDL_Rect); cdecl; libsdl2;
+function SDL_HasScreenKeyboardSupport: SDL_Bool; cdecl; libsdl2;
+function SDL_IsScreenKeyboardShown(window: PSDL_Window): SDL_Bool; cdecl; libsdl2;
 
 { SDL_mouse.h }
 
@@ -1300,19 +1307,19 @@ const
 type
   PSDL_Cursor = Pointer;
 
-function SDL_GetMouseFocus: PSDL_Window; cdecl; external;
-function SDL_GetMouseState(var x, y: LongInt): Uint32; cdecl; external;
-function SDL_GetRelativeMouseState(var x, y: LongInt): Uint32; cdecl; external;
-procedure SDL_WarpMouseInWindow(window: PSDL_Window; x, y: LongInt); cdecl; external;
-function SDL_SetRelativeMouseMode(enabled: SDL_Bool): LongInt; cdecl; external;
-function SDL_GetRelativeMouseMode: SDL_Bool; cdecl; external;
-function SDL_CreateCursor(data, mask: PUint8; w, h, hot_x, hot_y: LongInt): PSDL_Cursor; cdecl; external;
-function SDL_CreateColorCursor(surface: PSDL_Surface; hot_x, hot_y: LongInt): PSDL_Cursor; cdecl; external;
-function SDL_CreateSystemCursor(id: Uint32): PSDL_Cursor; cdecl; external;
-procedure SDL_SetCursor(cursor: PSDL_Cursor); cdecl; external;
-function SDL_GetCursor: PSDL_Cursor; cdecl; external;
-procedure SDL_FreeCursor(cursor: PSDL_Cursor); cdecl; external;
-function SDL_ShowCursor(toggle: LongInt): LongInt; cdecl; external;
+function SDL_GetMouseFocus: PSDL_Window; cdecl; libsdl2;
+function SDL_GetMouseState(out x, y: LongInt): Uint32; cdecl; libsdl2;
+function SDL_GetRelativeMouseState(out x, y: LongInt): Uint32; cdecl; libsdl2;
+procedure SDL_WarpMouseInWindow(window: PSDL_Window; x, y: LongInt); cdecl; libsdl2;
+function SDL_SetRelativeMouseMode(enabled: SDL_Bool): LongInt; cdecl; libsdl2;
+function SDL_GetRelativeMouseMode: SDL_Bool; cdecl; libsdl2;
+function SDL_CreateCursor(data, mask: PUint8; w, h, hot_x, hot_y: LongInt): PSDL_Cursor; cdecl; libsdl2;
+function SDL_CreateColorCursor(surface: PSDL_Surface; hot_x, hot_y: LongInt): PSDL_Cursor; cdecl; libsdl2;
+function SDL_CreateSystemCursor(id: Uint32): PSDL_Cursor; cdecl; libsdl2;
+procedure SDL_SetCursor(cursor: PSDL_Cursor); cdecl; libsdl2;
+function SDL_GetCursor: PSDL_Cursor; cdecl; libsdl2;
+procedure SDL_FreeCursor(cursor: PSDL_Cursor); cdecl; libsdl2;
+function SDL_ShowCursor(toggle: LongInt): LongInt; cdecl; libsdl2;
 
 { SDL_joystick.h }
 
@@ -1339,27 +1346,27 @@ type
   SDL_JoystickID = Sint32;
   TSDL_JoystickID = SDL_JoystickID;
 
-function SDL_NumJoysticks: LongInt; cdecl; external;
-function SDL_JoystickNameForIndex(device_index: LongInt): SDL_Char; cdecl; external;
-function SDL_JoystickOpen(device_index: LongInt): PSDL_Joystick; cdecl; external;
-function SDL_JoystickName(joystick: PSDL_Joystick): SDL_Char; cdecl; external;
-function SDL_JoystickGetDeviceGUID(device_index: LongInt): TSDL_JoystickGUID; cdecl; external;
-function SDL_JoystickGetGUID(joystick: PSDL_Joystick): TSDL_JoystickGUID; cdecl; external;
-procedure SDL_JoystickGetGUIDString(guid: TSDL_JoystickGUID; pszGUID: SDL_Char; cbGUID: LongInt); cdecl; external;
-function SDL_JoystickGetGUIDFromString(pszGUID: SDL_Char): TSDL_JoystickGUID; cdecl; external;
-function SDL_JoystickGetAttached(joystick: PSDL_Joystick): SDL_Bool; cdecl; external;
-function SDL_JoystickInstanceID(joystick: PSDL_Joystick): TSDL_JoystickID; cdecl; external;
-function SDL_JoystickNumAxes(joystick: PSDL_Joystick): LongInt; cdecl; external;
-function SDL_JoystickNumBalls(joystick: PSDL_Joystick): LongInt; cdecl; external;
-function SDL_JoystickNumHats(joystick: PSDL_Joystick): LongInt; cdecl; external;
-function SDL_JoystickNumButtons(joystick: PSDL_Joystick): LongInt; cdecl; external;
-procedure SDL_JoystickUpdate; cdecl; external;
-function SDL_JoystickEventState(state: LongInt): LongInt; cdecl; external;
-function SDL_JoystickGetAxis(joystick: PSDL_Joystick; axis: LongInt): Sint16; cdecl; external;
-function SDL_JoystickGetHat(joystick: PSDL_Joystick; hat: LongInt): Uint8; cdecl; external;
-function SDL_JoystickGetBall(joystick: PSDL_Joystick; ball: LongInt; var dx, dy: LongInt): LongInt; cdecl; external;
-function SDL_JoystickGetButton(joystick: PSDL_Joystick; button: LongInt): Uint8; cdecl; external;
-procedure SDL_JoystickClose(joystick: PSDL_Joystick); cdecl; external;
+function SDL_NumJoysticks: LongInt; cdecl; libsdl2;
+function SDL_JoystickNameForIndex(device_index: LongInt): SDL_Char; cdecl; libsdl2;
+function SDL_JoystickOpen(device_index: LongInt): PSDL_Joystick; cdecl; libsdl2;
+function SDL_JoystickName(joystick: PSDL_Joystick): SDL_Char; cdecl; libsdl2;
+function SDL_JoystickGetDeviceGUID(device_index: LongInt): TSDL_JoystickGUID; cdecl; libsdl2;
+function SDL_JoystickGetGUID(joystick: PSDL_Joystick): TSDL_JoystickGUID; cdecl; libsdl2;
+procedure SDL_JoystickGetGUIDString(guid: TSDL_JoystickGUID; pszGUID: SDL_Char; cbGUID: LongInt); cdecl; libsdl2;
+function SDL_JoystickGetGUIDFromString(pszGUID: SDL_Char): TSDL_JoystickGUID; cdecl; libsdl2;
+function SDL_JoystickGetAttached(joystick: PSDL_Joystick): SDL_Bool; cdecl; libsdl2;
+function SDL_JoystickInstanceID(joystick: PSDL_Joystick): TSDL_JoystickID; cdecl; libsdl2;
+function SDL_JoystickNumAxes(joystick: PSDL_Joystick): LongInt; cdecl; libsdl2;
+function SDL_JoystickNumBalls(joystick: PSDL_Joystick): LongInt; cdecl; libsdl2;
+function SDL_JoystickNumHats(joystick: PSDL_Joystick): LongInt; cdecl; libsdl2;
+function SDL_JoystickNumButtons(joystick: PSDL_Joystick): LongInt; cdecl; libsdl2;
+procedure SDL_JoystickUpdate; cdecl; libsdl2;
+function SDL_JoystickEventState(state: LongInt): LongInt; cdecl; libsdl2;
+function SDL_JoystickGetAxis(joystick: PSDL_Joystick; axis: LongInt): Sint16; cdecl; libsdl2;
+function SDL_JoystickGetHat(joystick: PSDL_Joystick; hat: LongInt): Uint8; cdecl; libsdl2;
+function SDL_JoystickGetBall(joystick: PSDL_Joystick; ball: LongInt; out dx, dy: LongInt): LongInt; cdecl; libsdl2;
+function SDL_JoystickGetButton(joystick: PSDL_Joystick; button: LongInt): Uint8; cdecl; libsdl2;
+procedure SDL_JoystickClose(joystick: PSDL_Joystick); cdecl; libsdl2;
 
 { SDL_gamecontroller.h }
 
@@ -1419,26 +1426,26 @@ type
   TSDL_GameControllerButtonBind = SDL_GameControllerButtonBind;
   PSDL_GameControllerButtonBind = ^TSDL_GameControllerButtonBind;
 
-function SDL_GameControllerAddMapping(mapping: SDL_Char): LongInt; cdecl; external;
-function SDL_GameControllerMappingForGUID(guid: TSDL_JoystickGUID): SDL_Char; cdecl; external;
-function SDL_GameControllerMapping(gamecontroller: PSDL_GameController): SDL_Char; cdecl; external;
-function SDL_IsGameController(joystick_index: LongInt): SDL_Bool; cdecl; external;
-function SDL_GameControllerNameForIndex(joystick_index: LongInt): SDL_Char; cdecl; external;
-function SDL_GameControllerOpen(joystick_index: LongInt): PSDL_GameController; cdecl; external;
-function SDL_GameControllerName(gamecontroller: PSDL_GameController): SDL_Char; cdecl; external;
-function SDL_GameControllerGetAttached(gamecontroller: PSDL_GameController): SDL_Bool; cdecl; external;
-function SDL_GameControllerGetJoystick(gamecontroller: PSDL_GameController): PSDL_Joystick; cdecl; external;
-function SDL_GameControllerEventState(state: LongInt): LongInt; cdecl; external;
-procedure SDL_GameControllerUpdate; cdecl; external;
-function SDL_GameControllerGetAxisFromString(pchString: SDL_Char): Uint32; cdecl; external;
-function SDL_GameControllerGetStringForAxis(axis: Uint32): SDL_Char; cdecl; external;
-function SDL_GameControllerGetBindForAxis(gamecontroller: PSDL_GameController; axis: Uint32): Uint32; cdecl; external;
-function SDL_GameControllerGetAxis(gamecontroller: PSDL_GameController; axis: Uint32): Sint16; cdecl; external;
-function SDL_GameControllerGetButtonFromString(pchString: SDL_Char): Uint32; cdecl; external;
-function SDL_GameControllerGetStringForButton(button: Uint32): SDL_Char; cdecl; external;
-function SDL_GameControllerGetBindForButton(gamecontroller: PSDL_GameController; button: Uint32): Uint32; cdecl; external;
-function SDL_GameControllerGetButton(gamecontroller: PSDL_GameController; button: Uint32): Uint8; cdecl; external;
-procedure SDL_GameControllerClose(gamecontroller: PSDL_GameController); cdecl; external;
+function SDL_GameControllerAddMapping(mapping: SDL_Char): LongInt; cdecl; libsdl2;
+function SDL_GameControllerMappingForGUID(guid: TSDL_JoystickGUID): SDL_Char; cdecl; libsdl2;
+function SDL_GameControllerMapping(gamecontroller: PSDL_GameController): SDL_Char; cdecl; libsdl2;
+function SDL_IsGameController(joystick_index: LongInt): SDL_Bool; cdecl; libsdl2;
+function SDL_GameControllerNameForIndex(joystick_index: LongInt): SDL_Char; cdecl; libsdl2;
+function SDL_GameControllerOpen(joystick_index: LongInt): PSDL_GameController; cdecl; libsdl2;
+function SDL_GameControllerName(gamecontroller: PSDL_GameController): SDL_Char; cdecl; libsdl2;
+function SDL_GameControllerGetAttached(gamecontroller: PSDL_GameController): SDL_Bool; cdecl; libsdl2;
+function SDL_GameControllerGetJoystick(gamecontroller: PSDL_GameController): PSDL_Joystick; cdecl; libsdl2;
+function SDL_GameControllerEventState(state: LongInt): LongInt; cdecl; libsdl2;
+procedure SDL_GameControllerUpdate; cdecl; libsdl2;
+function SDL_GameControllerGetAxisFromString(pchString: SDL_Char): Uint32; cdecl; libsdl2;
+function SDL_GameControllerGetStringForAxis(axis: Uint32): SDL_Char; cdecl; libsdl2;
+function SDL_GameControllerGetBindForAxis(gamecontroller: PSDL_GameController; axis: Uint32): Uint32; cdecl; libsdl2;
+function SDL_GameControllerGetAxis(gamecontroller: PSDL_GameController; axis: Uint32): Sint16; cdecl; libsdl2;
+function SDL_GameControllerGetButtonFromString(pchString: SDL_Char): Uint32; cdecl; libsdl2;
+function SDL_GameControllerGetStringForButton(button: Uint32): SDL_Char; cdecl; libsdl2;
+function SDL_GameControllerGetBindForButton(gamecontroller: PSDL_GameController; button: Uint32): Uint32; cdecl; libsdl2;
+function SDL_GameControllerGetButton(gamecontroller: PSDL_GameController; button: Uint32): Uint8; cdecl; libsdl2;
+procedure SDL_GameControllerClose(gamecontroller: PSDL_GameController); cdecl; libsdl2;
 
 { SDL_haptic.h }
 
@@ -1578,36 +1585,36 @@ type
   TSDL_HapticEffect = SDL_HapticEffect;
   PSDL_HapticEffect = ^TSDL_HapticEffect;
 
-function SDL_NumHaptics: LongInt; cdecl; external;
-function SDL_HapticName(device_index: LongInt): SDL_Char; cdecl; external;
-function SDL_HapticOpen(device_index: LongInt): PSDL_Haptic; cdecl; external;
-function SDL_HapticOpened(device_index: LongInt): LongInt; cdecl; external;
-function SDL_HapticIndex(haptic: PSDL_Haptic): LongInt; cdecl; external;
-function SDL_MouseIsHaptic: LongInt; cdecl; external;
-function SDL_HapticOpenFromMouse: PSDL_Haptic; cdecl; external;
-function SDL_JoystickIsHaptic(joystick: PSDL_Joystick): LongInt; cdecl; external;
-function SDL_HapticOpenFromJoystick(joystick: PSDL_Joystick): PSDL_Haptic; cdecl; external;
-procedure SDL_HapticClose(haptic: PSDL_Haptic); cdecl; external;
-function SDL_HapticNumEffects(haptic: PSDL_Haptic): LongInt; cdecl; external;
-function SDL_HapticNumEffectsPlaying(haptic: PSDL_Haptic): LongInt; cdecl; external;
-function SDL_HapticQuery(haptic: PSDL_Haptic): LongInt; cdecl; external;
-function SDL_HapticNumAxes(haptic: PSDL_Haptic): LongInt; cdecl; external;
-function SDL_HapticEffectSupported(haptic: PSDL_Haptic; effect: PSDL_HapticEffect): LongInt; cdecl; external;
-function SDL_HapticNewEffect(haptic: PSDL_Haptic; effect: PSDL_HapticEffect): LongInt; cdecl; external;
-function SDL_HapticUpdateEffect(haptic: PSDL_Haptic; effect: LongInt; data: PSDL_HapticEffect): LongInt; cdecl; external;
-function SDL_HapticRunEffect(haptic: PSDL_Haptic; effect: LongInt; iterations: Uint32): LongInt; cdecl; external;
-function SDL_HapticStopEffect(haptic: PSDL_Haptic; effect: LongInt): LongInt; cdecl; external;
-procedure SDL_HapticDestroyEffect(haptic: PSDL_Haptic; effect: LongInt); cdecl; external;
-function SDL_HapticGetEffectStatus(haptic: PSDL_Haptic; effect: LongInt): LongInt; cdecl; external;
-function SDL_HapticSetGain(haptic: PSDL_Haptic; gain: LongInt): LongInt; cdecl; external;
-function SDL_HapticSetAutocenter(haptic: PSDL_Haptic; autocenter: LongInt): LongInt; cdecl; external;
-function SDL_HapticPause(haptic: PSDL_Haptic): LongInt; cdecl; external;
-function SDL_HapticUnpause(haptic: PSDL_Haptic): LongInt; cdecl; external;
-function SDL_HapticStopAll(haptic: PSDL_Haptic): LongInt; cdecl; external;
-function SDL_HapticRumbleSupported(haptic: PSDL_Haptic): LongInt; cdecl; external;
-function SDL_HapticRumbleInit(haptic: PSDL_Haptic): LongInt; cdecl; external;
-function SDL_HapticRumblePlay(haptic: PSDL_Haptic; strength: SDL_Float; length: Uint32): LongInt; cdecl; external;
-function SDL_HapticRumbleStop(haptic: PSDL_Haptic): LongInt; cdecl; external;
+function SDL_NumHaptics: LongInt; cdecl; libsdl2;
+function SDL_HapticName(device_index: LongInt): SDL_Char; cdecl; libsdl2;
+function SDL_HapticOpen(device_index: LongInt): PSDL_Haptic; cdecl; libsdl2;
+function SDL_HapticOpened(device_index: LongInt): LongInt; cdecl; libsdl2;
+function SDL_HapticIndex(haptic: PSDL_Haptic): LongInt; cdecl; libsdl2;
+function SDL_MouseIsHaptic: LongInt; cdecl; libsdl2;
+function SDL_HapticOpenFromMouse: PSDL_Haptic; cdecl; libsdl2;
+function SDL_JoystickIsHaptic(joystick: PSDL_Joystick): LongInt; cdecl; libsdl2;
+function SDL_HapticOpenFromJoystick(joystick: PSDL_Joystick): PSDL_Haptic; cdecl; libsdl2;
+procedure SDL_HapticClose(haptic: PSDL_Haptic); cdecl; libsdl2;
+function SDL_HapticNumEffects(haptic: PSDL_Haptic): LongInt; cdecl; libsdl2;
+function SDL_HapticNumEffectsPlaying(haptic: PSDL_Haptic): LongInt; cdecl; libsdl2;
+function SDL_HapticQuery(haptic: PSDL_Haptic): LongInt; cdecl; libsdl2;
+function SDL_HapticNumAxes(haptic: PSDL_Haptic): LongInt; cdecl; libsdl2;
+function SDL_HapticEffectSupported(haptic: PSDL_Haptic; effect: PSDL_HapticEffect): LongInt; cdecl; libsdl2;
+function SDL_HapticNewEffect(haptic: PSDL_Haptic; effect: PSDL_HapticEffect): LongInt; cdecl; libsdl2;
+function SDL_HapticUpdateEffect(haptic: PSDL_Haptic; effect: LongInt; data: PSDL_HapticEffect): LongInt; cdecl; libsdl2;
+function SDL_HapticRunEffect(haptic: PSDL_Haptic; effect: LongInt; iterations: Uint32): LongInt; cdecl; libsdl2;
+function SDL_HapticStopEffect(haptic: PSDL_Haptic; effect: LongInt): LongInt; cdecl; libsdl2;
+procedure SDL_HapticDestroyEffect(haptic: PSDL_Haptic; effect: LongInt); cdecl; libsdl2;
+function SDL_HapticGetEffectStatus(haptic: PSDL_Haptic; effect: LongInt): LongInt; cdecl; libsdl2;
+function SDL_HapticSetGain(haptic: PSDL_Haptic; gain: LongInt): LongInt; cdecl; libsdl2;
+function SDL_HapticSetAutocenter(haptic: PSDL_Haptic; autocenter: LongInt): LongInt; cdecl; libsdl2;
+function SDL_HapticPause(haptic: PSDL_Haptic): LongInt; cdecl; libsdl2;
+function SDL_HapticUnpause(haptic: PSDL_Haptic): LongInt; cdecl; libsdl2;
+function SDL_HapticStopAll(haptic: PSDL_Haptic): LongInt; cdecl; libsdl2;
+function SDL_HapticRumbleSupported(haptic: PSDL_Haptic): LongInt; cdecl; libsdl2;
+function SDL_HapticRumbleInit(haptic: PSDL_Haptic): LongInt; cdecl; libsdl2;
+function SDL_HapticRumblePlay(haptic: PSDL_Haptic; strength: SDL_Float; length: Uint32): LongInt; cdecl; libsdl2;
+function SDL_HapticRumbleStop(haptic: PSDL_Haptic): LongInt; cdecl; libsdl2;
 
 { SDL_touch.h }
 
@@ -1626,10 +1633,10 @@ type
   TSDL_Finger = SDL_Finger;
   PSDL_Finger = ^TSDL_Finger;
 
-function SDL_GetNumTouchDevices: LongInt; cdecl; external;
-function SDL_GetTouchDevice(index: LongInt): TSDL_TouchID; cdecl; external;
-function SDL_GetNumTouchFingers(touchID: TSDL_TouchID): LongInt; cdecl; external;
-function SDL_GetTouchFinger(touchID: TSDL_TouchID; index: LongInt): PSDL_Finger; cdecl; external;
+function SDL_GetNumTouchDevices: LongInt; cdecl; libsdl2;
+function SDL_GetTouchDevice(index: LongInt): TSDL_TouchID; cdecl; libsdl2;
+function SDL_GetNumTouchFingers(touchID: TSDL_TouchID): LongInt; cdecl; libsdl2;
+function SDL_GetTouchFinger(touchID: TSDL_TouchID; index: LongInt): PSDL_Finger; cdecl; libsdl2;
 
 { SDL_gesture.h }
 
@@ -1637,11 +1644,11 @@ type
   SDL_GestureID = Sint64;
   TSDL_GestureID = SDL_GestureID;
 
-function SDL_RecordGesture(touchId: TSDL_TouchID): LongInt; cdecl; external;
+function SDL_RecordGesture(touchId: TSDL_TouchID): LongInt; cdecl; libsdl2;
 { src should proably be const but the header doesn't specify that }
-function SDL_SaveAllDollarTemplates(var src: TSDL_RWops): LongInt; cdecl; external;
-function SDL_SaveDollarTemplate(touchId: TSDL_TouchID; var src: TSDL_RWops): LongInt; cdecl; external;
-function SDL_LoadDollarTemplates(touchId: TSDL_TouchID; var src: TSDL_RWops): LongInt; cdecl; external;
+function SDL_SaveAllDollarTemplates(var src: TSDL_RWops): LongInt; cdecl; libsdl2;
+function SDL_SaveDollarTemplate(touchId: TSDL_TouchID; var src: TSDL_RWops): LongInt; cdecl; libsdl2;
+function SDL_LoadDollarTemplates(touchId: TSDL_TouchID; out src: TSDL_RWops): LongInt; cdecl; libsdl2;
 
 { SDL_events.h }
 
@@ -2013,22 +2020,22 @@ type
 
   TSDL_EventFilter = function(userdata: Pointer; constref event: TSDL_Event): LongInt; cdecl;
 
-procedure SDL_PumpEvents; cdecl; external;
-function SDL_PeepEvents(events: PSDL_Event; numevents: LongInt; action, minType, maxType: Uint32): LongInt; cdecl; external;
-function SDL_HasEvent(type_: Uint32): SDL_Bool; cdecl; external;
-function SDL_HasEvents(minType, maxType: Uint32): SDL_Bool; cdecl; external;
-procedure SDL_FlushEvent(type_: Uint32); cdecl; external;
-procedure SDL_FlushEvents(minType, maxType: Uint32); cdecl; external;
-function SDL_PollEvent(var event: TSDL_Event): LongInt; cdecl; external;
-function SDL_WaitEventTimeout(var event: TSDL_Event; timeout: LongInt): LongInt; cdecl; external;
-function SDL_PushEvent(constref event: TSDL_Event): LongInt; cdecl; external;
-procedure SDL_SetEventFilter(filter: TSDL_EventFilter; userdata: Pointer); cdecl; external;
-function SDL_GetEventFilter(var filter: TSDL_EventFilter; var userdata: Pointer): SDL_Bool; cdecl; external;
-procedure SDL_AddEventWatch(filter: TSDL_EventFilter; userdata: Pointer); cdecl; external;
-procedure SDL_DelEventWatch(filter: TSDL_EventFilter; userdata: Pointer); cdecl; external;
-procedure SDL_FilterEvents(filter: TSDL_EventFilter; userdata: Pointer); cdecl; external;
-function SDL_EventState(type_: Uint32; state: LongInt): Uint8; cdecl; external;
-function SDL_RegisterEvents(numevents: LongInt): Uint32; cdecl; external;
+procedure SDL_PumpEvents; cdecl; libsdl2;
+function SDL_PeepEvents(events: PSDL_Event; numevents: LongInt; action, minType, maxType: Uint32): LongInt; cdecl; libsdl2;
+function SDL_HasEvent(type_: Uint32): SDL_Bool; cdecl; libsdl2;
+function SDL_HasEvents(minType, maxType: Uint32): SDL_Bool; cdecl; libsdl2;
+procedure SDL_FlushEvent(type_: Uint32); cdecl; libsdl2;
+procedure SDL_FlushEvents(minType, maxType: Uint32); cdecl; libsdl2;
+function SDL_PollEvent(out event: TSDL_Event): LongInt; cdecl; libsdl2;
+function SDL_WaitEventTimeout(out event: TSDL_Event; timeout: LongInt): LongInt; cdecl; libsdl2;
+function SDL_PushEvent(constref event: TSDL_Event): LongInt; cdecl; libsdl2;
+procedure SDL_SetEventFilter(filter: TSDL_EventFilter; userdata: Pointer); cdecl; libsdl2;
+function SDL_GetEventFilter(out filter: TSDL_EventFilter; out userdata: Pointer): SDL_Bool; cdecl; libsdl2;
+procedure SDL_AddEventWatch(filter: TSDL_EventFilter; userdata: Pointer); cdecl; libsdl2;
+procedure SDL_DelEventWatch(filter: TSDL_EventFilter; userdata: Pointer); cdecl; libsdl2;
+procedure SDL_FilterEvents(filter: TSDL_EventFilter; userdata: Pointer); cdecl; libsdl2;
+function SDL_EventState(type_: Uint32; state: LongInt): Uint8; cdecl; libsdl2;
+function SDL_RegisterEvents(numevents: LongInt): Uint32; cdecl; libsdl2;
 
 { SDL_audio.h }
 
@@ -2119,36 +2126,36 @@ type
   end;
   TSDL_AudioCVT = SDL_AudioCVT;
 
-function SDL_GetNumAudioDrivers: LongInt; cdecl; external;
-function SDL_GetAudioDriver(index: LongInt): SDL_Char; cdecl; external;
-function SDL_AudioInit(driver_name: SDL_Char): LongInt; cdecl; external;
-procedure SDL_SDL_AudioQuit; cdecl; external;
-function SDL_GetCurrentAudioDriver: SDL_Char; cdecl; external;
-function SDL_OpenAudio(desired, obtained: PSDL_AudioSpec): LongInt; cdecl; external;
-function SDL_GetNumAudioDevices(iscapture: LongInt): LongInt; cdecl; external;
-function SDL_GetAudioDeviceName(index, iscapture: LongInt): SDL_Char; cdecl; external;
+function SDL_GetNumAudioDrivers: LongInt; cdecl; libsdl2;
+function SDL_GetAudioDriver(index: LongInt): SDL_Char; cdecl; libsdl2;
+function SDL_AudioInit(driver_name: SDL_Char): LongInt; cdecl; libsdl2;
+procedure SDL_SDL_AudioQuit; cdecl; libsdl2;
+function SDL_GetCurrentAudioDriver: SDL_Char; cdecl; libsdl2;
+function SDL_OpenAudio(desired, obtained: PSDL_AudioSpec): LongInt; cdecl; libsdl2;
+function SDL_GetNumAudioDevices(iscapture: LongInt): LongInt; cdecl; libsdl2;
+function SDL_GetAudioDeviceName(index, iscapture: LongInt): SDL_Char; cdecl; libsdl2;
 function SDL_OpenAudioDevice(device: SDL_Char; iscapture: LongInt;
-  desired, obtained: PSDL_AudioSpec; allowed_changes: LongInt): TSDL_AudioDeviceID; cdecl; external;
-function SDL_GetAudioStatus: Uint32; cdecl; external;
-function SDL_GetAudioDeviceStatus(dev: TSDL_AudioDeviceID): Uint32; cdecl; external;
-procedure SDL_PauseAudio(pause_on: LongInt); cdecl; external;
-procedure SDL_PauseAudioDevice(dev: TSDL_AudioDeviceID; pause_on: LongInt); cdecl; external;
-function SDL_LoadWAV_RW(src: PSDL_RWops; freesrc: LongInt; var spec: TSDL_AudioSpec;
-  var audio_buf: PUint8; var audio_len: Uint32): PSDL_AudioSpec; cdecl; external;
-procedure SDL_FreeWAV(audio_buf: PUint8); cdecl; external;
-function SDL_BuildAudioCVT(var cvt: TSDL_AudioCVT; src_format: UInt16;
+  desired, obtained: PSDL_AudioSpec; allowed_changes: LongInt): TSDL_AudioDeviceID; cdecl; libsdl2;
+function SDL_GetAudioStatus: Uint32; cdecl; libsdl2;
+function SDL_GetAudioDeviceStatus(dev: TSDL_AudioDeviceID): Uint32; cdecl; libsdl2;
+procedure SDL_PauseAudio(pause_on: LongInt); cdecl; libsdl2;
+procedure SDL_PauseAudioDevice(dev: TSDL_AudioDeviceID; pause_on: LongInt); cdecl; libsdl2;
+function SDL_LoadWAV_RW(src: PSDL_RWops; freesrc: LongInt; out spec: TSDL_AudioSpec;
+  out audio_buf: PUint8; out audio_len: Uint32): PSDL_AudioSpec; cdecl; libsdl2;
+procedure SDL_FreeWAV(audio_buf: PUint8); cdecl; libsdl2;
+function SDL_BuildAudioCVT(out cvt: TSDL_AudioCVT; src_format: UInt16;
   src_channels: UInt8; src_rate: LongInt; dst_format: UInt16; dst_channels: UInt8;
-  dst_rate: LongInt): LongInt; cdecl; external;
-function SDL_ConvertAudio(var cvt: TSDL_AudioCVT): LongInt; cdecl; external;
-procedure SDL_MixAudio(dst, src: PUint8; len: Uint32; volume: LongInt); cdecl; external;
-procedure SDL_MixAudioFormat(dst, src: PUint8; format: Uint16; len: Uint32; volume: LongInt); cdecl; external;
-procedure SDL_LockAudio; cdecl; external;
-procedure SDL_LockAudioDevice(dev: TSDL_AudioDeviceID); cdecl; external;
-procedure SDL_UnlockAudio; cdecl; external;
-procedure SDL_UnlockAudioDevice(dev: TSDL_AudioDeviceID); cdecl; external;
-procedure SDL_CloseAudio; cdecl; external;
-procedure SDL_CloseAudioDevice(dev: TSDL_AudioDeviceID); cdecl; external;
-function SDL_AudioDeviceConnected(dev: TSDL_AudioDeviceID): LongInt; cdecl; external;
+  dst_rate: LongInt): LongInt; cdecl; libsdl2;
+function SDL_ConvertAudio(var cvt: TSDL_AudioCVT): LongInt; cdecl; libsdl2;
+procedure SDL_MixAudio(dst, src: PUint8; len: Uint32; volume: LongInt); cdecl; libsdl2;
+procedure SDL_MixAudioFormat(dst, src: PUint8; format: Uint16; len: Uint32; volume: LongInt); cdecl; libsdl2;
+procedure SDL_LockAudio; cdecl; libsdl2;
+procedure SDL_LockAudioDevice(dev: TSDL_AudioDeviceID); cdecl; libsdl2;
+procedure SDL_UnlockAudio; cdecl; libsdl2;
+procedure SDL_UnlockAudioDevice(dev: TSDL_AudioDeviceID); cdecl; libsdl2;
+procedure SDL_CloseAudio; cdecl; libsdl2;
+procedure SDL_CloseAudioDevice(dev: TSDL_AudioDeviceID); cdecl; libsdl2;
+function SDL_AudioDeviceConnected(dev: TSDL_AudioDeviceID): LongInt; cdecl; libsdl2;
 
 { SDL_hints.h }
 
@@ -2175,51 +2182,51 @@ const
   SDL_HINT_NORMAL = SDL_HINT_DEFAULT + 1;
   SDL_HINT_OVERRIDE = SDL_HINT_NORMAL + 1;
 
-function SDL_SetHintWithPriority(name, value: SDL_Char; priority: Uint32): SDL_Bool; cdecl; external;
-function SDL_SetHint(name, value: SDL_Char): SDL_Bool; cdecl; external;
-function SDL_GetHint(name: SDL_Char): SDL_Char; cdecl; external;
-procedure SDL_ClearHints; cdecl; external;
+function SDL_SetHintWithPriority(name, value: SDL_Char; priority: Uint32): SDL_Bool; cdecl; libsdl2;
+function SDL_SetHint(name, value: SDL_Char): SDL_Bool; cdecl; libsdl2;
+function SDL_GetHint(name: SDL_Char): SDL_Char; cdecl; libsdl2;
+procedure SDL_ClearHints; cdecl; libsdl2;
 
 { SDL_cpuinfo.h }
 
 const
   SDL_CACHELINE_SIZE = 128;
 
-function SDL_GetCPUCount: LongInt; cdecl; external;
-function SDL_GetCPUCacheLineSize: LongInt; cdecl; external;
-function SDL_HasRDTSC: SDL_Bool; cdecl; external;
-function SDL_HasAltiVec: SDL_Bool; cdecl; external;
-function SDL_HasMMX: SDL_Bool; cdecl; external;
-function SDL_Has3DNow: SDL_Bool; cdecl; external;
-function SDL_HasSSE: SDL_Bool; cdecl; external;
-function SDL_HasSSE2: SDL_Bool; cdecl; external;
-function SDL_HasSSE3: SDL_Bool; cdecl; external;
-function SDL_HasSSE42: SDL_Bool; cdecl; external;
+function SDL_GetCPUCount: LongInt; cdecl; libsdl2;
+function SDL_GetCPUCacheLineSize: LongInt; cdecl; libsdl2;
+function SDL_HasRDTSC: SDL_Bool; cdecl; libsdl2;
+function SDL_HasAltiVec: SDL_Bool; cdecl; libsdl2;
+function SDL_HasMMX: SDL_Bool; cdecl; libsdl2;
+function SDL_Has3DNow: SDL_Bool; cdecl; libsdl2;
+function SDL_HasSSE: SDL_Bool; cdecl; libsdl2;
+function SDL_HasSSE2: SDL_Bool; cdecl; libsdl2;
+function SDL_HasSSE3: SDL_Bool; cdecl; libsdl2;
+function SDL_HasSSE42: SDL_Bool; cdecl; libsdl2;
 
 { SDL_clipboard.h }
 
-function SDL_SetClipboardText(text: SDL_Char): LongInt; cdecl; external;
-function SDL_GetClipboardText: SDL_Char; cdecl; external;
-function SDL_HasClipboardText: SDL_Bool; cdecl; external;
+function SDL_SetClipboardText(text: SDL_Char): LongInt; cdecl; libsdl2;
+function SDL_GetClipboardText: SDL_Char; cdecl; libsdl2;
+function SDL_HasClipboardText: SDL_Bool; cdecl; libsdl2;
 
 { SDL_timer.h }
 
 type
   TSDL_TimerCallback = function(interval: Uint32; param: Pointer): Uint32; cdecl;
 
-function SDL_GetTicks: Uint32; cdecl; external;
-function SDL_GetPerformanceCounter: Uint64; cdecl; external;
-function SDL_GetPerformanceFrequency: Uint64; cdecl; external;
-procedure SDL_Delay(ms: Uint32); cdecl; external;
+function SDL_GetTicks: Uint32; cdecl; libsdl2;
+function SDL_GetPerformanceCounter: Uint64; cdecl; libsdl2;
+function SDL_GetPerformanceFrequency: Uint64; cdecl; libsdl2;
+procedure SDL_Delay(ms: Uint32); cdecl; libsdl2;
 function SDL_AddTimer(LongInt: Uint32; callback: TSDL_TimerCallback;
-  param: Pointer): LongInt; cdecl; external;
-function SDL_RemoveTimer(id: LongInt): SDL_Bool; cdecl; external;
+  param: Pointer): LongInt; cdecl; libsdl2;
+function SDL_RemoveTimer(id: LongInt): SDL_Bool; cdecl; libsdl2;
 
 { SDL_loadso.h }
 
-function SDL_LoadObject(sofile: SDL_Char): HModule; cdecl; external;
-function SDL_LoadFunction(handle: HModule; name: SDL_Char): Pointer; cdecl; external;
-procedure SDL_UnloadObject(handle: HModule); cdecl; external;
+function SDL_LoadObject(sofile: SDL_Char): HModule; cdecl; libsdl2;
+function SDL_LoadFunction(handle: HModule; name: SDL_Char): Pointer; cdecl; libsdl2;
+procedure SDL_UnloadObject(handle: HModule); cdecl; libsdl2;
 
 { SDL_mutex.h }
 
@@ -2232,26 +2239,26 @@ type
   PSDL_Sem = Pointer;
   PSDL_Cond = Pointer;
 
-function SDL_CreateMutex: PSDL_Mutex; cdecl; external;
-function SDL_LockMutex(mutex: PSDL_Mutex): LongInt; cdecl; external;
-function SDL_TryLockMutex(mutex: PSDL_Mutex): LongInt; cdecl; external;
-function SDL_UnlockMutex(mutex: PSDL_Mutex): LongInt; cdecl; external;
-procedure SDL_DestroyMutex(mutex: PSDL_Mutex); cdecl; external;
+function SDL_CreateMutex: PSDL_Mutex; cdecl; libsdl2;
+function SDL_LockMutex(mutex: PSDL_Mutex): LongInt; cdecl; libsdl2;
+function SDL_TryLockMutex(mutex: PSDL_Mutex): LongInt; cdecl; libsdl2;
+function SDL_UnlockMutex(mutex: PSDL_Mutex): LongInt; cdecl; libsdl2;
+procedure SDL_DestroyMutex(mutex: PSDL_Mutex); cdecl; libsdl2;
 
-function SDL_CreateSemaphore(initial_value: Uint32): PSDL_Sem; cdecl; external;
-procedure SDL_DestroySemaphore(sem: PSDL_Sem); cdecl; external;
-function SDL_SemWait(sem: PSDL_Sem): LongInt; cdecl; external;
-function SDL_SemTryWait(sem: PSDL_Sem): LongInt; cdecl; external;
-function SDL_SemWaitTimeout(sem: PSDL_Sem; ms: Uint32): LongInt; cdecl; external;
-function SDL_SemPost(sem: PSDL_Sem): LongInt; cdecl; external;
-function SDL_SemValue(sem: PSDL_Sem): Uint32; cdecl; external;
+function SDL_CreateSemaphore(initial_value: Uint32): PSDL_Sem; cdecl; libsdl2;
+procedure SDL_DestroySemaphore(sem: PSDL_Sem); cdecl; libsdl2;
+function SDL_SemWait(sem: PSDL_Sem): LongInt; cdecl; libsdl2;
+function SDL_SemTryWait(sem: PSDL_Sem): LongInt; cdecl; libsdl2;
+function SDL_SemWaitTimeout(sem: PSDL_Sem; ms: Uint32): LongInt; cdecl; libsdl2;
+function SDL_SemPost(sem: PSDL_Sem): LongInt; cdecl; libsdl2;
+function SDL_SemValue(sem: PSDL_Sem): Uint32; cdecl; libsdl2;
 
-function SDL_CreateCond: PSDL_Cond; cdecl; external;
-procedure SDL_DestroyCond(cond: PSDL_Cond); cdecl; external;
-function SDL_CondSignal(cond: PSDL_Cond): LongInt; cdecl; external;
-function SDL_CondBroadcast(cond: PSDL_Cond): LongInt; cdecl; external;
-function SDL_CondWait(cond: PSDL_Cond; mutex: PSDL_Mutex): LongInt; cdecl; external;
-function SDL_CondWaitTimeout(cond: PSDL_Cond; mutex: PSDL_Mutex; ms: Uint32): LongInt; cdecl; external;
+function SDL_CreateCond: PSDL_Cond; cdecl; libsdl2;
+procedure SDL_DestroyCond(cond: PSDL_Cond); cdecl; libsdl2;
+function SDL_CondSignal(cond: PSDL_Cond): LongInt; cdecl; libsdl2;
+function SDL_CondBroadcast(cond: PSDL_Cond): LongInt; cdecl; libsdl2;
+function SDL_CondWait(cond: PSDL_Cond; mutex: PSDL_Mutex): LongInt; cdecl; libsdl2;
+function SDL_CondWaitTimeout(cond: PSDL_Cond; mutex: PSDL_Mutex; ms: Uint32): LongInt; cdecl; libsdl2;
 
 { SDL_thread.h }
 
@@ -2270,13 +2277,12 @@ type
 
 { Make sure SDL is built with SDL_PASSED_BEGINTHREAD_ENDTHREAD undefined }
 
-function SDL_CreateThread(fn: TSDL_ThreadFunction; name: SDL_Char; data: Pointer): PSDL_Thread; cdecl; external;
-function SDL_GetThreadName(thread: PSDL_Thread): SDL_Char; cdecl; external;
-function SDL_ThreadID: SDL_Long; cdecl; external;
-function SDL_GetThreadID(thread: PSDL_Thread): SDL_Long; cdecl; external;
-function SDL_SetThreadPriority(priority: Uint32): LongInt; cdecl; external;
-procedure SDL_WaitThread(thread: PSDL_Thread; var status: LongInt); cdecl; external;
-procedure SDL_DetachThread(thread: PSDL_Thread); cdecl; external;
+function SDL_CreateThread(fn: TSDL_ThreadFunction; name: SDL_Char; data: Pointer): PSDL_Thread; cdecl; libsdl2;
+function SDL_GetThreadName(thread: PSDL_Thread): SDL_Char; cdecl; libsdl2;
+function SDL_ThreadID: SDL_Long; cdecl; libsdl2;
+function SDL_GetThreadID(thread: PSDL_Thread): SDL_Long; cdecl; libsdl2;
+function SDL_SetThreadPriority(priority: Uint32): LongInt; cdecl; libsdl2;
+procedure SDL_WaitThread(thread: PSDL_Thread; out status: LongInt); cdecl; libsdl2;
 
 { SDL_atomic.h }
 
@@ -2293,7 +2299,7 @@ const
   SDL_POWERSTATE_CHARGING = SDL_POWERSTATE_NO_BATTERY + 1;
   SDL_POWERSTATE_CHARGED = SDL_POWERSTATE_CHARGING + 1;
 
-function SDL_GetPowerInfo(var secs, pct: LongInt): Uint32; cdecl; external;
+function SDL_GetPowerInfo(out secs, pct: LongInt): Uint32; cdecl; libsdl2;
 
 { Macros from all headers }
 
@@ -2301,8 +2307,8 @@ procedure SDL_QuitRequested;
 function SDL_RectEmpty(constref A: TSDL_Rect): Boolean;
 function SDL_RectEquals(constref A, B: TSDL_Rect): Boolean;
 function SDL_Button(B: Uint32): LongWord;
-function SDL_LoadWAV(filename: PChar; var spec: TSDL_AudioSpec; var audio_buf: PUInt8;
-  var audio_len: UInt32): PSDL_AudioSpec;
+function SDL_LoadWAV(filename: PChar; out spec: TSDL_AudioSpec; out audio_buf: PUInt8;
+  out audio_len: UInt32): PSDL_AudioSpec;
 function SDL_RWSize(ctx: PSDL_RWops): Sint64;
 function SDL_RWSeek(ctx: PSDL_RWops; offset: Sint64; whence: LongInt): Sint64;
 function SDL_RWTell(ctx: PSDL_RWops): Sint64;
@@ -2321,10 +2327,19 @@ const
   IMG_INIT_WEBP = $0000000;
 
 { File System }
-function SDL_GetBasePath: PChar cdecl; external;
-function SDL_GetPrefPath(const org: PAnsiChar; const app: PAnsiChar): PChar cdecl; external;
+
+function SDL_GetBasePath: PChar cdecl; cdecl; libsdl2;
+function SDL_GetPrefPath(const org: PAnsiChar; const app: PAnsiChar): PChar cdecl; cdecl; libsdl2;
+
+procedure SDL_GetVersion(var ver: TSDL_Version); cdecl; libsdl2;
+function SDL_GetRevision: PAnsiChar; cdecl; libsdl2;
+function SDL_GetRevisionNumber: integer; cdecl; libsdl2;
 
 implementation
+
+{$ifdef static}
+  {$linklib SDL2}
+{$endif}
 
 { Macros from all headers }
 
@@ -2350,8 +2365,8 @@ begin
   Result := 1 shl (B - 1);
 end;
 
-function SDL_LoadWAV(filename: PChar; var spec: TSDL_AudioSpec; var audio_buf: PUInt8;
-  var audio_len: UInt32): PSDL_AudioSpec;
+function SDL_LoadWAV(filename: PChar; out spec: TSDL_AudioSpec; out audio_buf: PUInt8;
+  out audio_len: UInt32): PSDL_AudioSpec;
 var
   Ops: PSDL_RWops;
 begin
@@ -2363,31 +2378,37 @@ end;
 
 function SDL_RWSize(ctx: PSDL_RWops): Sint64;
 begin
+  Assert(false, 'Not implemented');
   //Result := ctx.size(ctx);
 end;
 
 function SDL_RWSeek(ctx: PSDL_RWops; offset: Sint64; whence: LongInt): Sint64;
 begin
+  Assert(false, 'Not implemented');
   //Result := ctx.seek(ctx, offset, whence);
 end;
 
 function SDL_RWTell(ctx: PSDL_RWops): Sint64;
 begin
+  Assert(false, 'Not implemented');
   //Result := ctx.seek(ctx, 0, RW_SEEK_CUR);
 end;
 
 function SDL_RWRead(ctx: PSDL_RWops; ptr: Pointer; size, maxnum: IntPtr): Sint64;
 begin
+  Assert(false, 'Not implemented');
   //Result := ctx.read(ctx, ptr, size, maxnum);
 end;
 
 function SDL_RWWrite(ctx: PSDL_RWops; ptr: Pointer; size, num: IntPtr): Sint64;
 begin
+  Assert(false, 'Not implemented');
   //Result := ctx.write(ctx, ptr, size, num);
 end;
 
 function SDL_RWClose(ctx: PSDL_RWops): LongInt;
 begin
+  Assert(false, 'Not implemented');
   //Result := ctx.close(ctx);
 end;
 

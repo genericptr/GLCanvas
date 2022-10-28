@@ -41,6 +41,9 @@
     {$linkframework SDL2}
     {$pascalmainname SDL_main}
   {$endif}
+  {$ifdef TARGET_OS_WINDOWS}
+    // linking is dynamic on Windows
+  {$endif}
 {$endif}
 
 {$ifdef PLATFORM_GLPT}
@@ -1390,6 +1393,10 @@ begin
 end;
 
 procedure TCanvasState.FinalizeSetup(windowSize: TVec2i);
+{$ifdef PLATFORM_SDL}
+var
+  version: TSDL_Version;
+{$endif}
 begin
   {$ifdef API_OPENGL}
   if not Load_GL_VERSION_3_2 then
@@ -1401,7 +1408,8 @@ begin
   writeln('GLPT version: ', GLPT_GetVersionString);
   {$endif}
   {$ifdef PLATFORM_SDL}
-  writeln('SDL version: ???');
+  SDL_GetVersion(version);
+  writeln('SDL version: ', version.major, '.', version.minor, '.', version.patch);
   {$endif}
   writeln('Maximum Texture Units: ', GetMaximumTextureUnits);
   writeln('Maximum Texture Size: ', GetMaximumTextureSize);
@@ -1410,7 +1418,7 @@ begin
   // the default shader imposes a texture limit we must follow
   SetMaximumTextureUnits(DEFAULT_SHADER_TEXTURE_UNITS);
 
-  // note: clear an opengl error
+  // clear any opengl errors (they shoud be handled here if any exist)
   glGetError();
 
   // set the view port to the actual size of the window
