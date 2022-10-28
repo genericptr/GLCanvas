@@ -9,7 +9,7 @@
 
 program Test8;
 uses
-  GeometryTypes, VectorMath, GLCanvas, GLPT;
+  GeometryTypes, VectorMath, GLCanvas;
 
 const
   window_size_width = 512;

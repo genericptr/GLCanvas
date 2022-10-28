@@ -18,19 +18,19 @@ uses
   GLUtils, 
   GLShader, 
   GLUI, 
-  GLFreeTypeFont, 
   GLFreeType, 
-  GLFrameBuffer,
-  // glcanvas extras
+  // GLCanvas extras
   VectorMath, GeometryTypes,
-  // GLPT
-  GLPT;
+  // Platform units
+  {$ifdef PLATFORM_GLPT}GLPT;{$endif}
+  {$ifdef PLATFORM_SDL}SDL;{$endif}
 
 const
   window_size_width = 600;
   window_size_height = 600;
 
 begin
+  writeln('Starting...');
   SetupCanvas(window_size_width, window_size_height);
 
   while IsRunning do

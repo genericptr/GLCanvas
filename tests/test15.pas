@@ -15,7 +15,7 @@
 program Test15;
 uses
   SysUtils, GeometryTypes, VectorMath,
-  GLCanvas, GLPT;
+  GLCanvas;
 
 const
   window_size_width = 500;

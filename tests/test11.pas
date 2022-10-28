@@ -10,7 +10,7 @@
 program Test11;
 uses
   SysUtils, GeometryTypes, VectorMath,
-  GLPT, GLCanvas;
+  GLCanvas;
 
 const
   window_size_width = 512;

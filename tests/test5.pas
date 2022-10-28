@@ -12,8 +12,8 @@
 
 program Test5;
 uses
-  GeometryTypes, VectorMath, Math, FGL,
-  GLPT, GLCanvas;
+  Math, FGL, 
+  GeometryTypes, VectorMath, GLCanvas;
 
 const
   window_size_width = 600;

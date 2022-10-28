@@ -11,7 +11,7 @@
 
 program Test21;
 uses
-  SysUtils, FGL, Math,
+  SysUtils, FGL, Math, GL,
   GeometryTypes, VectorMath,
   GLVertexBuffer, GLShader, GLCanvas;
 
@@ -146,6 +146,7 @@ begin
 
   IsometricViewTransform := MakeIsometricTransform(V2(kWindowSize / 2, kGridDepth));
 
+  // TODO: we aren't supposed to expose the OpenGL library!
   glEnable(GL_DEPTH_TEST);
 
   buffer := CreateVertexBuffer;
@@ -160,6 +161,7 @@ begin
 
   while IsRunning do
     begin
+      // TODO: ditto
       glClear(GL_COLOR_BUFFER_BIT or GL_DEPTH_BUFFER_BIT);
 
       shader.Push;

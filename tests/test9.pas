@@ -9,7 +9,7 @@
 
 program Test9;
 uses
-  GeometryTypes, VectorMath, GLPT, GLCanvas;
+  GeometryTypes, VectorMath, GLCanvas;
 
 const
   window_size_width = 512;
@@ -24,7 +24,7 @@ begin
   case event.EventType of
     TEventType.KeyDown:
       case event.KeyCode of
-        GLPT_KEY_SPACE:
+        KEY_SPACE:
           begin
             //textures[currentTexture].Unload;
             currentTexture += 1;

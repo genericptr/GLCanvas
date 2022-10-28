@@ -8,13 +8,9 @@
 {$mode objfpc}
 {$assertions on}
 
-
-// compile freetype for ios
-// https://stackoverflow.com/questions/6425643/compiling-freetype-for-iphone
-
 program Test4;
 uses
-  VectorMath, GLCanvas, GLPT;
+  SysUtils, VectorMath, GLCanvas;
 
 const
   window_size_width = 600;
@@ -25,7 +21,11 @@ var
 begin
   SetupCanvas(window_size_width, window_size_height);
   
-  font := CreateFont('Avenir.ttc', 36 * 2);
+  // TODO: crashes if the size is too large!
+  // TFreeTypeFont.Render uses a fixed size buffer
+  // TODO: search in system font folders like C:\Windows\Fonts\
+  // I think FPM has a utility we can copy
+  font := CreateFont('C:\Windows\Fonts\segoesc.ttf', 48);
 
   while IsRunning do
     begin
