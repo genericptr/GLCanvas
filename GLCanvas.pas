@@ -475,6 +475,8 @@ procedure PopProjectionTransform;
 var
   mat: TMat4;
 begin
+  FlushDrawing;
+  
   with CanvasState do
     begin
       projectionTransformStack.Delete(projectionTransformStack.Count - 1);
@@ -520,6 +522,8 @@ procedure PopViewTransform;
 var
   mat: TMat4;
 begin
+  FlushDrawing;
+
   with CanvasState do
     begin
       viewTransformStack.Delete(viewTransformStack.Count - 1);
