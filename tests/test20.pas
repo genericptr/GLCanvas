@@ -16,14 +16,21 @@ var
   cell: TPNGImage;
   rgbImage: TImage3b;
 begin
-  pngImage := TPNGImage.Create('/Users/ryanjoseph/Desktop/Projects/Games/Platformer/resources/tiles.png');
+  pngImage := TPNGImage.Create('deer.png');
   
-  cell := TPNGImage(pngImage.Copy(1, 1, 16, 16));
-  cell.SaveToFile('/Users/ryanjoseph/Desktop/cell.png', TFileFormat.PNG);
+  // copy part of image and save to disk
+  cell := TPNGImage(pngImage.Copy(0, 0, pngImage.Width div 2, pngImage.Height div 2));
+  cell.SaveToFile('cell.png', TFileFormat.PNG);
   cell.Free;
 
-  rgbImage := TImage3b.Create(10, 10);
-  rgbImage.Fill([255, 0, 0]);
-  rgbImage.SaveToFile('/Users/ryanjoseph/Desktop/rgb.jpg', TFileFormat.JPEG);
-  rgbImage.Free;
+  // create a bitmap from raw data and save to disk
+  rgbImage := TImage3b.Create(32, 32);
+  with rgbImage do
+    begin
+      Fill([255, 0, 0]);
+      // TODO: Save to file is producing garbled output now
+      SaveToFile('rgb.jpg', TFileFormat.JPEG);
+      SaveToFile('rgb.png', TFileFormat.PNG);
+      Free;
+    end;
 end.
