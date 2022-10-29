@@ -24,6 +24,8 @@ type
   SDL_Event_Helper = record helper for SDL_Event
     function GetMouseLocation: TVec2i;
   end;
+
+procedure PollSystemInput(event: PSDL_Event);
 {$endif}
 
 {$ifdef PLATFORM_GLPT}
@@ -34,16 +36,7 @@ type
     function GetGestureLocation: TVec2i;
   end;
 
-{$endif}
-
-{$ifdef PLATFORM_SDL}
-procedure PollSystemInput(event: PSDL_Event);
-{$endif}
-
-{$ifdef PLATFORM_GLPT}
 procedure PollSystemInput(event: pGLPT_MessageRec);
-{$endif}
-
 {$endif}
 
 {$ifdef IMPLEMENTATION}
