@@ -11,7 +11,7 @@
 
 program Test21;
 uses
-  SysUtils, FGL, Math, GL,
+  SysUtils, FGL, Math,
   GeometryTypes, VectorMath,
   GLVertexBuffer, GLShader, GLCanvas;
 
@@ -146,12 +146,11 @@ begin
 
   IsometricViewTransform := MakeIsometricTransform(V2(kWindowSize / 2, kGridDepth));
 
-  // TODO: we aren't supposed to expose the OpenGL library!
-  glEnable(GL_DEPTH_TEST);
+  SetDepthTest(true);
 
   buffer := CreateVertexBuffer;
 
-  verticies := CreateCube(V3(32*3, 32, 0), kTileSize, kTileSize);
+  verticies := CreateCube(V3(32*1, 0, 0), kTileSize, kTileSize);
   buffer.Add(verticies);
 
   shader := CreateShader(VertexShader, FragmentShader);
@@ -159,14 +158,17 @@ begin
   shader.SetUniformMat4('viewTransform', IsometricViewTransform);
   shader.Pop;
 
+  SetActiveFont(CreateFont('Times.ttf', 22));
+
   while IsRunning do
     begin
-      // TODO: ditto
-      glClear(GL_COLOR_BUFFER_BIT or GL_DEPTH_BUFFER_BIT);
+      ClearBackground;
 
       shader.Push;
       buffer.Draw;
       shader.Pop;
+
+      DrawText('Drawing 3D model with isometric camera', V2(80, 150), RGBA(1, 0, 0, 1));
 
       SwapBuffers;
     end;

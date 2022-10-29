@@ -178,6 +178,7 @@ procedure PushVertexBuffer(buffer: TDefaultVertexBuffer);
 procedure PopVertexBuffer;
 procedure DrawBuffer(buffer: TDefaultVertexBuffer);
 
+{ Drawing }
 procedure FlushDrawing; inline;
 procedure SwapBuffers; inline;
 procedure ClearBackground;
@@ -246,6 +247,7 @@ function GetDisplaySize: TVec2i;
 
 { Canvas State }
 procedure SetClearColor(color: TColor);
+procedure SetDepthTest(enabled: Boolean);
 
 function GetFPS: longint; inline;
 function GetDeltaTime: double; inline;
@@ -374,7 +376,6 @@ procedure error_callback(error: integer; description: string);
 begin
   writeln(stderr, description);
   raise Exception.Create(description);
-  //halt(-1);
 end;
 
 procedure SetActiveFont(newValue: IFont);
@@ -763,6 +764,14 @@ procedure SetClearColor(color: TColor);
 begin
   CanvasState.clearColor := color;
   glClearColor(color.r, color.b, color.g, color.a);
+end;
+
+procedure SetDepthTest(enabled: Boolean);
+begin
+  if enabled then
+    glEnable(GL_DEPTH_TEST)
+  else
+    glDisable(GL_DEPTH_TEST);
 end;
 
 function GetFPS: longint;
