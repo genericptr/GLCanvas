@@ -105,7 +105,7 @@ begin
 	p := StrAlloc(length(text) + 1);
 	StrPCopy(p, text);
 	
-	{$ifdef unix}
+	{$ifdef UNIX}
 	result := TStringList.Create;
 	count := ExtractStrings([LineEnding], [], p, result);
 	{$else}

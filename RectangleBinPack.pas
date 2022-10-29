@@ -11,13 +11,12 @@
 unit RectangleBinPack;
 interface
 uses
-  Math, FGL,
-  GeometryTypes;
+  GLCanvas, Math, FGL;
 
 type
   TBinPacker = class
     public type
-      TRect = specialize TGRect<Integer>;
+      TRect = TRecti;
       TRectList = specialize TFPGList<TRect>;
       TChoiceHeuristic = (
           RectBestShortSideFit,   // BSSF: Positions the rectangle against the short side of a free rectangle into which it fits the best.

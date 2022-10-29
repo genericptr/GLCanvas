@@ -9,7 +9,6 @@
 
 program test18;
 uses
-  SysUtils, VectorMath, GeometryTypes,
   GLCanvas;
 
 var
@@ -17,8 +16,8 @@ var
 begin
   SetupCanvas(480, 480);
 
-  // TODO: draw to the buffer using a texture at a specific unit so we can guarantee
-  // it won't change between draw calls
+  { TODO: draw to the buffer using a texture at a specific unit so we can 
+    guarantee it won't change between draw calls }
 
   buffer[0] := CreateVertexBuffer(true);
   PushVertexBuffer(buffer[0]);

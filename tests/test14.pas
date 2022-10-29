@@ -7,12 +7,10 @@
 
 }
 {$mode objfpc}
-{$assertions on}
 
 program Test14;
 uses
-  SysUtils, GeometryTypes, VectorMath,
-  GLCanvas;
+  SysUtils, GLCanvas;
 
 const
   window_size_width = 500;

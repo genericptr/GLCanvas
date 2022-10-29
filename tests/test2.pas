@@ -6,11 +6,10 @@
     Tests drawing shapes
 }
 {$mode objfpc}
-{$assertions on}
 
 program Test2;
 uses
-  GeometryTypes, VectorMath, GLCanvas;
+  GLCanvas;
 
 const
   window_size_width = 600;

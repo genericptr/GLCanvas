@@ -12,7 +12,6 @@
 
 program Test19;
 uses
-  GeometryTypes, VectorMath,
   GLCanvas,
   GL, GLext, GLUtils;
 

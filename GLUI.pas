@@ -29,8 +29,7 @@ uses
   {$elseif defined(PLATFORM_SDL)}
   SDL,
   {$endif}
-  GLCanvas,
-  GeometryTypes, VectorMath;
+  GLCanvas;
 
 type
   TVariantList = specialize TFPGList<Variant>;

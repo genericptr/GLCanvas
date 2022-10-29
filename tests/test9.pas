@@ -9,7 +9,7 @@
 
 program Test9;
 uses
-  GeometryTypes, VectorMath, GLCanvas;
+  GLCanvas;
 
 const
   window_size_width = 512;
@@ -26,7 +26,6 @@ begin
       case event.KeyCode of
         KEY_SPACE:
           begin
-            //textures[currentTexture].Unload;
             currentTexture += 1;
             if currentTexture > high(textures) then
               currentTexture := 0;
@@ -37,6 +36,7 @@ end;
 
 begin
   SetupCanvas(window_size_width, window_size_height, @EventCallback);
+  SetWindowTitle('Press space key to cycle...');
 
   currentTexture := 0;
   textures[0] := TTexture.Create('orc.png');

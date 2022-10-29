@@ -10,6 +10,9 @@
 {$modeswitch autoderef}
 {$include include/targetos.inc}
 
+// TODO: remove GLPT.pas and add touch support for SDL
+{$define PLATFORM_GLPT}
+
 program Test5;
 uses
   Math, FGL, 
@@ -110,22 +113,6 @@ begin
   frame.size := bounds.size;
 end;
 
-type
-   GLPT_MessageRecHelper = record helper for GLPT_MessageRec
-     function TouchLocation: TVec2i;
-     function GestureLocation: TVec2i;
-   end; 
-
-function GLPT_MessageRecHelper.TouchLocation: TVec2i;
-begin
-  result := V2i(params.touch.x, params.touch.y);
-end;
-
-function GLPT_MessageRecHelper.GestureLocation: TVec2i;
-begin
-  result := V2i(params.gesture.x, params.gesture.y);
-end;
-
 function PointIsInRotatedRectangle(rect: TRect; rotation: single; point: TVec2): boolean;
 var
   local: TVec2;
@@ -146,24 +133,24 @@ begin
       exit(sprite);
 end;
 
-procedure EventCallback(event: pGLPT_MessageRec);
+procedure EventCallback(event: TEvent);
 var
   sprite: TSprite;
 begin
-  case event^.mcode of
+  case event.EventType of
     //GLPT_MESSAGE_TOUCH_DOWN:
     //  writeln('touch down ', event.TouchLocation.tostr, ' tapCount=', event.params.touch.tapCount);
     //GLPT_MESSAGE_TOUCH_UP:
     //  writeln('touch up ', event.TouchLocation.tostr);
     //GLPT_MESSAGE_TOUCH_MOTION:
     //  writeln('touch motion ', event.TouchLocation.tostr);
-    GLPT_MESSAGE_GESTURE_TAP:
+    TEventType.Tap:
       begin
-        sprite := FindSprite(event.GestureLocation);
+        sprite := FindSprite(event.TouchLocation);
         if sprite = nil then
           begin
             sprite := TSprite.Create(texture);
-            sprite.position := event.GestureLocation;
+            sprite.position := event.TouchLocation;
             sprites.Add(sprite);
           end
         else

@@ -10,7 +10,6 @@
 
 program test17;
 uses
-  SysUtils, VectorMath, GeometryTypes,
   GLCanvas;
 
 var

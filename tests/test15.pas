@@ -4,17 +4,11 @@
     GLCanvas Test #15
     
     Tests different texture formats
-
-    TODO: make sure textures can use other color formats
-
-    https://community.khronos.org/t/updating-textures-per-frame/75020/3
 }
 {$mode objfpc}
-{$assertions on}
 
 program Test15;
 uses
-  SysUtils, GeometryTypes, VectorMath,
   GLCanvas;
 
 const
@@ -31,6 +25,10 @@ var
 begin
   SetupCanvas(window_size_width, window_size_height, nil, [TCanvasOption.VSync]);
 
+  {
+    TODO: test other color formats
+    https://community.khronos.org/t/updating-textures-per-frame/75020/3
+  }
   pix := TRGBA_U8_PixelMatrix.Create(100, 100);
   pix.Fill(TImagePixel.Create(255, 0, 0, 255));
 

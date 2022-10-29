@@ -9,7 +9,7 @@
 
 program Test20;
 uses
-  GeometryTypes, VectorMath, GLCanvas;
+  GLCanvas;
 
 var
   pngImage: TPNGImage;

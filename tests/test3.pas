@@ -6,11 +6,10 @@
     Tests drawing single textures loaded from file
 }
 {$mode objfpc}
-{$assertions on}
 
 program Test3;
 uses
-  GeometryTypes, GLCanvas;
+  GLCanvas;
 
 const
   window_size_width = 600;

@@ -9,7 +9,6 @@
 
 program Test12;
 uses
-  GeometryTypes, VectorMath,
   GLCanvas;
 
 const

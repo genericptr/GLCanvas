@@ -10,8 +10,7 @@
 
 program Test16;
 uses
-  SysUtils, GeometryTypes, VectorMath,
-  GLCanvas;
+  SysUtils, GLCanvas;
 
 const
   WINDOW_SIZE = 500;

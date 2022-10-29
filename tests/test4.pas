@@ -6,11 +6,10 @@
     Tests FreeType font rendering
 }
 {$mode objfpc}
-{$assertions on}
 
 program Test4;
 uses
-  SysUtils, VectorMath, GLCanvas;
+  GLCanvas;
 
 const
   window_size_width = 600;

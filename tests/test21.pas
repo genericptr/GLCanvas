@@ -11,9 +11,7 @@
 
 program Test21;
 uses
-  SysUtils, FGL, Math,
-  GeometryTypes, VectorMath,
-  GLVertexBuffer, GLShader, GLCanvas;
+  SysUtils, FGL, Math, GLCanvas;
 
 const
   kGridSize = 20;
@@ -168,6 +166,7 @@ begin
       buffer.Draw;
       shader.Pop;
 
+      // TODO: how can we get the text to draw over the model?
       DrawText('Drawing 3D model with isometric camera', V2(80, 150), RGBA(1, 0, 0, 1));
 
       SwapBuffers;

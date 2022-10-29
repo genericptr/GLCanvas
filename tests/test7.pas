@@ -6,11 +6,10 @@
     Tests custom shaders
 }
 {$mode objfpc}
-{$assertions on}
 
 program Test7;
 uses
-  VectorMath, GLCanvas, GLShader;
+  GLCanvas;
 
 var
   VertexShader: pchar =       '#version 330 core'#10+

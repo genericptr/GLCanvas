@@ -8,11 +8,9 @@
     TODO: this example is deprecated in favor of TImage
 }
 {$mode objfpc}
-{$assertions on}
 
 program Test6;
 uses
-  GeometryTypes, VectorMath,
   GLCanvas;
 
 const

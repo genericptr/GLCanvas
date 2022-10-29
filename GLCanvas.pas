@@ -11,6 +11,7 @@
 // bug fix: https://bugs.freepascal.org/view.php?id=35821
 {$varpropsetter on}
 {$scopedenums on}
+{$codepage utf8}
 
 {$include include/targetos.inc}
 
@@ -56,31 +57,35 @@
 unit GLCanvas;
 interface
 uses
-  {$ifdef API_OPENGL}
-  GL, GLext,
-  {$endif}
-  {$ifdef API_OPENGLES}
-  GLES30,
-  {$endif}
-  { note: CocoaAll is required to prevent a crash in SDL }
+  { OpenGL }
+  {$ifdef API_OPENGL}GL, GLext,{$endif}
+  {$ifdef API_OPENGLES}GLES30,{$endif}
+  { Platform Specific }
+  {$ifdef DARWIN}CWString,{$endif}
   {$ifdef TARGET_OS_MAC}CocoaAll,{$endif}
-  Contnrs, FGL, Classes, Math,
-  GLVertexBuffer, GLShader, GLFreeType,
-  BeRoPNG, VectorMath, GeometryTypes
+  { RTL }
+  Contnrs, FGL, Classes, Math, FreeTypeH,
+  { 3rd Party }
+  BeRoPNG
+  { Platforms }
   {$ifdef PLATFORM_GLPT},GLPT{$endif}
   {$ifdef PLATFORM_SDL},SDL{$endif}
   ;
 
 {$define INTERFACE}
+{$include include/VectorMath.inc}
+{$include include/GeometryTypes.inc}
 {$include include/ExtraTypes.inc}
 {$include include/WebColors.inc}
 {$include include/Utils.inc}
 {$include include/Images.inc}
 {$include include/Textures.inc}
 {$include include/FrameBuffers.inc}
+{$include include/VertexBuffers.inc}
 {$include include/Text.inc}
 {$include include/BitmapFont.inc}
-{$include include/Shaders.inc}
+{$include include/Shader.inc}
+{$include include/DefaultShader.inc}
 {$include include/FreeType.inc}
 {$include include/Keys.inc}
 {$include include/Event.inc}
@@ -321,8 +326,7 @@ var
 implementation
 uses
   GLUtils, RectangleBinPack,
-  Variants, CTypes,
-  SysUtils, DOM, XMLRead, Strings;
+  Variants, CTypes, SysUtils, DOM, XMLRead, Strings;
 
 { IMPORTANT: if you change the texture unit count then
   you need to update the default shaders in Shaders.inc also }
@@ -335,15 +339,19 @@ var
   DefaultTextureUnits: array[0..DEFAULT_SHADER_TEXTURE_UNITS - 1] of GLint = (0, 1, 2, 3, 4, 5, 6, 7);
 
 {$define IMPLEMENTATION}
+{$include include/VectorMath.inc}
+{$include include/GeometryTypes.inc}
 {$include include/ExtraTypes.inc}
 {$include include/WebColors.inc}
 {$include include/Utils.inc}
 {$include include/Images.inc}
 {$include include/Textures.inc}
 {$include include/FrameBuffers.inc}
+{$include include/VertexBuffers.inc}
 {$include include/Text.inc}
 {$include include/BitmapFont.inc}
-{$include include/Shaders.inc}
+{$include include/Shader.inc}
+{$include include/DefaultShader.inc}
 {$include include/FreeType.inc}
 {$include include/Keys.inc}
 {$include include/Event.inc}

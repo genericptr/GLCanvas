@@ -9,7 +9,6 @@
 
 program Test11;
 uses
-  SysUtils, GeometryTypes, VectorMath,
   GLCanvas;
 
 const
@@ -31,11 +30,11 @@ begin
       ClearBackground;
 
       PushBlendMode(TBlendingFactor.ONE, TBlendingFactor.ONE_MINUS_DST_COLOR);
-      DrawTexture(textures[0], GetViewPort);
-      DrawTexture(textures[1], GetViewPort);
-      DrawTexture(textures[2], GetViewPort);
-      DrawTexture(textures[3], GetViewPort);
-      FlushDrawing;
+        DrawTexture(textures[0], GetViewPort);
+        DrawTexture(textures[1], GetViewPort);
+        DrawTexture(textures[2], GetViewPort);
+        DrawTexture(textures[3], GetViewPort);
+        FlushDrawing;
       PopBlendMode;
 
       SwapBuffers;
