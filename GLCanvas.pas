@@ -1313,7 +1313,10 @@ begin
     begin
       // find a default system font
       {$ifdef DARWIN}
-      m_activeFont := CreateFont('/System/Library/Fonts/SFNS.ttf', 14);
+      m_activeFont := CreateFont('SFNS.ttf', 14);
+      {$endif}
+      {$ifdef WINDOWS}
+      m_activeFont := CreateFont('Verdana.ttf', 14);
       {$endif}
     end;
   result := m_activeFont;

@@ -8,6 +8,7 @@ type
       m_locked: boolean;
     protected
       procedure GenerateTexture(data: pointer; width, height: integer); override;
+      function GetMaximumTextureSize: integer; override;
     public
       { ITexture }
       function GetTextureUnit: integer;
@@ -31,6 +32,11 @@ type
 {$endif}
 
 {$ifdef IMPLEMENTATION}
+
+function TGLFreeTypeFont.GetMaximumTextureSize: integer;
+begin
+  result := GLCanvas.GetMaximumTextureSize;
+end;
 
 procedure TGLFreeTypeFont.GenerateTexture(data: pointer; width, height: integer);
 const

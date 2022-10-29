@@ -551,9 +551,65 @@ begin
 		end;
 end;
 
-function CreateFont(name: ansistring; pixelSize: integer): TGLFreeTypeFont;
+{ Creates a font by searching in the resources directory followed by default system locations.
+  If no font is found a fallback font will be used. }
+function CreateFont(name: AnsiString; pixelSize: integer): TGLFreeTypeFont;
+
+	function FileExists(fileName: AnsiString; directories: array of AnsiString; out realPath: AnsiString): Boolean; overload;
+	var
+	  fullPath, directory: AnsiString;
+	begin
+		// Does the input file exist?
+		if FileExists(fileName) then
+			begin
+			  realPath := fileName;
+			  exit(true);
+			end;
+
+		// Search for the file in provided directories
+	  for directory in directories do
+	    begin
+	      fullPath := directory+DirectorySeparator+fileName;
+	      if FileExists(fullPath) then
+	        begin
+	          realPath := fullPath;
+	          exit(true);
+	        end;
+	    end;
+	  result := false;
+	end;
+
+var
+	fontName, fontPath: AnsiString;
+	directories: array of AnsiString;
+	fallbacks: array of AnsiString;
 begin
-  result := TGLFreeTypeFont.Create(name);
+	{$ifdef DARWIN}
+	directories := [GetResourceDirectory, ExpandFileName('~/Library/Fonts'), '/System/Library/Fonts'];
+	fallbacks := ['Geneva.ttf', 'Monaco.ttf'];
+	{$endif}
+
+	{$ifdef WINDOWS}
+	directories := [GetResourceDirectory, 'C:\Windows\Fonts'];
+	fallbacks := ['Arial.ttf', 'Monaco.ttf'];
+	{$endif}
+
+	if FileExists(name, directories, fontPath) then
+	  result := TGLFreeTypeFont.Create(fontPath)
+	else
+		begin
+			for fontName in fallbacks do
+				if FileExists(fontName, directories, fontPath) then
+					begin
+						result := TGLFreeTypeFont.Create(fontPath);
+						break;
+					end;
+		end;
+
+	// Nothing can be found so we need to crash
+	if result = nil then
+		raise Exception.Create('Font "'+name+'" can''t be located');
+
   result.Render(pixelSize);
 end;
 

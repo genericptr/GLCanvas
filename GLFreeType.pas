@@ -12,7 +12,7 @@ uses
   {$ifdef DARWIN}
   CWString,
   {$endif}
-  CTypes, FreeTypeH, FGL;
+  SysUtils, CTypes, FreeTypeH, FGL;
 
 const
   FREETYPE_ANSI_CHARSET = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ!;%:?*()<>_+-=.,/|"''@#$^&{}[]0123456789';
@@ -52,27 +52,32 @@ type
       procedure AddTexture(c: TFontChar; posX, posY: integer); 
     protected
       m_texture: integer;
-      procedure GenerateTexture(data: pointer; width, height: integer); virtual;
-    public
 
-      { Methods }
-      constructor Create(lib: PFT_Library; path: ansistring); overload;
-      constructor Create(path: ansistring); overload;
+      procedure GenerateTexture(data: pointer; width, height: integer); virtual; abstract;
+      function GetMaximumTextureSize: integer; virtual; abstract;
+    public
+      { Class Methods }
       class procedure FreeLibrary;
 
+      { Constructors }
+      constructor Create(lib: PFT_Library; path: ansistring); overload;
+      constructor Create(path: ansistring); overload;
+
+      { Methods }
       procedure Render(pixelSize: integer; const charset: TFontString = FREETYPE_ANSI_CHARSET); 
 
-      { Accessors }
       function HasGlyph(c: TFontChar): boolean;
       function LineHeight: integer; virtual; abstract;
       function SpaceWidth: integer; virtual; abstract;
       function TabWidth: integer; virtual; abstract;
 
+      { Properties }
       property Face[c: TFontChar]: TFreeTypeFace read GetFace; default;
       property TextureWidth: integer read m_textureWidth;
       property TextureHeight: integer read m_textureHeight;
       property TextureID: integer read m_texture;
       property MaxLineHeight: integer read m_maxLineHeight;
+      property MaximumTextureSize: integer read GetMaximumTextureSize;
     public
       destructor Destroy; override;
   end;
@@ -148,10 +153,6 @@ begin
   m_faces.Add(c, f);
 end;
 
-procedure TFreeTypeFont.GenerateTexture(data: pointer; width, height: integer); 
-begin
-end;
-
 procedure TFreeTypeFont.Render(pixelSize: integer; const charset: TFontString); 
 var
   bitmap: FT_Bitmap;
@@ -168,17 +169,21 @@ var
   offset: integer;
   channels: integer;
 begin
-  Assert(m_face <> nil, 'freetype face is nil.');
-  Assert(TextureID = 0, 'font has already been rendered');
+  Assert(m_face <> nil, 'Freetype face is nil.');
+  Assert(TextureID = 0, 'Font has already been rendered');
 
   // https://www.freetype.org/freetype2/docs/tutorial/step1.html
   // https://learnopengl.com/In-Practice/Text-Rendering
   // https://stackoverflow.com/questions/24799090/opengl-freetype-weird-texture
   FT_Set_Pixel_Sizes(m_face, 0, pixelSize);
   
-  // TODO: estimate bounds
-  width := Pow2(512);
-  height := Pow2(512);
+  
+  // Find a square power of two sized box to fix the glyphs
+  width := Pow2(Round(Sqrt(m_face^.size^.metrics.x_ppem * m_face^.size^.metrics.y_ppem * Length(charset))));
+  height := width;
+  
+  Assert((width <= MaximumTextureSize) and (height <= MaximumTextureSize), 'Font size exceeds maximum texture size.');
+
   m_textureWidth := width;
   m_textureHeight := height;
 
@@ -201,6 +206,8 @@ begin
           begin
             value := PUInt8(bitmap.buffer)[x + y * bitmap.width];
             offset := width * canvasY + (canvasX + x + y * width);
+
+            Assert(offset <= width * height, 'Allocate texture size is too small ('+width.ToString+'x'+height.ToString+')');
 
             data[channels * offset + 0] := high(UInt8);
             data[channels * offset + 1] := high(UInt8);
