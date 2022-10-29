@@ -38,6 +38,7 @@ type
 
 procedure PollSystemInput(event: pGLPT_MessageRec);
 {$endif}
+{$endif}
 
 {$ifdef IMPLEMENTATION}
 
