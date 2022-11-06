@@ -18,9 +18,9 @@ type
   generic TTexturedQuad<T> = record
     v: array[0..5] of T;
     procedure SetPosition(minX, minY, maxX, maxY: single); inline;
-    procedure SetPosition(constref rect: TRect);
-    procedure SetSize(constref size: TVec2);
-    procedure SetOrigin(constref origin: TVec2);
+    procedure SetPosition(constref rect: TRect); inline;
+    procedure SetSize(constref size: TVec2); inline;
+    procedure SetOrigin(constref origin: TVec2); inline;
     procedure SetColor(r, g, b, a: single); inline;
     procedure SetColor(color: TColor); inline;
     procedure SetTexture(rect: TRect); inline;
