@@ -53,6 +53,7 @@ type
       class operator - (constref left: TVec2; right: TScalar): TVec2; overload; 
       class operator * (constref left: TVec2; right: TScalar): TVec2; overload; 
       class operator / (constref left: TVec2; right: TScalar): TVec2; overload;
+      class operator div (constref left: TVec2; right: Integer): TVec2; overload;
       class operator + (left: string; right: TVec2): string; overload;
     public
       case integer of
@@ -445,6 +446,9 @@ function Abs(vec: TVec4): TVec4; overload; inline;
 function Round(vec: TVec2): TVec2; overload; inline;
 function Round(vec: TVec3): TVec3; overload; inline;
 function Round(vec: TVec4): TVec4; overload; inline;
+
+function Min(vec: TVec2): TScalar; overload; inline;
+function Max(vec: TVec2): TScalar; overload; inline;
 
 { Procedural wrappers for translating from other languages }
 function Dot(left, right: TVec3): TScalar; inline;
@@ -1063,6 +1067,16 @@ begin
   result.w := trunc(vec.w);
 end;
 
+function Min(vec: TVec2): TScalar;
+begin
+  result := vec.Min;
+end;
+
+function Max(vec: TVec2): TScalar;
+begin
+  result := vec.Max;
+end;
+
 { Vec2 }
 
 function Vec2(x, y: TScalar): TVec2; inline;
@@ -1429,6 +1443,11 @@ end;
 class operator TVec2./ (constref left: TVec2; right: TScalar): TVec2;
 begin
   result := Vec2(left.x/right, left.y/right);
+end;
+
+class operator TVec2.div (constref left: TVec2; right: Integer): TVec2;
+begin
+  result := Vec2(trunc(left.x/right), trunc(left.y/right));
 end;
 
 class function TVec2.Zero: TVec2;
