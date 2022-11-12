@@ -682,16 +682,22 @@ begin
   DefaultShader.SetUniformInts('textures', DefaultTextureUnits);
 end;
 
+{$ifdef PLATFORM_SDL}
+const
+  // SDL_WINDOW_FULLSCREEN_DESKTOP is normal macOS fullscreen mode
+  // while SDL_WINDOW_FULLSCREEN changes the screen resolution
+  SDL_WINDOW_FULLSCREEN_MODE = {SDL_WINDOW_FULLSCREEN}SDL_WINDOW_FULLSCREEN_DESKTOP;
+{$endif}
+
 function IsFullScreen: boolean;
 var
   flags: LongWord;
 begin
   {$ifdef PLATFORM_SDL}
   flags := SDL_GetWindowFlags(CanvasState.window);
-  result := flags = (flags or SDL_WINDOW_FULLSCREEN);
+  result := flags = (flags or SDL_WINDOW_FULLSCREEN_MODE);
   {$else}
-  // TODO: not implemented in GLPT!
-  result := false;
+  result := GLPT_IsWindowFullscreen(CanvasState.window);
   {$endif}
 end;
 
@@ -699,9 +705,13 @@ procedure SetWindowFullScreen(newValue: boolean);
 begin
   {$ifdef PLATFORM_SDL}
   if newValue then
-    SDL_SetWindowFullscreen(CanvasState.window, SDL_WINDOW_FULLSCREEN)
+    SDL_SetWindowFullscreen(CanvasState.window, SDL_WINDOW_FULLSCREEN_MODE)
   else
     SDL_SetWindowFullscreen(CanvasState.window, 0);
+  {$endif}
+
+  {$ifdef PlATFORM_GLPT}
+  GLPT_SetWindowFullscreen(CanvasState.window, newValue);
   {$endif}
 end;
 
@@ -1508,7 +1518,7 @@ begin
       if TCanvasOption.FullScreen in options then
         begin
           fullScreen := true;
-          flags += SDL_WINDOW_FULLSCREEN;
+          flags += SDL_WINDOW_FULLSCREEN_MODE;
         end;
 
       window := SDL_CreateWindow('', SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, width, height, flags);
