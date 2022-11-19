@@ -253,10 +253,16 @@ function GetDisplaySize: TVec2i;
 { Canvas State }
 procedure SetClearColor(color: TColor);
 procedure SetDepthTest(enabled: Boolean);
+procedure SetTargetFrameRate(newValue: Integer);
 
+{ Time }
 function GetFPS: longint; inline;
 function GetDeltaTime: double; inline;
 function GetFrameCount: longint; inline;
+function GetFrameClock: double; inline;
+function GetFrameDelta: double; inline;
+procedure AdvanceFrameClock; 
+
 function GetDefaultShaderAttributes: TVertexAttributes;
 function IsVertexBufferEmpty: boolean; inline;
 function GetResourceDirectory: ansistring;
@@ -305,12 +311,14 @@ type
       drawCalls: longint;           // count of FlushDrawing calls for each SwapBuffers call
       deltaTime: double;            // elapsed time since last SwapBuffers
       lastFrameTime: double;        // absolute time of last SwapBuffers
+      targetFrameTime: double;      // frame time adjusted to meet target frame rate
       projTransform: TMat4;         // orthographic transform set with SetProjectionTransform
       viewTransform: TMat4;         // view transform set with SetViewTransform
       viewPortRatio: TVec2;         // if the viewport/transform is not 1:1 this is the ratio
       viewPort: TRect;              // rect set by SetViewPort
       fullScreen: boolean;          // the window was created in fullscreen mode
       totalFrameCount: longint;     // frame count for each SwapBuffers call 
+      targetFrameRate: integer;     // frame rate which which is the basis for time calculations
     public
       property ActiveFont: IFont read GetActiveFont;
     public
@@ -792,6 +800,11 @@ begin
     glDisable(GL_DEPTH_TEST);
 end;
 
+procedure SetTargetFrameRate(newValue: Integer);
+begin
+  CanvasState.targetFrameRate := newValue;
+end;
+
 function GetFPS: longint;
 begin
   result := CanvasState.fps;
@@ -805,6 +818,23 @@ end;
 function GetFrameCount: longint;
 begin
   result := CanvasState.totalFrameCount;
+end;
+
+function GetFrameClock: double;
+begin
+  result := CanvasState.targetFrameTime / CanvasState.targetFrameRate;
+end;
+
+function GetFrameDelta: double;
+begin
+  result := CanvasState.deltaTime * CanvasState.targetFrameRate;
+end;
+
+{ Call once per frame to advance the frame clock }
+procedure AdvanceFrameClock; 
+begin
+  with CanvasState do
+    targetFrameTime += deltaTime * targetFrameRate;
 end;
 
 procedure QuitApp;
@@ -1468,6 +1498,7 @@ begin
   projectionTransformStack := TMat4List.Create;
   vertexBufferList := TDefaultVertexBufferList.Create;
   blendModeList := TCanvasState.TBlendModeList.Create;
+  targetFrameRate := 60;
 
   viewPortRatio := V2(1, 1);
 
