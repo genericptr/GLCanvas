@@ -5,6 +5,7 @@
 
 type
   TWebColorHelper = record helper for TVec4
+    class function Red(alpha: TScalar = 1.0): TVec4; static; inline;
     class function Gold(alpha: TScalar = 1.0): TVec4; static; inline;
     class function Yellow(alpha: TScalar = 1.0): TVec4; static; inline;
     class function LightYellow(alpha: TScalar = 1.0): TVec4; static; inline;
@@ -131,6 +132,11 @@ end;
 {$endif}
 
 {$ifdef IMPLEMENTATION}
+
+class function TWebColorHelper.Red(alpha: TScalar = 1.0): TVec4;
+begin
+    result := V4(255 / 255, 0 / 255, 0 / 255, alpha);
+end;
 
 class function TWebColorHelper.Gold(alpha: TScalar): TVec4;
 begin
