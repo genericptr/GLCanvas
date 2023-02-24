@@ -11,7 +11,8 @@ type
 type
 	TFontChar = UnicodeChar;
 	TFontString = UnicodeString;
-
+	TFontStringArray = array of TFontString;
+	
 type
 	TFontRenderFrame = record
 		textureFrame: TRect;
@@ -250,6 +251,27 @@ begin
 	lines := WrapTextInternal(font, text, maximumWidth, result);
 	if lines <> nil then
 		lines.Free;
+end;
+
+function MeasureText(font: IFont; lines: array of TFontString): TVec2;
+var
+	size: TVec2;
+	line: TFontString;
+	width: Integer;
+begin
+	Assert(font <> nil, 'font must not be nil');
+	
+	size := 0;
+
+	for line in lines do
+		begin
+			width := CalculateTextWidth(font, line);
+			if width > size.width then
+				size.x := width;
+			size.y += font.LineHeight;
+		end;
+
+	result := size;
 end;
 
 function DrawText(text: TFontString; textAlignment: TTextAlignment; bounds: TRect; color: TColor): TVec2;
@@ -538,11 +560,16 @@ begin
 	
 	origin := bounds.origin;
 
+	// Vertically align text for all lines heights
+	origin.y := bounds.MidY - ((font.LineHeight * Length(lines)) / 2);
+
 	for line in lines do
 		begin
 			case textAlignment of
 				TTextAlignment.Center:
-					origin.x := bounds.MidX - (MeasureText(font, line, maxInt).width / 2);
+					begin
+						origin.x := bounds.MidX - (CalculateTextWidth(font, line) / 2);
+					end;
 				otherwise
 					;
 			end;

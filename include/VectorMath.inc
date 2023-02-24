@@ -3,7 +3,7 @@
 type
   TScalar = Single;
   Float = TScalar;
-
+  
 type
   TVec2 = record
     public

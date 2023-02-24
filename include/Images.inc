@@ -20,6 +20,12 @@ type
   );
 
 type
+  TRotationFilter = (
+    Nearest,
+    Bilinear
+  );
+
+type
   generic TBitmap<const U: integer; T> = class 
     public const
       TComponents = U;
@@ -27,6 +33,7 @@ type
       TClass = class of TBitmap;
     public type
       TComponent = T;
+      TFormat = specialize TBitmap<TComponents, TComponent>;
       TPixel = packed record
         components: array[0..TComponents-1] of TComponent;
         { Methods }
@@ -57,6 +64,8 @@ type
       function GetPixel(x, y: integer): TPixel; inline; overload;
       function GetPixel(point: TVec2i): TPixel; inline; overload;
       procedure SetPixel(x, y: integer; constref newValue: TPixel); inline; overload;
+      function RotateBilinear(angle: single): TBitmap;
+      function RotateNearest(angle: single): TBitmap;
       { File Handling }
       procedure LoadFromFile(path: AnsiString); virtual; abstract;
       function SaveToFile(path: AnsiString; format: TFileFormat; components: integer; hasAlpha: boolean): Boolean; overload;
@@ -70,6 +79,7 @@ type
       { Methods }
       function Copy: TBitmap; overload;
       function Copy(offsetX, offsetY, width, height: integer): TBitmap; overload;
+      function Rotate(angle: single; filter: TRotationFilter = TRotationFilter.Bilinear): TBitmap;
       procedure Blit(source: TBitmap; offsetX, offsetY: integer; mode: TBlendMode = TBlendMode.Copy);
       procedure Fill(newValue: TPixel);
       { Properties }
@@ -170,7 +180,8 @@ begin
   r:=_r;
   g:=_g;
   b:=_b;
-  a:=_a;
+  if TComponents = 4 then
+    a:=_a;
 end;
 
 (*
@@ -296,7 +307,7 @@ end;
 
 function TBitmap.Copy: TBitmap;
 begin
-  result := specialize TBitmap<TComponents, TComponent>.Create(Width, Height, Data);
+  result := TClass(ClassType).Create(Width, Height, Data);
 end;
 
 function TBitmap.Copy(offsetX, offsetY, width, height: integer): TBitmap;
@@ -316,7 +327,7 @@ var
   i: integer;
 begin
   for i := 0 to Count - 1 do
-    data[i] := newValue;
+    data[i] := newValue.components;
 end;
 
 procedure TBitmap.Blit(source: TBitmap; offsetX, offsetY: integer; mode: TBlendMode = TBlendMode.Copy);
@@ -424,6 +435,179 @@ begin
           Move(a, b^, sizeof(TPixel));
         end;
     end;
+end;
+
+// TODO: rotate left/right flip vertical/horizontal
+{
+  procedure RotateCounterClockwise90(var image: TImage);
+  var
+    i, j: integer;
+    newImage: TImage;
+  begin
+    SetLength(newImage, Length(image[0]), Length(image));
+    for i := 0 to High(image) do
+      for j := 0 to High(image[i]) do
+        newImage[High(newImage) - j][i] := image[i][j];
+    image := newImage;
+  end;
+
+  procedure FlipBitmapHorizontally(var bitmap: TBitmap);
+  var
+    x, y: Integer;
+    temp: TColor;
+  begin
+    for y := 0 to bitmap.Height - 1 do
+      for x := 0 to (bitmap.Width div 2) - 1 do
+      begin
+        temp := bitmap.Canvas.Pixels[x, y];
+        bitmap.Canvas.Pixels[x, y] := bitmap.Canvas.Pixels[bitmap.Width - x - 1, y];
+        bitmap.Canvas.Pixels[bitmap.Width - x - 1, y] := temp;
+      end;
+  end;
+
+  procedure FlipBitmapVertically(var bitmap: TBitmap);
+  var
+    x, y: Integer;
+    temp: TColor;
+  begin
+    for x := 0 to bitmap.Width - 1 do
+      for y := 0 to (bitmap.Height div 2) - 1 do
+      begin
+        temp := bitmap.Canvas.Pixels[x, y];
+        bitmap.Canvas.Pixels[x, y] := bitmap.Canvas.Pixels[x, bitmap.Height - y - 1];
+        bitmap.Canvas.Pixels[x, bitmap.Height - y - 1] := temp;
+      end;
+  end;
+
+  function TBitmap.Rotate90Clockwise: TBitmap;
+  var
+    x, y: integer;
+    newBmp: TBitmap;
+  begin
+    newBmp := Copy;
+    for y := 0 to Height - 1 do
+      for x := 0 to Width - 1 do
+        newBmp.Pixels[x, Height - 1 - y] := self.Pixels[y, x];
+    result := newBmp;
+  end;
+}
+
+function TBitmap.Rotate(angle: single; filter: TRotationFilter): TBitmap;
+begin
+  // TODO: if the angle is multiple of 90 then use other rotate functions
+  case filter of
+    TRotationFilter.Bilinear:
+      result := RotateBilinear(angle);
+    TRotationFilter.Nearest:
+      result := RotateNearest(angle);
+  end;
+end;
+
+function TBitmap.RotateNearest(angle: single): TBitmap;
+var
+  radians: double;
+  sinTheta, cosTheta: double;
+  cx, cy: double;
+  x, y: integer;
+  sx, sy: double;
+  w, h: integer;
+  newBmp: TBitmap;
+begin
+  radians := DegToRad(angle);
+  sinTheta := sin(radians);
+  cosTheta := cos(radians);
+
+  w := self.Width;
+  h := self.Height;
+  cx := w / 2;
+  cy := h / 2;
+
+  newBmp := Copy;
+  // TODO: how many components?
+  newBmp.Fill(TPixel.Create(255, 255, 255, 0));
+
+  for x := 0 to w - 1 do
+    for y := 0 to h - 1 do
+      begin
+        sx := (x - cx) * cosTheta - (y - cy) * sinTheta + cx;
+        sy := (x - cx) * sinTheta + (y - cy) * cosTheta + cy;
+        if (sx >= 0) and (sx < w) and (sy >= 0) and (sy < h) then
+          newBmp.Pixels[x, y] := self.Pixels[Trunc(sx), Trunc(sy)];
+      end;
+
+  result := newBmp;
+end;
+
+
+function TBitmap.RotateBilinear(angle: single): TBitmap;
+
+  { The Blend function can be used to perform linear interpolation between two colors. 
+    For example, if w2 is 0, the resulting color will be equal to c1, and if w2 is 255, 
+    the resulting color will be equal to c2. If w2 is 128, the resulting color will be halfway between c1 and c2. }
+
+  function Blend(c1, c2: TColor; w2: byte): TColor; inline;
+  var
+    w1: byte;
+  begin
+    w1 := 255 - w2;
+    Result := RGBA(c1.r * w1 / 255 + c2.r * w2 / 255,
+                   c1.g * w1 / 255 + c2.g * w2 / 255,
+                   c1.b * w1 / 255 + c2.b * w2 / 255,
+                   1);
+  end;
+
+var
+  radians: single;
+  sinTheta, cosTheta: single;
+  cx, cy: single;
+  x, y: integer;
+  sx, sy: single;
+  w, h: integer;
+  newBmp: TBitmap;
+  x1, x2, y1, y2: integer;
+  fx, fy: single;
+  c1, c2, c3, c4: TColor;
+begin
+  radians := DegToRad(angle);
+  sinTheta := sin(radians);
+  cosTheta := cos(radians);
+
+  w := self.Width;
+  h := self.Height;
+  cx := w / 2;
+  cy := h / 2;
+
+  newBmp := Copy;
+  // TODO: how many components?
+  newBmp.Fill(TPixel.Create(255, 255, 255, 0));
+
+  for x := 0 to w - 1 do
+    for y := 0 to h - 1 do
+      begin
+        sx := (x - cx) * cosTheta - (y - cy) * sinTheta + cx;
+        sy := (x - cx) * sinTheta + (y - cy) * cosTheta + cy;
+        if (sx >= 0) and (sx < w - 1) and (sy >= 0) and (sy < h - 1) then
+          begin
+            x1 := Trunc(sx);
+            y1 := Trunc(sy);
+            x2 := x1 + 1;
+            y2 := y1 + 1;
+            fx := sx - x1;
+            fy := sy - y1;
+
+            c1 := self.Pixels[x1, y1];
+            c2 := self.Pixels[x2, y1];
+            c3 := self.Pixels[x1, y2];
+            c4 := self.Pixels[x2, y2];
+
+            newBmp.Pixels[x, y] :=
+              Blend(Blend(c1, c2, Round(fx * 255)),
+                    Blend(c3, c4, Round(fx * 255)),
+                    Round(fy * 255));
+          end;
+      end;
+
+  result := newBmp;
 end;
 
 function TBitmap.GetFileName: String;

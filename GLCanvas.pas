@@ -5,6 +5,7 @@
 {$modeswitch multihelpers}
 {$modeswitch nestedprocvars}
 {$modeswitch arrayoperators}
+{$modeswitch implicitfunctionspecialization}
 
 {$interfaces corba}
 {$implicitexceptions off}
@@ -89,7 +90,6 @@ uses
 {$include include/FreeType.inc}
 {$include include/Keys.inc}
 {$include include/Event.inc}
-{$ifndef PLATFORM_NONE}{$include include/Input.inc}{$endif}
 {$undef INTERFACE}
 
 type
@@ -150,7 +150,9 @@ procedure DrawQuad(constref quad: TDefaultVertexQuad); inline;
 procedure DrawTiledTexture(texture: TTexture; rect: TRect);
 
 { Text }
-function MeasureText(font: IFont; text: TFontString; maximumWidth: integer = MaxInt): TVec2;
+function MeasureText(font: IFont; text: TFontString; maximumWidth: integer = MaxInt): TVec2; overload;
+function MeasureText(font: IFont; lines: array of TFontString): TVec2; overload;
+function CalculateTextWidth(font: IFont; text: TFontString): integer;
 function WrapText(font: IFont; text: TFontString; maximumWidth: integer): TStringList;
 
 function DrawText(text: TFontString; textAlignment: TTextAlignment; bounds: TRect; color: TColor): TVec2; overload; inline;
@@ -220,6 +222,7 @@ procedure PushProjectionTransform(x, y, width, height: integer);
 procedure PopProjectionTransform; 
 
 procedure SetViewTransform(x, y, scale: single);
+procedure SetViewTransform(constref mat: TMat4);
 procedure PushViewTransform(constref mat: TMat4);
 procedure PushViewTransform(x, y, scale: single);
 procedure PopViewTransform; 
@@ -363,7 +366,6 @@ var
 {$include include/FreeType.inc}
 {$include include/Keys.inc}
 {$include include/Event.inc}
-{$ifndef PLATFORM_NONE}{$include include/Input.inc}{$endif}
 {$undef IMPLEMENTATION}
 
 const
@@ -1403,20 +1405,16 @@ begin
   {$ifdef PLATFORM_SDL}
   SDL_GL_MakeCurrent(window, context);
   SDL_GL_SwapWindow(window);
-  
+
   while SDL_PollEvent(event) > 0 do
     begin
       case event.type_ of
         SDL_QUIT_EVENT:
           wantsClose := true;
         SDL_WINDOW_EVENT:
-          begin
-            case event.window.event of
-              SDL_WINDOWEVENT_CLOSE:
-                wantsClose := true;
-              SDL_WINDOWEVENT_RESIZED:
-                ;//Reshape(event.window.data1, event.window.data2);
-            end;
+          case event.window.event of
+            SDL_WINDOWEVENT_CLOSE:
+              wantsClose := true;
           end;
       end;
       PollSystemInput(@event);
@@ -1517,7 +1515,7 @@ procedure SetupCanvas(width, height: integer; eventCallback: TEventCallback; opt
 var
   flags: longint;
 begin
-  if SDL_Init(SDL_INIT_VIDEO) < 0 then
+  if SDL_Init(SDL_INIT_VIDEO + SDL_INIT_JOYSTICK) < 0 then
     begin
       writeln('SDL could not initialize! ',SDL_GetError);
       Halt(-1);
@@ -1579,6 +1577,8 @@ procedure MainEventCallback(event: pGLPT_MessageRec);
 var
   _event: TEvent;
 begin
+  PollSystemInput(event);
+
   if CanvasState.eventCallback <> nil then
     begin
       _event := TEvent.Create(event^);

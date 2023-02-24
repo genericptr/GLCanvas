@@ -21,7 +21,12 @@ type
     Pinch,
     Pan,
     Rotate,
-    LongPress
+    LongPress,
+    ControllerAdded,
+    ControllerRemoved,
+    ControllerMotion,
+    ControllerButtonDown,
+    ControllerButtonUp
   );
 
 {$ifdef PLATFORM_NONE}
@@ -49,7 +54,28 @@ type
   TScanCode = GLPT_Scancode;
 {$endif}
 
-  
+const
+  kControllerInvalidInput = -MaxInt;
+
+type
+  TControllerAxis = record
+    axis: integer;   // axis which was moved
+    value: integer;  // value of the axis (-1, 0, 1)
+  end;
+
+  TControllerState = record
+    public
+      index: integer;
+      axis: integer;   // axis which was moved
+      value: integer;  // value of the axis (-1, 0, 1)
+      button: integer; // button pressed/released
+      ref: pointer;    // opaque reference to the controller
+
+      procedure Reset;
+      function GUIDString: String;
+      function Name: String;
+  end;
+
 type
   generic TAbstractEvent<T> = class abstract
     public type
@@ -77,6 +103,8 @@ type
       function TouchLocation: TVec2i; virtual; abstract;
       function TouchRadius: Float; virtual; abstract;
       function TouchHit(rect: TRect): boolean; virtual; abstract;
+      { Controller }
+      function ControllerState: TControllerState; virtual; abstract;
       { Window }
       function WindowSize: TVec2; virtual; abstract;
       { Properties }
@@ -98,6 +126,7 @@ type
       function MouseModifiers: TShiftState; override;
       function MouseLocation: TVec2i; override;
       function WindowSize: TVec2; override;
+      function ControllerState: TControllerState; override;
   end;
   TEvent = TSDLEvent;
 {$endif}
@@ -145,15 +174,119 @@ type
   TEvent = TCocoaEvent;
 {$endif}
 
+// redeclare shift state to override GLPT
+type
+  TShiftState = Classes.TShiftState;
+  TTouchMap = specialize TFPGMapObject<SizeUInt, TEvent>;
+
+function GetMouseLocation: TVec2i;
+function GetTouches: TTouchMap;
+function IsMouseDown: boolean;
+function IsLeftMouseDown: boolean;
+function IsRightMouseDown: boolean;
+function IsMouseOffscreen: boolean;
+function IsCommandKeyDown: boolean;
+function IsShiftKeyDown: boolean;
+function IsOptionKeyDown: boolean;
+function IsControlKeyDown: boolean;
+function IsKeyDown(key: TScanCode; repeating: boolean = true): boolean; overload;
+function IsKeyDown(key: char; repeating: boolean = true): boolean; overload;
+
+function IsControllerConnected(index: integer = 0): boolean;
+function IsControllerPressed(button: integer; repeating: boolean = true; index: integer = 0): boolean;
+function GetControllerAxis(index: integer = 0): TControllerAxis;
+function GetControllerGUID(index: integer = 0): string;
+function GetControllerName(index: integer = 0): string;
+
+{$ifdef PLATFORM_SDL}
+procedure PollSystemInput(event: PSDL_Event);
+{$endif}
+
+{$ifdef PLATFORM_GLPT}
+procedure PollSystemInput(event: pGLPT_MessageRec);
+{$endif}
+
+
 {$endif}
 
 {$ifdef IMPLEMENTATION}
+
+type
+  TKeyCodeMap = specialize TFPGMap<String, TKeyCode>;
+
+  TInputAction = class
+    key: TKeyCode;
+    name: string;
+  end;
+
+  TKeyDownState = record
+    pressed: boolean;
+    released: boolean;
+  end;
+  
+  TGameController = record
+    buttons: array[0..32] of TKeyDownState;
+    guid: array[0..15] of Uint8;
+    state: TControllerState;
+
+    function GUIDString: String;
+    function Name: String;
+    function IsConnected: boolean;
+  end;
+
+type
+  TInputManager = class
+    private
+      { keyboard }
+      keyDown: array[0..NUM_SCANCODES-1] of TKeyDownState;
+      shiftState: TShiftState;
+
+      { mouse }
+      leftMouseDown: boolean;
+      rightMouseDown: boolean;
+      mouseLocation: TVec2i;
+      mouseDownLocation: TVec2i;
+      mouseOffscreen: boolean;
+
+      { touches }
+      touches: TTouchMap;
+
+      { controllers }
+      controllers: array[0..32] of TGameController;
+    public
+      actions: TKeyCodeMap;
+    public
+      constructor Create;
+  end;
+
+var
+  InputManager: TInputManager;
+
+{$ifdef PLATFORM_SDL}
+type
+  SDL_Event_Helper = record helper for SDL_Event
+    function GetMouseLocation: TVec2i;
+    function GetControllerState: TControllerState;
+  end;
+{$endif}
+
+{$ifdef PLATFORM_GLPT}
+type
+  TGLPT_MessageRec_Helper = record helper for GLPT_MessageRec
+    function GetMouseLocation: TVec2i;
+    function GetTouchLocation: TVec2i;
+    function GetGestureLocation: TVec2i;
+  end;
+{$endif}
 
 {*****************************************************************************
  *                                    TSDLEvent
  *****************************************************************************}
 
 {$ifdef PLATFORM_SDL}
+const
+  JOYSTICK_DEAD_ZONE = 8000;
+
 function TSDLEvent.Copy: TSDLEvent;
 begin
   result := TSDLEvent.Create(RawEvent);
@@ -162,6 +295,11 @@ end;
 function TSDLEvent.EventType: TEventType;
 begin
   case msg.type_ of
+    SDL_JOYDEVICEADDED: result := TEventType.ControllerAdded;
+    SDL_JOYDEVICEREMOVED: result := TEventType.ControllerRemoved;
+    SDL_JOYBUTTONDOWN: result := TEventType.ControllerButtonDown;
+    SDL_JOYBUTTONUP: result := TEventType.ControllerButtonUp;
+    SDL_JOYAXISMOTION: result := TEventType.ControllerMotion;
     SDL_WINDOW_EVENT:
       begin
         case msg.window.event of
@@ -245,7 +383,36 @@ function TSDLEvent.WindowSize: TVec2;
 begin
   result := V2(msg.window.data1, msg.window.data2)
 end;
+
+function TSDLEvent.ControllerState: TControllerState;
+begin
+  result := RawEvent.GetControllerState;
+end;
+
 {$endif}
+
+{*****************************************************************************
+ *                             TControllerState
+ *****************************************************************************}
+
+function TControllerState.GUIDString: String;
+begin
+  result := GetControllerGUID(index);
+end;
+
+function TControllerState.Name: String;
+begin
+  result := GetControllerName(index);
+end;
+
+procedure TControllerState.Reset;
+begin
+  index := 0;
+  axis := kControllerInvalidInput;
+  value := 0;
+  button := kControllerInvalidInput;
+  ref := nil;
+end;
 
 {*****************************************************************************
  *                                    TGLPTEvent
@@ -458,5 +625,421 @@ constructor TAbstractEvent.Create(constref raw: TRawEvent);
 begin
   msg := raw;
 end;
+
+{*****************************************************************************
+ *                                 Input
+ *****************************************************************************}
+
+// https://godotengine.org/article/handling-axis-godot
+// https://stackoverflow.com/questions/46044752/godot-keyboard-events
+// https://docs.godotengine.org/en/3.1/classes/class_input.html
+
+constructor TInputManager.Create;
+var
+  i: integer;
+begin
+  actions := TKeyCodeMap.Create;
+  touches := TTouchMap.Create;
+
+  mouseOffscreen := true;
+
+  for i := 0 to high(keyDown) do
+    begin
+      keyDown[i].pressed := false;
+      keyDown[i].released := true;
+    end;
+
+  for i := 0 to high(controllers) do
+    controllers[i].state.Reset;
+end;
+
+{ Actions }
+
+function IsActionPressed(action: string): boolean;
+begin
+end;
+
+function IsActionJustPressed(action: string): boolean;
+begin
+end;
+
+function IsActionReleased(action: string): boolean;
+begin
+end;
+
+function IsActionJustReleased(action: string): boolean;
+begin
+end;
+
+function GetActionForce(key: string): single;
+begin
+end;
+
+{ Keyboard & Mouse Events }
+
+function GetMouseLocation: TVec2i;
+begin
+  result := InputManager.mouseLocation;
+end;
+
+function GetTouches: TTouchMap;
+begin
+  result := InputManager.touches;
+end;
+
+function IsMouseDown: boolean;
+begin
+  result := InputManager.leftMouseDown or InputManager.rightMouseDown;
+end;
+
+function IsLeftMouseDown: boolean;
+begin
+  result := InputManager.leftMouseDown;
+end;
+
+function IsRightMouseDown: boolean;
+begin
+  result := InputManager.rightMouseDown;
+end;
+
+function IsMouseOffscreen: boolean;
+begin
+  result := InputManager.mouseOffscreen;
+end;
+
+function IsCommandKeyDown: boolean;
+begin
+  result := ssSuper in InputManager.shiftState;
+end;
+
+function IsShiftKeyDown: boolean;
+begin
+  result := ssShift in InputManager.shiftState;
+end;
+
+function IsOptionKeyDown: boolean;
+begin
+  result := ssAlt in InputManager.shiftState;
+end;
+
+function IsControlKeyDown: boolean;
+begin
+  result := ssCtrl in InputManager.shiftState;
+end;
+
+function IsKeyDown(key: TScanCode; repeating: boolean): boolean;
+begin
+  if not repeating then
+    begin
+      if InputManager.keyDown[key].pressed and InputManager.keyDown[key].released then
+        begin
+          result := true;
+          InputManager.keyDown[key].released := false;
+        end
+      else
+        result := false;
+    end
+  else
+    result := InputManager.keyDown[key].pressed;
+end;
+
+function IsKeyDown(key: char; repeating: boolean): boolean;
+begin
+  {$ifdef PLATFORM_GLPT}
+  result := IsKeyDown(GLPT_GetScancodeFromKey(Ord(key)), repeating);
+  {$endif}
+
+  {$ifdef PLATFORM_SDL}
+  result := IsKeyDown(SDL_GetScancodeFromKey(Ord(key)), repeating);
+  {$endif}
+end;
+
+function IsControllerConnected(index: integer): boolean;
+begin
+  Assert((index >= 0) and (index < high(InputManager.controllers)), 'Controller index '+index.ToString+' out of range');
+
+  result := InputManager.controllers[index].IsConnected;
+end;
+
+function IsControllerPressed(button: integer; repeating: boolean; index: integer): boolean;
+begin
+  Assert((index >= 0) and (index < high(InputManager.controllers)), 'Controller index '+index.ToString+' out of range');
+  Assert((button >= 0) and (button < high(InputManager.controllers[index].buttons)), 'Button '+button.ToString+' out of range');
+
+  result := InputManager.controllers[index].buttons[button].pressed;
+end;
+
+function GetControllerAxis(index: integer): TControllerAxis;
+begin
+  Assert((index >= 0) and (index < high(InputManager.controllers)), 'Controller index '+index.ToString+' out of range');
+
+  result.axis := InputManager.controllers[index].state.axis;
+  result.value := InputManager.controllers[index].state.value;
+end;
+
+function GetControllerGUID(index: integer): string;
+begin
+  Assert((index >= 0) and (index < high(InputManager.controllers)), 'Controller index '+index.ToString+' out of range');
+
+  result := InputManager.controllers[index].GUIDString;
+end;
+
+function GetControllerName(index: integer): string;
+begin
+  Assert((index >= 0) and (index < high(InputManager.controllers)), 'Controller index '+index.ToString+' out of range');
+
+  result := InputManager.controllers[index].Name;
+end;
+
+{*****************************************************************************
+ *                             TControllerState
+ *****************************************************************************}
+
+function TGameController.Name: String;
+begin
+  result := SDL_JoystickName(state.ref);
+end;
+
+function TGameController.IsConnected: boolean;
+begin
+  result := assigned(state.ref) and SDL_JoystickGetAttached(state.ref);
+end;
+
+function TGameController.GUIDString: String;
+const
+  GUIDStringLength = 33;
+begin
+  SDL_JoystickGetGUIDString(
+      SDL_JoystickGetGUID(state.ref),
+      @result,
+      GUIDStringLength
+  );
+  
+  SetLength(result, GUIDStringLength);
+end;
+
+{$ifdef PLATFORM_SDL}
+
+generic function IfThenElse<T>(condition: boolean; constref _if: T; constref _else: T): T; inline;
+begin
+  if condition then
+    result := _if
+  else
+    result := _else;
+end;
+
+procedure PollSystemInput(event: PSDL_Event);
+var
+  joystick: PSDL_Joystick;
+begin
+  case event.type_ of
+    SDL_MOUSEBUTTONUP:
+      begin
+        InputManager.leftMouseDown := false;
+        InputManager.rightMouseDown := false;
+        InputManager.mouseDownLocation := -1;
+      end;
+    SDL_WINDOW_EVENT:
+      begin
+        case event.window.event of
+          SDL_WINDOWEVENT_LEAVE:
+            InputManager.mouseOffscreen := true;
+          SDL_WINDOWEVENT_ENTER:
+            begin
+              InputManager.mouseOffscreen := false;
+              InputManager.mouseLocation := CanvasMousePosition(event.GetMouseLocation);
+            end;
+        end;
+      end;
+    SDL_MOUSEWHEEL:
+      begin
+        InputManager.mouseLocation := CanvasMousePosition(event.GetMouseLocation);
+      end;
+    SDL_MOUSEBUTTONDOWN:
+      begin
+        InputManager.mouseDownLocation := InputManager.mouseLocation;
+        InputManager.leftMouseDown := event.button.button = SDL_BUTTON_LEFT;
+        InputManager.rightMouseDown := event.button.button = SDL_BUTTON_RIGHT;
+        //InputManager.shiftState := event^.params.mouse.shiftstate;
+      end;
+    SDL_MOUSEMOTION:
+      begin
+        //InputManager.mouseOffscreen := false;
+        InputManager.mouseLocation := CanvasMousePosition(event.GetMouseLocation);
+      end;
+    SDL_KEYUP:
+      begin
+        InputManager.keyDown[event.key.keysym.scancode].pressed := false;
+        InputManager.keyDown[event.key.keysym.scancode].released := true;
+        //InputManager.shiftState := event^.params.keyboard.shiftstate;
+      end;
+    SDL_KEYDOWN:
+      begin
+        InputManager.keyDown[event.key.keysym.scancode].pressed := true;
+        //InputManager.shiftState := event^.params.keyboard.shiftstate;
+      end;
+    SDL_JOYAXISMOTION:
+      begin
+        with InputManager.controllers[event.jaxis.which] do
+          begin
+            state := event.GetControllerState;
+            guid := SDL_JoystickGetGUID(state.ref).data;
+            //writeln('axis: ', event.jaxis.axis, ' = ', state.value);
+          end;
+      end;
+    SDL_JOYHATMOTION:
+      ;
+    SDL_JOYBUTTONDOWN:
+      begin
+        //writeln('down ', event.jbutton.button);
+        with InputManager.controllers[event.jbutton.which] do
+          begin
+            //state := event.GetControllerState;
+            buttons[event.jbutton.button].pressed := true;//IfThenElse(jbutton.state = SDL_PRESSED, true, false);
+            guid := SDL_JoystickGetGUID(state.ref).data;
+          end;
+        // jbutton.state = SDL_PRESSED or SDL_RELEASED
+        //InputManager.controllerButtonDown[event.jbutton.which, event.jbutton.button].pressed := false;
+      end;
+    SDL_JOYBUTTONUP:
+      begin
+        with InputManager.controllers[event.jbutton.which] do
+          begin
+            //state := event.GetControllerState;
+            buttons[event.jbutton.button].pressed := false;
+            buttons[event.jbutton.button].released := true;
+            guid := SDL_JoystickGetGUID(state.ref).data;
+          end;
+      end;
+    SDL_JOYDEVICEADDED:
+      begin
+        joystick := SDL_JoystickOpen(event.jdevice.which);
+
+        InputManager.controllers[SDL_JoystickInstanceID(joystick)].state.ref := joystick;
+
+        writeln('SDL_JoystickName: ', SDL_JoystickName(joystick));
+        writeln('SDL_JoystickInstanceID: ', SDL_JoystickInstanceID(joystick));
+        writeln('SDL_JoystickGetAttached: ', SDL_JoystickGetAttached(joystick));
+        writeln('SDL_JoystickNumButtons: ', SDL_JoystickNumButtons(joystick));
+        writeln('SDL_JoystickNumHats: ', SDL_JoystickNumHats(joystick));
+        writeln('SDL_JoystickNumAxes: ', SDL_JoystickNumAxes(joystick));
+        writeln('SDL_IsGameController: ', SDL_IsGameController(event.jdevice.which));
+      end;
+    SDL_JOYDEVICEREMOVED:
+      begin
+        SDL_JoystickClose(InputManager.controllers[event.jdevice.which].state.ref);
+        InputManager.controllers[event.jdevice.which].state.ref := nil;
+        writeln('device removed');
+      end;
+  end;
+end;
+
+function SDL_Event_Helper.GetControllerState: TControllerState;
+begin  
+  if (type_ = SDL_JOYBUTTONDOWN) or (type_ = SDL_JOYBUTTONUP) then
+    result.index := self.jbutton.which
+  else
+    result.index := self.jaxis.which;
+
+  result.ref := InputManager.controllers[result.index].state.ref;
+
+  result.button := self.jbutton.button;
+  result.axis := self.jaxis.axis;
+
+  if self.jaxis.value < -JOYSTICK_DEAD_ZONE then
+    result.value := -1
+  else if self.jaxis.value > JOYSTICK_DEAD_ZONE then
+    result.value := 1
+  else
+    result.value := 0;
+end;
+
+function SDL_Event_Helper.GetMouseLocation: TVec2i;
+begin
+  result := V2(motion.x, motion.y);
+end;
+{$endif}
+
+
+{$ifdef PLATFORM_GLPT}
+procedure PollSystemInput(event: pGLPT_MessageRec);
+begin
+  case event^.mcode of
+    GLPT_MESSAGE_MOUSEUP:
+      begin
+        InputManager.leftMouseDown := false;
+        InputManager.rightMouseDown := false;
+        InputManager.mouseDownLocation := -1;
+      end;
+    GLPT_MESSAGE_MOUSEEXIT:
+      InputManager.mouseOffscreen := true;
+    GLPT_MESSAGE_MOUSEENTER:
+      begin
+        InputManager.mouseOffscreen := false;
+        InputManager.mouseLocation := CanvasMousePosition(event.GetMouseLocation);
+        InputManager.shiftState := event^.params.mouse.shiftstate;
+      end;
+    GLPT_MESSAGE_SCROLL:
+      begin
+        InputManager.mouseLocation := CanvasMousePosition(event.GetMouseLocation);
+      end;
+    GLPT_MESSAGE_MOUSEDOWN:
+      begin
+        InputManager.mouseDownLocation := InputManager.mouseLocation;
+        InputManager.leftMouseDown := event^.params.mouse.buttons = GLPT_MOUSE_BUTTON_LEFT;
+        InputManager.rightMouseDown := event^.params.mouse.buttons = GLPT_MOUSE_BUTTON_RIGHT;
+        InputManager.shiftState := event^.params.mouse.shiftstate;
+      end;
+    GLPT_MESSAGE_TOUCH_DOWN:
+      begin
+        InputManager.touches.Add(event.params.touch.id, TEvent.Create(event^));
+        //InputManager.mouseLocation := CanvasMousePosition(event.GetTouchLocation);
+        // TODO: computed property which checks touches map
+      end;
+    GLPT_MESSAGE_TOUCH_MOTION:
+      begin
+        if InputManager.touches.IndexOf(event.params.touch.id) > -1 then
+          InputManager.touches.Remove(event.params.touch.id);
+        InputManager.touches.Add(event.params.touch.id, TEvent.Create(event^));
+
+        //InputManager.mouseLocation := CanvasMousePosition(event.GetTouchLocation);
+      end;
+    GLPT_MESSAGE_TOUCH_UP:
+      begin
+        if InputManager.touches.IndexOf(event.params.touch.id) > -1 then
+          InputManager.touches.Remove(event.params.touch.id);
+
+        //InputManager.mouseLocation := -1;
+      end;
+    GLPT_MESSAGE_KEYRELEASE:
+      begin
+        // TODO: we need GLPT_GetKeyFromScancode/GLPT_GetScancodeFromKey
+        InputManager.keyDown[event^.params.keyboard.scancode].pressed := false;
+        InputManager.keyDown[event^.params.keyboard.scancode].released := true;
+        InputManager.shiftState := event^.params.keyboard.shiftstate;
+      end;
+    GLPT_MESSAGE_KEYPRESS:
+      begin
+        InputManager.keyDown[event^.params.keyboard.scancode].pressed := true;
+        InputManager.shiftState := event^.params.keyboard.shiftstate;
+      end;
+  end;
+end; 
+
+function TGLPT_MessageRec_Helper.GetMouseLocation: TVec2i;
+begin
+  result := V2i(params.mouse.x, params.mouse.y);
+end;
+
+function TGLPT_MessageRec_Helper.GetTouchLocation: TVec2i;
+begin
+  result := V2i(params.touch.x, params.touch.y);
+end;
+
+function TGLPT_MessageRec_Helper.GetGestureLocation: TVec2i;
+begin
+  result := V2i(params.gesture.x, params.gesture.y);
+end;
+{$endif}
 
 {$endif}

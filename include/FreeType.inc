@@ -224,7 +224,7 @@ begin
             data[channels * offset + 1] := high(UInt8);
             data[channels * offset + 2] := high(UInt8);
             data[channels * offset + 3] := value;
-          end;  
+          end;
 
       AddTexture(glyph, canvasX, canvasY);
 

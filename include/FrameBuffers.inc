@@ -15,6 +15,7 @@ type
       enableDepthBuffer: boolean;
 
       function GetBounds: TRect; inline;
+      function GetSize: TVec2; inline;
       function GetTexture: TTexture; inline;
       procedure SetFlipped(newValue: boolean); 
     public
@@ -32,13 +33,16 @@ type
       procedure Pop; virtual;
       procedure Bind;
       procedure Unbind;
-      procedure Blit(destBuffer: TFrameBuffer; sourceRect, destRect: TRecti);
+      procedure Blit(destBuffer: TFrameBuffer; sourceRect, destRect: TRecti); overload;
+      procedure Blit(destTexture: TTexture; sourceRect: TRecti; destOffset: TVec2i); overload;
+      procedure Blit(destTexture: TTexture; rect: TRecti); overload;
       procedure Resize(newWidth, newHeight: integer); virtual;
       procedure Clear;
 
       { Properties }
       property Width: integer read m_width;
       property Height: integer read m_height;
+      property Size: TVec2 read GetSize;
       property Bounds: TRect read GetBounds;
       property Texture: TTexture read GetTexture;
       property TextureID: GLuint read m_textureID;
@@ -69,6 +73,11 @@ end;
 function TFrameBuffer.GetBounds: TRect;
 begin
   result := RectMake(0, 0, Width, Height);
+end;
+
+function TFrameBuffer.GetSize: TVec2;
+begin
+  result := V2(Width, Height);
 end;
 
 function TFrameBuffer.GetTexture: TTexture;
@@ -108,7 +117,7 @@ begin
   m_width := newWidth;
   m_height := newHeight;
 
-  // TODO: disabled for now
+  // TODO: disabled for now since we can't figure it out
   Assert(TextureID = 0, 'frame buffer already allocated.');
   //if texture > 0 then
   //  begin
@@ -169,6 +178,28 @@ begin
   glViewPort(previousViewPort[0], previousViewPort[1], previousViewPort[2], previousViewPort[3]);
 end;
 
+{ Copies part of the frame buffer to a target texture }
+procedure TFrameBuffer.Blit(destTexture: TTexture; sourceRect: TRecti; destOffset: TVec2i);
+begin
+  Assert((sourceRect.Width <= Width) and (sourceRect.Height <= Height), 'Source size exceeds frame buffer size');
+
+  // TODO: we need a bind on the texture itself so it knows to load also
+  destTexture.LoadIfNeeded;
+  BindTexture2D(destTexture.TextureID, 1);
+
+  glBindFramebuffer(GL_READ_FRAMEBUFFER, self.buffer);
+  CopyTexture2D(sourceRect, RectMake(destOffset.x, destOffset.y, destTexture.Size));
+  glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
+
+  RestoreLastBoundTexture;
+end;
+
+procedure TFrameBuffer.Blit(destTexture: TTexture; rect: TRecti);
+begin
+  Blit(destTexture, rect, rect.origin);
+end;
+
+{ Copies part of the frame buffer to target frame buffer }
 procedure TFrameBuffer.Blit(destBuffer: TFrameBuffer; sourceRect, destRect: TRecti);
 begin
   glBindFramebuffer(GL_READ_FRAMEBUFFER, self.buffer);
@@ -231,6 +262,7 @@ end;
 
 procedure TFrameBuffer.Push;
 begin
+  FlushDrawing;
   if FrameBufferStack = nil then
     FrameBufferStack := TFrameBufferList.Create;
   FrameBufferStack.Add(self);

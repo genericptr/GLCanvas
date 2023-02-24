@@ -1,13 +1,14 @@
 {$ifdef INTERFACE}
 
 type
-  TRectEdge = ( MinX, 
-                MinY,
-                MaxX,
-                MaxY,
-                Any
-                );
-  TAxis = ( Both, X, Y );
+  TRectEdge = (MinX, 
+               MinY,
+               MaxX,
+               MaxY,
+               Any
+               );
+  
+  TAxis = (X, Y, Both);
 
 type
   TRect = record
@@ -62,7 +63,10 @@ type
       function Inset(by: TVec2): TRect; overload; inline;
       function Offset(by: TVec2): TRect; overload; inline;
       function Offset(byX, byY: TScalar): TRect; overload; inline;
+      function ScaleBy(amount: TScalar): TRect; inline;
       function Union(rect: TRect): TRect;
+      function FlipX: TRect; inline;
+      function FlipY: TRect; inline;
 
       procedure Show;
       function ToStr(places: integer = -1): string;
@@ -1503,6 +1507,16 @@ begin
   result := aabb;
 end;
 
+function TRect.FlipX: TRect;
+begin
+  result := RectFlipX(self);
+end;
+
+function TRect.FlipY: TRect;
+begin
+  result := RectFlipY(self);
+end;
+
 function TRect.Offset(by: TVec2): TRect;
 begin
   result := Offset(by.x, by.y);
@@ -1513,6 +1527,12 @@ begin
   result.origin.x := origin.x + byX;
   result.origin.y := origin.y + byY;
   result.size := size;
+end;
+
+function TRect.ScaleBy(amount: TScalar): TRect;
+begin
+  result.origin := origin;
+  result.size := size * amount;
 end;
 
 function TRect.Inset(byX, byY: TScalar): TRect;
