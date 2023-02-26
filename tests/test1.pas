@@ -9,13 +9,9 @@
 
 program Test1;
 uses
-  // rtl
   {$ifdef unix}CThreads,{$endif}
-  // GLCanvas
-  GLCanvas, 
-  GLUtils, 
-  GLUI, 
-  // Platform units
+  GLCanvas,
+  GLUtils,
   {$ifdef PLATFORM_GLPT}GLPT;{$endif}
   {$ifdef PLATFORM_SDL}SDL;{$endif}
 

@@ -1466,6 +1466,7 @@ begin
   {$endif}
 
   writeln('OpenGL version: ', glGetString(GL_VERSION));
+  writeln('GLSL version: ', glGetString(GL_SHADING_LANGUAGE_VERSION));
   {$ifdef PLATFORM_GLPT}
   writeln('GLPT version: ', GLPT_GetVersionString);
   {$endif}

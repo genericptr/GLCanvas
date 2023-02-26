@@ -40,3 +40,9 @@ end.
 
  - [GLPT](https://github.com/genericptr/GLPT) enable using `-dPLATFORM_GLPT` (GLPT is the default platform)
  - [SDL](https://github.com/libsdl-org/SDL) enable using `-dPLATFORM_SDL`
+
+ ### Installing on Windows:
+ 
+ - Download and install the latest release of SDL2 for mingw. For example at the time of writing this `SDL2-devel-2.26.3-mingw.zip` is most recent. See https://github.com/libsdl-org/SDL/releases. Copy the `SDL2.dll` from `\SDL2-2.24.1\i686-w64-mingw32\bin` into the directory which contains the compiled executable (Use i686 for if you're using the `i386-win32` 32-bit compiler).
+
+ - Download FreeType libraries from https://github.com/ubawurinna/freetype-windows-binaries. Copy `/release dll/win32/freetype.dll` into the directory which contains the compiled executable.

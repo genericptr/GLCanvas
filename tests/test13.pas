@@ -10,7 +10,7 @@
 program Test13;
 uses
   FGL, RectangleBinPack,
-  GLUI, GLCanvas;
+  GLCanvas;
 
 const
   window_size_width = 512;
@@ -42,10 +42,7 @@ end;
 procedure EventCallback(event: TEvent);
 begin
   if event.EventType = TEventType.KeyDown then
-    begin
-      AddRect;
-    end;
-  SharedApp.PollEvent(event.RawEvent);
+    AddRect;
 end; 
 
 var
@@ -64,7 +61,8 @@ begin
   writeln('pack time: ', Trunc((GetTime - time) * 1000), 'ms');
 
   SetViewTransform(0, 0, 0.1);
-
+  SetWindowTitle('Press any key to add rectangles');
+  
   while IsRunning do
     begin
       ClearBackground;

@@ -102,6 +102,8 @@ begin
   sourceRect := RectMake(0, 0, 32, 32);
   UpdateBlit;
 
+  SetWindowTitle('Use arrow keys to move blitting area');
+
   while IsRunning do
     begin
       ClearBackground;

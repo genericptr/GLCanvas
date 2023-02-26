@@ -210,7 +210,19 @@ var
                                 '  int fragUV = int(vertexUV);'+
                                 '  if (fragUV < 8) {'+
                                 {$ifdef API_OPENGL}
+                                // GLSL 4.0 or under only support constant indexes for texture samplers
+                                {$ifdef API_GLSL_330}
+                                '    if (fragUV == 0) { fragColor = texture(textures[0], vertexTexCoord.st); } else'+
+                                '    if (fragUV == 1) { fragColor = texture(textures[1], vertexTexCoord.st); } else'+
+                                '    if (fragUV == 2) { fragColor = texture(textures[2], vertexTexCoord.st); } else'+
+                                '    if (fragUV == 3) { fragColor = texture(textures[3], vertexTexCoord.st); } else'+
+                                '    if (fragUV == 4) { fragColor = texture(textures[4], vertexTexCoord.st); } else'+
+                                '    if (fragUV == 5) { fragColor = texture(textures[5], vertexTexCoord.st); } else'+
+                                '    if (fragUV == 6) { fragColor = texture(textures[6], vertexTexCoord.st); } else'+
+                                '    if (fragUV == 7) { fragColor = texture(textures[6], vertexTexCoord.st); }'+
+                                {$else}
                                 '    fragColor = texture(textures[fragUV], vertexTexCoord.st);'+
+                                {$endif}
                                 {$endif}
                                 {$ifdef API_OPENGLES}
                                 '    if (fragUV == 0) { fragColor = texture(textures[0], vertexTexCoord.st); } else'+
@@ -220,7 +232,7 @@ var
                                 '    if (fragUV == 4) { fragColor = texture(textures[4], vertexTexCoord.st); } else'+
                                 '    if (fragUV == 5) { fragColor = texture(textures[5], vertexTexCoord.st); } else'+
                                 '    if (fragUV == 6) { fragColor = texture(textures[6], vertexTexCoord.st); } else'+
-                                '                       { fragColor = texture(textures[7], vertexTexCoord.st); }'+
+                                '    if (fragUV == 7) { fragColor = texture(textures[6], vertexTexCoord.st); }'+
                                 {$endif}
                                 '    if (vertexColor.a < fragColor.a) {'+
                                 '      fragColor.a = vertexColor.a;'+

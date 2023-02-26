@@ -4,8 +4,6 @@
     GLCanvas Test #6
     
     Tests loading textures from memory
-
-    TODO: this example is deprecated in favor of TImage
 }
 {$mode objfpc}
 
@@ -42,14 +40,6 @@ begin
     end;
 
   texture := TTexture.Create(pix.width, pix.height, pix.List^);
-
-  // reload a part of the texture
-  {
-    PushTextureInternal(id, 0);
-    glTexSubImage2D
-    PopTextureInternal;
-  }
-  //texture.Reload(RectMake(0, 0, 4, 4));
 
   while IsRunning do
     begin

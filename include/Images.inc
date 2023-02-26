@@ -545,6 +545,9 @@ function TBitmap.RotateBilinear(angle: single): TBitmap;
     For example, if w2 is 0, the resulting color will be equal to c1, and if w2 is 255, 
     the resulting color will be equal to c2. If w2 is 128, the resulting color will be halfway between c1 and c2. }
 
+  // TODO: nested functions with result in generics are broken on windows
+  // https://gitlab.com/freepascal.org/fpc/source/-/issues/40104
+  {$ifdef DARWIN}
   function Blend(c1, c2: TColor; w2: byte): TColor; inline;
   var
     w1: byte;
@@ -555,6 +558,7 @@ function TBitmap.RotateBilinear(angle: single): TBitmap;
                    c1.b * w1 / 255 + c2.b * w2 / 255,
                    1);
   end;
+  {$endif}
 
 var
   radians: single;
@@ -600,10 +604,14 @@ begin
             c3 := self.Pixels[x1, y2];
             c4 := self.Pixels[x2, y2];
 
+            {$ifdef DARWIN}
             newBmp.Pixels[x, y] :=
               Blend(Blend(c1, c2, Round(fx * 255)),
                     Blend(c3, c4, Round(fx * 255)),
                     Round(fy * 255));
+            {$else}
+            Assert(false, 'Blend is broken on this platform');
+            {$endif}
           end;
       end;
 
