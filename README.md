@@ -7,7 +7,7 @@ A simple program with GLCanvas:
 ```pascal
 program Test;
 uses
-  CThreads, GeometryTypes, GLCanvas, GLPT;
+  CThreads, GLCanvas;
 const
   window_size_width = 600;
   window_size_height = 600;
