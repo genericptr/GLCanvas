@@ -5,7 +5,8 @@
 
 type
 	TTextAlignment = (Left, 
-										Center
+										Center,
+										Right
 										);
 
 type
@@ -147,7 +148,7 @@ begin
 		end;
 end;
 
-function WrapTextInternal(font: IFont; text: TFontString; max: single; var actualSize: TVec2): TStringList;
+function WrapTextInternal(font: IFont; text: TFontString; max: single; var actualSize: TVec2): TFontStringArray;
 var
 	i, s: integer;
 	part: string;
@@ -168,7 +169,7 @@ begin
 		end;
 						
   try
-		result := TStringList.Create; 
+		result := []; 
 		if max > 0 then
 			begin
 				start := 1;
@@ -188,7 +189,7 @@ begin
 										begin
 											longestLine := width;
 											done := true;
-											result.Add(RestoreText(text));
+											result += [RestoreText(text)];
 											break;
 										end;
 										
@@ -205,11 +206,11 @@ begin
 
 							if done then
 								begin
-									if result.Count = 0 then
+									if Length(result) = 0 then
 										begin
 											parts := SplitString(text, i - 1, count);
 											for s := 0 to count - 1 do
-												result.Add(RestoreText(parts.strings[s]));
+												result += [RestoreText(parts.strings[s])];
 											parts.Free;
 										end;
 									break;
@@ -221,15 +222,15 @@ begin
 					longestLine := trunc(max);
 				
 				// no parts were added so assume the whole string fits
-				if result.count = 0 then
-					result.Add(RestoreText(text));
+				if Length(result) = 0 then
+					result += [RestoreText(text)];
 				
 				actualSize.width := previousLongestLine;
-				actualSize.height := font.LineHeight * result.count;
+				actualSize.height := font.LineHeight * Length(result);
 			end
 		else // use the entire strings width
 			begin
-				result.Add(text);
+				result += [text];
 				actualSize.width := CalculateTextWidth(font, text);
 				actualSize.height := font.LineHeight;
 			end;
@@ -237,22 +238,21 @@ begin
   end;
 end;
 
-function WrapText(font: IFont; text: TFontString; maximumWidth: integer): TStringList;
+{ Wraps a raw text string into lines }
+function WrapText(font: IFont; text: TFontString; maximumWidth: integer): TFontStringArray;
 var
 	actualSize: TVec2;
 begin
 	result := WrapTextInternal(font, text, maximumWidth, actualSize);
 end;
 
+{ Measures a raw text string with multiple lines }
 function MeasureText(font: IFont; text: TFontString; maximumWidth: integer = MaxInt): TVec2;
-var
-	lines: TStringList;
 begin
-	lines := WrapTextInternal(font, text, maximumWidth, result);
-	if lines <> nil then
-		lines.Free;
+	WrapTextInternal(font, text, maximumWidth, result);
 end;
 
+{ Measures an array of text lines }
 function MeasureText(font: IFont; lines: array of TFontString): TVec2;
 var
 	size: TVec2;
@@ -294,11 +294,14 @@ begin
 	DrawText(CanvasState.activeFont, text, where, CanvasState.activeFont.PreferredTextColor, scale);
 end;
 
+function DrawText(font: IFont; text: TFontString; textAlignment: TTextAlignment; bounds: TRect): TVec2;
+begin
+	result := DrawText(font, text, textAlignment, bounds, 1);
+end;
+
 function DrawText(font: IFont; text: TFontString; textAlignment: TTextAlignment; bounds: TRect; color: TColor): TVec2;
 var
-	line: TFontString;
-	lines: TStringList;
-	where: TVec2;
+	lines: TFontStringArray;
 begin
 	Assert(font <> nil, 'font must not be nil');
 
@@ -306,27 +309,35 @@ begin
 		exit(V2(0, 0));
 		
 	lines := WrapTextInternal(font, text, Trunc(bounds.width), result);
-	if lines <> nil then
-		begin
-			where := bounds.origin;
-			for line in lines do
-				begin
-					case textAlignment of
-						TTextAlignment.Center:
-							where.x := bounds.MidX - (MeasureText(font, line, maxInt).width / 2);
-						otherwise
-							;
-					end;
-					DrawText(font, line, where, color);
-					where.y += font.LineHeight;
-				end;
-			lines.Free;
-		end;
+
+	DrawText(font, lines, bounds, color, textAlignment);
 end;
 
-function DrawText(font: IFont; text: TFontString; textAlignment: TTextAlignment; bounds: TRect): TVec2;
+procedure DrawText(font: IFont; lines: array of TFontString; bounds: TRect; color: TColor; textAlignment: TTextAlignment);
+var
+	origin: TVec2;
+	line: TFontString;
 begin
-	result := DrawText(font, text, textAlignment, bounds, 1);
+	Assert(font <> nil, 'font must not be nil');
+	
+	origin := bounds.origin;
+
+	// Vertically align text for all lines heights
+	origin.y := bounds.MidY - ((font.LineHeight * Length(lines)) / 2);
+
+	for line in lines do
+		begin
+			case textAlignment of
+				TTextAlignment.Center:
+					origin.x := bounds.MidX - (CalculateTextWidth(font, line) / 2);
+				TTextAlignment.Right:
+					origin.x := bounds.MaxX - CalculateTextWidth(font, line);
+				otherwise
+					;
+			end;
+			DrawText(font, line, origin, color);
+			origin.y += font.LineHeight;
+		end;
 end;
 
 procedure LayoutText(var options: TTextLayoutOptions);
@@ -549,33 +560,6 @@ end;
 procedure DrawText(font: IFont; text: TFontString; where: TVec2; scale: single);
 begin
 	DrawText(font, text, where, 1, scale);
-end;
-
-procedure DrawText(font: IFont; lines: array of TFontString; bounds: TRect; color: TColor; textAlignment: TTextAlignment);
-var
-	origin: TVec2;
-	line: TFontString;
-begin
-	Assert(font <> nil, 'font must not be nil');
-	
-	origin := bounds.origin;
-
-	// Vertically align text for all lines heights
-	origin.y := bounds.MidY - ((font.LineHeight * Length(lines)) / 2);
-
-	for line in lines do
-		begin
-			case textAlignment of
-				TTextAlignment.Center:
-					begin
-						origin.x := bounds.MidX - (CalculateTextWidth(font, line) / 2);
-					end;
-				otherwise
-					;
-			end;
-			DrawText(font, line, origin, color);
-			origin.y += font.LineHeight;
-		end;
 end;
 
 { Creates a font by searching in the resources directory followed by default system locations.
