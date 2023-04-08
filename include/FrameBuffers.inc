@@ -11,7 +11,7 @@ type
       m_texture: TTexture;
       m_flipped: boolean;
       buffer: GLuint;
-      previousViewPort: array[0..3] of GLint;
+      previousViewPort: TRect;
       enableDepthBuffer: boolean;
 
       function GetBounds: TRect; inline;
@@ -29,7 +29,7 @@ type
       function IsBound: boolean;
       function PixelAt(x, y: integer): TColor;
 
-      procedure Push; virtual;
+      procedure Push(_clear: Boolean = false); virtual;
       procedure Pop; virtual;
       procedure Bind;
       procedure Unbind;
@@ -166,8 +166,8 @@ begin
   glBindFramebuffer(GL_FRAMEBUFFER, buffer);
   GLAssert('glBindFramebuffer '+IntToStr(buffer));
   // reset viewport to frame buffer size
-  glGetIntegerv(GL_VIEWPORT, @previousViewPort);
-  glViewPort(0, 0, width, height);
+  previousViewPort := GetViewPort;
+  SetViewPort(Bounds);
 end;
 
 procedure TFrameBuffer.Unbind;
@@ -175,15 +175,15 @@ begin
   glBindFramebuffer(GL_FRAMEBUFFER, 0);
   GLAssert('glBindFramebuffer '+IntToStr(buffer));
   // restore previous viewport
-  glViewPort(previousViewPort[0], previousViewPort[1], previousViewPort[2], previousViewPort[3]);
+  SetViewPort(previousViewPort);
 end;
 
 { Copies part of the frame buffer to a target texture }
 procedure TFrameBuffer.Blit(destTexture: TTexture; sourceRect: TRecti; destOffset: TVec2i);
 begin
-  Assert((sourceRect.Width <= Width) and (sourceRect.Height <= Height), 'Source size exceeds frame buffer size');
+  Assert((sourceRect.x >= 0) and (sourceRect.y >= 0), 'Source origin is negative '+sourceRect.ToStr);
+  Assert((sourceRect.Width <= Width) and (sourceRect.Height <= Height), 'Source size exceeds frame buffer size '+sourceRect.ToStr);
 
-  // TODO: we need a bind on the texture itself so it knows to load also
   destTexture.LoadIfNeeded;
   BindTexture2D(destTexture.TextureID, 1);
 
@@ -260,7 +260,7 @@ begin
   end;
 end;
 
-procedure TFrameBuffer.Push;
+procedure TFrameBuffer.Push(_clear: Boolean);
 begin
   FlushDrawing;
   if FrameBufferStack = nil then
@@ -268,6 +268,8 @@ begin
   FrameBufferStack.Add(self);
   PushProjectionTransform(Width, Height);
   Bind;
+  if _clear then
+    Clear;
 end;
 
 procedure TFrameBuffer.Pop;
