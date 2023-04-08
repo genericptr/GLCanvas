@@ -29,6 +29,7 @@ begin
   textures[2] := TTexture.Create('human.png');
   textures[3] := TTexture.Create('centaur.png');
 
+  // Set up frame buffer
   frameBuffer := TFrameBuffer.Create(256);
   frameBuffer.Push;
     FillRect(frameBuffer.Bounds, TColor.SandyBrown);
@@ -37,10 +38,10 @@ begin
       DrawTexture(textures[x + y * 2], RectMake(x * cell_size, y * cell_size, cell_size, cell_size));
   frameBuffer.Pop;
 
-
   while IsRunning do
     begin
       FillRect(GetViewPort, TColor.Red);
+      // Draw the frame buffer multiple times
       for y := 0 to 1 do
       for x := 0 to 1 do
         DrawTexture(frameBuffer.Texture, RectMake(x * cell_size * 2, y * cell_size * 2, frameBuffer.Width, frameBuffer.Height));
