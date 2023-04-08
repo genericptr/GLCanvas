@@ -153,7 +153,7 @@ procedure DrawTiledTexture(texture: TTexture; rect: TRect);
 function MeasureText(font: IFont; text: TFontString; maximumWidth: integer = MaxInt): TVec2; overload;
 function MeasureText(font: IFont; lines: array of TFontString): TVec2; overload;
 function CalculateTextWidth(font: IFont; text: TFontString): integer;
-function WrapText(font: IFont; text: TFontString; maximumWidth: integer): TStringList;
+function WrapText(font: IFont; text: TFontString; maximumWidth: integer): TFontStringArray;
 
 function DrawText(text: TFontString; textAlignment: TTextAlignment; bounds: TRect; color: TColor): TVec2; overload; inline;
 function DrawText(text: TFontString; textAlignment: TTextAlignment; bounds: TRect): TVec2; overload; inline;
@@ -1251,13 +1251,13 @@ begin
     begin
       if clipRectStack.Count = 0 then
         glEnable(GL_SCISSOR_TEST);
-      //rect := RectFlip(rect, GetViewPort);
+
+      // glScissor uses bottom-left origin
+      rect := RectFlipY(rect, GetViewPort);
+
       // TODO: if the new rect is outside of the previous than don't clip
-      if clipRectStack.Count > 0 then
-        begin
-          if clipRectStack.Last.Contains(rect) then
-            glScissor(Trunc(rect.MinX), Trunc(rect.MinY), Trunc(rect.Width), Trunc(rect.Height));
-        end
+      if (clipRectStack.Count > 0) and clipRectStack.Last.Contains(rect) then
+        glScissor(Trunc(rect.MinX), Trunc(rect.MinY), Trunc(rect.Width), Trunc(rect.Height))
       else
         glScissor(Trunc(rect.MinX), Trunc(rect.MinY), Trunc(rect.Width), Trunc(rect.Height));
       clipRectStack.Add(rect);

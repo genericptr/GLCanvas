@@ -86,16 +86,16 @@ type
       msg: TRawEvent;
     public 
       { Constructors }
-      constructor Create(constref raw: TRawEvent);
+      constructor Create(raw: TRawEvent);
       { General }
       function EventType: TEventType; virtual; abstract;
       { Keyboard }
       function ScanCode: TScancode; virtual; abstract;
       function KeyCode: TKeycode; virtual; abstract;
       function KeyChar: char; virtual;
-      function ScrollWheel: TVec2; virtual; abstract;
       function KeyboardModifiers: TShiftState; virtual; abstract;
       { Mouse }
+      function ScrollWheel: TVec2; virtual; abstract;
       function ClickCount: integer; virtual; abstract;
       function MouseModifiers: TShiftState; virtual; abstract;
       function MouseLocation: TVec2i; virtual; abstract;
@@ -621,7 +621,7 @@ begin
   result := Chr(KeyCode);
 end;
 
-constructor TAbstractEvent.Create(constref raw: TRawEvent); 
+constructor TAbstractEvent.Create(raw: TRawEvent); 
 begin
   msg := raw;
 end;
@@ -820,14 +820,6 @@ end;
 
 {$ifdef PLATFORM_SDL}
 
-generic function IfThenElse<T>(condition: boolean; constref _if: T; constref _else: T): T; inline;
-begin
-  if condition then
-    result := _if
-  else
-    result := _else;
-end;
-
 procedure PollSystemInput(event: PSDL_Event);
 var
   joystick: PSDL_Joystick;
@@ -895,7 +887,7 @@ begin
         with InputManager.controllers[event.jbutton.which] do
           begin
             //state := event.GetControllerState;
-            buttons[event.jbutton.button].pressed := true;//IfThenElse(jbutton.state = SDL_PRESSED, true, false);
+            buttons[event.jbutton.button].pressed := true;//IfThen(jbutton.state = SDL_PRESSED, true, false);
             guid := SDL_JoystickGetGUID(state.ref).data;
           end;
         // jbutton.state = SDL_PRESSED or SDL_RELEASED
