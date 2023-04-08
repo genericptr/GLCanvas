@@ -30,6 +30,8 @@ function HexColorToRGB(hexValue: integer; alpha: TScalar = 1.0): TVec4;
 
 type
 	generic TRange<T> = record
+    private type
+      TValue = T;
 		public
 			min: T;
 			max: T;
@@ -49,6 +51,10 @@ type
 	end;
 	TRangeInt = specialize TRange<Integer>;
 	TRangeFloat = specialize TRange<Single>;
+
+  TRangeFloatHelper = record helper for TRangeFloat
+    function ValueOfPercent(percent: Single): TRangeFloat.TValue;
+  end;
 
 type
   generic TMutableValue<T> = record
@@ -345,11 +351,7 @@ end;
 
 function TRange.ValueOfPercent(percent: single): T;
 begin
-	{$ifdef CPUAARCH64}
-	Assert(false, 'TRange.ValueOfPercent is broken in CPUAARCH64');
-	{$else}
 	result := min + System.Trunc(Total * percent);
-	{$endif}
 end;
 
 function TRange.ToStr: string;
@@ -378,6 +380,11 @@ class operator TRange.:= (right: T): TRange;
 begin
   result.min := right;
   result.max := right;
+end;
+
+function TRangeFloatHelper.ValueOfPercent(percent: Single): TRangeFloat.TValue;
+begin
+  result := min + Total * percent;
 end;
 
 { TFPGMatrix }
