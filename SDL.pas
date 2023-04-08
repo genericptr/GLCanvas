@@ -1814,8 +1814,11 @@ type
     timestamp: Uint32;
     windowID: Uint32;
     which: Uint32;
-    x: LongInt;
-    y: LongInt;
+    x: Sint32;
+    y: Sint32;
+    direction: Uint32;
+    preciseX: SDL_Float;
+    preciseY: SDL_Float;
   end;
   TSDL_MouseWheelEvent = SDL_MouseWheelEvent;
   PSDL_MouseWheelEvent = ^TSDL_MouseWheelEvent;
