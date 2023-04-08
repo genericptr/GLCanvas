@@ -123,8 +123,9 @@ type
 			flags: TTextureFlags;
 			sourceImage: TImage;
 			textureOptions: TTextureImageOptions;
-			slices: TTextureList;
-
+			children: TTextureList;
+		private
+			procedure AddChild(child: TTexture);
 			procedure SetSize(newValue: TVec2);
 			procedure LoadImage(image: TImage);
 			function GetTextureCoords: TRect; inline;
@@ -158,7 +159,7 @@ type
 			property ByteCount: integer read GetByteCount;
 			property Image: TImage read sourceImage;
 
-			{ Methods } 
+			{ Methods }
 			procedure Load; override;
 			procedure Reload; overload;
 			procedure Reload(region: TRect; data: pointer); overload;
@@ -254,7 +255,6 @@ type
 			function GetTexture(name: string): TTextureSprite; overload;
 			function GetTexture(index: integer): TTextureSprite; overload;
 		public
-
 			{ Constructors }
 			constructor Create; overload;
 			constructor Create(_path: ansistring); overload;
@@ -282,7 +282,6 @@ type
 
 			procedure Initialize(canvasSize: TVec2i; options: TTextureImageOptions = DefaultTextureOptions);
 		public
-			
 			{ Constructors }
 			constructor Create(canvasSize: TVec2i; paths: TImagePathArray; options: TTextureImageOptions = DefaultTextureOptions);
 			constructor Create(canvasSize: TVec2i; images: TImageArray; options: TTextureImageOptions = DefaultTextureOptions);
@@ -949,6 +948,9 @@ end;
 { Unloads texture memory but keeps source intact }
 procedure TTextureSource.Unload;
 begin
+	{$ifdef DEBUG_TEXTURES}
+	writeln('delete texture ', hexstr(self), ' id = ', m_textureID);
+	{$endif}
 	DeleteTexture(m_textureID);
 end;
 
@@ -1499,6 +1501,8 @@ begin
 	m_textureFrame.pixel := newValue;
 end;
 
+{ Slice a uniform array of textures.
+  The textures created are owned by the primary texture. }
 function TTexture.Slice(columns: integer; rows: integer = 0): TTextureArray;
 var
 	x, y: integer;
@@ -1525,15 +1529,17 @@ begin
 		end;
 end;
 
+{ Slice a sub-texture.
+  The texture created is owned by the primary texture. }
 function TTexture.Slice(rect: TRect): TTexture;
 begin
 	LoadIfNeeded;
 	result := TTexture.Create(self, rect, PixelToTexture(rect));
-	if slices = nil then
-		slices := TTextureList.Create;
-	slices.Add(result);
+	AddChild(result);
 end;
 
+{ Sub-divide the texture into a sheet.
+  The sheet is owned by the primary texture. }
 function TTexture.Subdivide(cellSize: TVec2): TTextureSheet;
 var
 	tableSize: TVec2;
@@ -1542,6 +1548,7 @@ begin
 	tableSize.width := trunc(textureSize.width / cellSize.width);
 	tableSize.height := trunc(textureSize.height / cellSize.height);
 	result := TTextureSheet.Create(GetTexture, GetFrame, cellSize, tableSize);
+	AddChild(result);
 end;
 
 procedure TTexture.LoadImage(image: TImage);
@@ -1613,6 +1620,14 @@ begin
 		result := inherited;
 end;
 
+{ Store a sub-texture which is owned by the texture }
+procedure TTexture.AddChild(child: TTexture);
+begin
+	if children = nil then
+		children := TTextureList.Create;
+	children.Add(child);
+end;
+
 procedure TTexture.SetSize(newValue: TVec2);
 begin
 	Assert(newValue.Max < GetMaximumTextureSize, 'Sprite face texture exceeds maximum texture size ('+IntToStr(GetMaximumTextureSize)+')');
@@ -1650,7 +1665,14 @@ begin
 end;
 
 destructor TTexture.Destroy;
-begin	
+begin
+	{$ifdef DEBUG_TEXTURES}
+	writeln('free texture ', hexstr(self));
+	{$endif}
+
+	// free child textures
+	FreeAndNil(children);
+
 	// delete the texture if we own it
 	if (TTextureFlag.DisposeTexture in flags) and (textureID <> 0) then
 		Unload;
@@ -1658,9 +1680,6 @@ begin
 	// free the source image if we own it
 	if (TTextureFlag.FreeSourceImage in flags) and assigned(sourceImage) then
 		sourceImage.Free;
-
-	if assigned(slices) then
-		slices.Free;
 
 	inherited;
 end;
