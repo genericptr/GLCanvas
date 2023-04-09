@@ -3,7 +3,7 @@
 
     GLCanvas Test #15
     
-    Tests different texture formats
+    Tests non-RGBA texture formats
 }
 {$mode objfpc}
 

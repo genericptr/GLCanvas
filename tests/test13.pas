@@ -3,7 +3,7 @@
 
     GLCanvas Test #13
     
-    Testing bin packer
+    Tests bin packer
 }
 {$mode objfpc}
 
@@ -34,7 +34,6 @@ begin
   node := TNode.Create;
   node.rect := packer.Insert(Rand(min, max), Rand(min, max));
   // TODO: if the height is 0 we can't find a place
-  node.rect.show;
   node.color := RGBA(FRand(0, 1), FRand(0, 1), FRand(0, 1), 1);
   nodes.Add(node);
 end;

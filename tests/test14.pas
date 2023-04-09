@@ -3,7 +3,7 @@
 
     GLCanvas Test #14
     
-    Test updating textures every frame
+    Tests updating textures every frame
 }
 {$mode objfpc}
 

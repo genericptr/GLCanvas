@@ -3,7 +3,7 @@
 
     GLCanvas Test #11
     
-    Testing blending modes
+    Tests blending modes
 }
 {$mode objfpc}
 

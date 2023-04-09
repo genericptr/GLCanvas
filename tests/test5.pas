@@ -28,7 +28,7 @@ begin
   texture := TTexture.Create('checkers.png');
 
   // TODO: we have a flaw where we rely on the image data from loading from file
-  // so if we change the texture of the texture is modified we need to use glGetTexImage
+  // so if the texture is modified we need to use glGetTexImage
   // https://registry.khronos.org/OpenGL-Refpages/gl4/html/glGetTexImage.xhtml
   // https://registry.khronos.org/OpenGL-Refpages/gl4/html/glTexSubImage2D.xhtml
   {

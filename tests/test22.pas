@@ -3,7 +3,7 @@
 
     GLCanvas Test #22
     
-    Test multiple line text drawing
+    Tests multiple line text drawing
 }
 {$mode objfpc}
 {$modeswitch implicitfunctionspecialization}

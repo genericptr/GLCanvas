@@ -1,14 +1,14 @@
 {
-    Copyright (c) 2021 by Ryan Joseph
+    Copyright (c) 2022 by Ryan Joseph
 
-    GLCanvas Test #10
+    GLCanvas Test #25
     
-    Tests frame buffers
+    Tests blitting frame buffers to texture region
 }
 {$mode objfpc}
 {$modeswitch multihelpers}
 
-program Test10;
+program Test25;
 uses
   GLCanvas;
 
@@ -19,6 +19,7 @@ const
 
 var
   textures: array[0..3] of TTexture;
+  output: TTexture;
   frameBuffer: TFrameBuffer;
   x, y: integer;
 begin
@@ -32,19 +33,27 @@ begin
   // Set up frame buffer
   frameBuffer := TFrameBuffer.Create(256);
   frameBuffer.Push;
+    // Fill the entire buffer
+    FillRect(GetViewPort, TColor.Blue);
+    FlushDrawing;
+    // Clip drawing to a sub-region
+    PushClipRect(RectMake(0, 0, 100, 100));
     FillRect(frameBuffer.Bounds, TColor.SandyBrown);
     for y := 0 to 1 do
     for x := 0 to 1 do
       DrawTexture(textures[x + y * 2], RectMake(x * cell_size, y * cell_size, cell_size, cell_size));
+    FlushDrawing;
+    PopClipRect;
   frameBuffer.Pop;
+
+  // Blit the frame buffer to a sub-region of another texture
+  output := TTexture.Create(frameBuffer.Size, nil);
+  frameBuffer.Blit(output, RectMake(0, 0, frameBuffer.Width / 2, frameBuffer.Height / 2));
 
   while IsRunning do
     begin
       FillRect(GetViewPort, TColor.Red);
-      // Draw the frame buffer multiple times
-      for y := 0 to 1 do
-      for x := 0 to 1 do
-        DrawTexture(frameBuffer.Texture, RectMake(x * cell_size * 2, y * cell_size * 2, frameBuffer.Width, frameBuffer.Height));
+      DrawTexture(output, GetViewPort.FlipY);
       SwapBuffers;
     end;
 

@@ -3,7 +3,7 @@
 
     GLCanvas Test #21
     
-    Test 3D shaders
+    Tests 3D shaders
 }
 {$mode objfpc}
 {$modeswitch advancedrecords}

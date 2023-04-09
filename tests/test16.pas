@@ -3,7 +3,7 @@
 
     GLCanvas Test #16
     
-    Testing frame buffer blitting
+    Tests frame buffer blitting
 }
 {$mode objfpc}
 {$modeswitch multihelpers}

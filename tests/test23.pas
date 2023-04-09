@@ -3,7 +3,7 @@
 
     GLCanvas Test #23
     
-    Test image rotations
+    Tests image rotations
 }
 {$mode objfpc}
 {$modeswitch implicitfunctionspecialization}

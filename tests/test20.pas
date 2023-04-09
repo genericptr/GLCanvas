@@ -3,7 +3,7 @@
 
     GLCanvas Test #20
     
-    Test image slicing/saving
+    Tests image slicing/saving
 }
 {$mode objfpc}
 

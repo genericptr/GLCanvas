@@ -3,7 +3,7 @@
 
     GLCanvas Test #18
     
-    Testing static vertex buffers
+    Tests static vertex buffers
 }
 {$mode objfpc}
 

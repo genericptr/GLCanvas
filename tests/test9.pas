@@ -3,7 +3,7 @@
 
     GLCanvas Test #9
     
-    Testing texture manager
+    Tests texture manager
 }
 {$mode objfpc}
 

@@ -3,7 +3,7 @@
 
     GLCanvas Test #24
     
-    Test blitting frame buffer regions into textures
+    Tests blitting frame buffer regions into textures
 }
 {$mode objfpc}
 {$modeswitch implicitfunctionspecialization}

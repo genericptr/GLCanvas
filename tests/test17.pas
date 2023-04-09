@@ -3,7 +3,7 @@
 
     GLCanvas Test #17
     
-    Testing texture compositing
+    Tests texture composite
 }
 {$mode objfpc}
 {$modeswitch arrayoperators}

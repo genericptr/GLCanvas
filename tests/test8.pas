@@ -3,7 +3,7 @@
 
     GLCanvas Test #8
     
-    Testing bitmap image class
+    Tests bitmap image class
 }
 {$mode objfpc}
 

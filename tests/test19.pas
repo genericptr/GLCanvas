@@ -3,7 +3,7 @@
 
     GLCanvas Test #19
     
-    Testing render buffers
+    Tests render buffers
 }
 {$mode objfpc}
 {$modeswitch multihelpers}
