@@ -113,9 +113,6 @@ type
 procedure SetupCanvas(width, height: integer; eventCallback: TEventCallback = nil; options: TCanvasOptions = DefaultCanvasOptions); 
 {$endif}
 
-function IsRunning: boolean;
-procedure QuitApp;
-
 { Input }
 function CanvasMousePosition(mouse: TVec2i): TVec2i;
 
@@ -187,8 +184,13 @@ procedure DrawBuffer(buffer: TDefaultVertexBuffer);
 
 { Drawing }
 procedure FlushDrawing; inline;
-procedure SwapBuffers; inline;
 procedure ClearBackground;
+
+{ Main Loop }
+function IsRunning: boolean;
+function PollEvents: boolean; inline;
+procedure SwapBuffers; inline;
+procedure QuitApp;
 
 { Blend Mode }
 type
@@ -325,6 +327,7 @@ type
     public
       property ActiveFont: IFont read GetActiveFont;
     public
+      procedure PollEvents; virtual;
       procedure FlushDrawing; virtual;
       procedure SwapBuffers; virtual;
       procedure ClearBackground; virtual;
@@ -1291,6 +1294,13 @@ begin
   CanvasState.FlushDrawing;
 end;
 
+function PollEvents: boolean;
+begin
+  CanvasState.PollEvents;
+  
+  result := IsRunning;
+end;
+
 procedure SwapBuffers;
 begin
   CanvasState.SwapBuffers;
@@ -1392,20 +1402,14 @@ begin
   VertexBuffer.Clear;
 end;
 
-procedure TCanvasState.SwapBuffers;
+procedure TCanvasState.PollEvents;
+{$ifdef PLATFORM_SDL}
 var
-  now: double;
-  {$ifdef PLATFORM_SDL}
   event: TSDL_Event;
   _event: TEvent;
-  {$endif}
+{$endif}
 begin
-  self.FlushDrawing;
-
   {$ifdef PLATFORM_SDL}
-  SDL_GL_MakeCurrent(window, context);
-  SDL_GL_SwapWindow(window);
-
   while SDL_PollEvent(event) > 0 do
     begin
       case event.type_ of
@@ -1428,9 +1432,26 @@ begin
   {$endif}
 
   {$ifdef PlATFORM_GLPT}
-  GLPT_SwapBuffers(window);
   GLPT_PollEvents;
   {$endif}
+end;
+
+procedure TCanvasState.SwapBuffers;
+var
+  now: double;
+begin
+  self.FlushDrawing;
+
+  {$ifdef PLATFORM_SDL}
+  SDL_GL_MakeCurrent(window, context);
+  SDL_GL_SwapWindow(window);
+  {$endif}
+
+  {$ifdef PlATFORM_GLPT}
+  GLPT_SwapBuffers(window);
+  {$endif}
+
+  PollEvents;
 
   now := GetTime;
   deltaTime := now - lastFrameTime;
