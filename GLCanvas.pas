@@ -161,6 +161,7 @@ function DrawText(font: IFont; text: TFontString; textAlignment: TTextAlignment;
 function DrawText(font: IFont; text: TFontString; textAlignment: TTextAlignment; bounds: TRect): TVec2; overload;
 procedure DrawText(font: IFont; text: TFontString; where: TVec2; color: TColor; scale: single = 1.0; textAlignment: TTextAlignment = TTextAlignment.Left); overload; inline;
 procedure DrawText(font: IFont; text: TFontString; where: TVec2; scale: single = 1.0); overload;
+procedure DrawText(font: IFont; text: TFontString; bounds: TRect; color: TColor; truncation: TTextTruncation);
 procedure DrawText(font: IFont; lines: array of TFontString; bounds: TRect; color: TColor; textAlignment: TTextAlignment = TTextAlignment.Left); overload;
 
 procedure LayoutText(var options: TTextLayoutOptions);
@@ -188,7 +189,8 @@ procedure ClearBackground;
 
 { Main Loop }
 function IsRunning: boolean;
-function PollEvents: boolean; inline;
+function PollEvents: boolean;
+procedure SetWaitForEvents(wait: Boolean);
 procedure SwapBuffers; inline;
 procedure QuitApp;
 
@@ -324,6 +326,7 @@ type
       fullScreen: boolean;          // the window was created in fullscreen mode
       totalFrameCount: longint;     // frame count for each SwapBuffers call 
       targetFrameRate: integer;     // frame rate which which is the basis for time calculations
+      waitForEvents: boolean;       // block when polling for events until an event arrives
     public
       property ActiveFont: IFont read GetActiveFont;
     public
@@ -1301,6 +1304,11 @@ begin
   result := IsRunning;
 end;
 
+procedure SetWaitForEvents(wait: Boolean);
+begin
+  CanvasState.waitForEvents := wait;
+end;
+
 procedure SwapBuffers;
 begin
   CanvasState.SwapBuffers;
@@ -1403,31 +1411,44 @@ begin
 end;
 
 procedure TCanvasState.PollEvents;
-{$ifdef PLATFORM_SDL}
-var
-  event: TSDL_Event;
-  _event: TEvent;
-{$endif}
+
+  {$ifdef PLATFORM_SDL}
+  procedure HandleEvent(event: TSDL_Event); 
+  var
+    _event: TEvent;
+  begin
+    case event.type_ of
+      SDL_QUIT_EVENT:
+        wantsClose := true;
+      SDL_WINDOW_EVENT:
+        case event.window.event of
+          SDL_WINDOWEVENT_CLOSE:
+            wantsClose := true;
+        end;
+    end;
+    PollSystemInput(@event);
+    if eventCallback <> nil then
+      begin
+        _event := TEvent.Create(event);
+        eventCallback(_event);
+        _event.Free;
+      end;
+  end;
+
+  var
+    event: TSDL_Event;
+  {$endif}
 begin
   {$ifdef PLATFORM_SDL}
-  while SDL_PollEvent(event) > 0 do
+  if waitForEvents then
     begin
-      case event.type_ of
-        SDL_QUIT_EVENT:
-          wantsClose := true;
-        SDL_WINDOW_EVENT:
-          case event.window.event of
-            SDL_WINDOWEVENT_CLOSE:
-              wantsClose := true;
-          end;
-      end;
-      PollSystemInput(@event);
-      if eventCallback <> nil then
-        begin
-          _event := TEvent.Create(event);
-          eventCallback(_event);
-          _event.Free;
-        end;
+      SDL_WaitEventTimeout(event, MaxInt);
+      HandleEvent(event);
+    end
+  else
+    begin
+      while SDL_PollEvent(event) > 0 do
+        HandleEvent(event);
     end;
   {$endif}
 
