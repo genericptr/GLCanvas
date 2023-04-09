@@ -10,7 +10,7 @@ type
       m_options: TTextureImageOptions;
       m_texture: TTexture;
       m_flipped: boolean;
-      buffer: GLuint;
+      m_bufferID: GLuint;
       previousViewPort: TRect;
       enableDepthBuffer: boolean;
 
@@ -46,6 +46,7 @@ type
       property Bounds: TRect read GetBounds;
       property Texture: TTexture read GetTexture;
       property TextureID: GLuint read m_textureID;
+      property BufferID: GLuint read m_bufferID;
       property TextureOptions: TTextureImageOptions read m_options;
       property Flipped: boolean read m_flipped write SetFlipped;
   end;
@@ -135,8 +136,8 @@ begin
   LoadTexture2D(Width, Height, nil, m_options);
 
   glGetIntegerv(GL_FRAMEBUFFER_BINDING, @prevFBO);
-  glBindFramebuffer(GL_FRAMEBUFFER, buffer);
-  GLAssert('glBindFramebuffer '+IntToStr(buffer));
+  glBindFramebuffer(GL_FRAMEBUFFER, BufferID);
+  GLAssert('glBindFramebuffer '+IntToStr(BufferID));
   glFrameBufferTexture2D(GL_FRAMEBUFFER,
                         GL_COLOR_ATTACHMENT0,
                         GL_TEXTURE_2D,
@@ -154,7 +155,7 @@ begin
   Assert(glCheckFramebufferStatus(GL_FRAMEBUFFER) = GL_FRAMEBUFFER_COMPLETE, 'glFramebufferTexture2D failed with error $'+HexStr(glCheckFramebufferStatus(GL_FRAMEBUFFER), 4));
 
   glFrameBufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, TextureID, 0);
-  GLAssert('glFrameBufferTexture2D '+IntToStr(buffer));
+  GLAssert('glFrameBufferTexture2D '+IntToStr(BufferID));
 
   // restore previous bindings
   glBindTexture(GL_TEXTURE_2D, prevTexture);
@@ -163,8 +164,8 @@ end;
 
 procedure TFrameBuffer.Bind;
 begin
-  glBindFramebuffer(GL_FRAMEBUFFER, buffer);
-  GLAssert('glBindFramebuffer '+IntToStr(buffer));
+  glBindFramebuffer(GL_FRAMEBUFFER, BufferID);
+  GLAssert('glBindFramebuffer '+IntToStr(BufferID));
   // reset viewport to frame buffer size
   previousViewPort := GetViewPort;
   SetViewPort(Bounds);
@@ -173,7 +174,7 @@ end;
 procedure TFrameBuffer.Unbind;
 begin
   glBindFramebuffer(GL_FRAMEBUFFER, 0);
-  GLAssert('glBindFramebuffer '+IntToStr(buffer));
+  GLAssert('glBindFramebuffer '+IntToStr(BufferID));
   // restore previous viewport
   SetViewPort(previousViewPort);
 end;
@@ -187,7 +188,7 @@ begin
   destTexture.LoadIfNeeded;
   BindTexture2D(destTexture.TextureID, 1);
 
-  glBindFramebuffer(GL_READ_FRAMEBUFFER, self.buffer);
+  glBindFramebuffer(GL_READ_FRAMEBUFFER, BufferID);
   CopyTexture2D(sourceRect, RectMake(destOffset.x, destOffset.y, destTexture.Size));
   glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
 
@@ -202,11 +203,11 @@ end;
 { Copies part of the frame buffer to target frame buffer }
 procedure TFrameBuffer.Blit(destBuffer: TFrameBuffer; sourceRect, destRect: TRecti);
 begin
-  glBindFramebuffer(GL_READ_FRAMEBUFFER, self.buffer);
+  glBindFramebuffer(GL_READ_FRAMEBUFFER, BufferID);
 
   // use the application created frame buffer if none is specified
   if destBuffer <> nil then
-    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, destBuffer.buffer)
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, destBuffer.BufferID)
   else
     glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
 
@@ -236,7 +237,7 @@ var
   id: GLUint;
 begin
   glGetIntegerv(GL_FRAMEBUFFER_BINDING, @id);
-  result := buffer = id;
+  result := BufferID = id;
 end;
 
 function TFrameBuffer.PixelAt(x, y: integer): TColor;
@@ -283,7 +284,14 @@ end;
 
 destructor TFrameBuffer.Destroy;
 begin
-  glDeleteFramebuffers(1, @buffer);
+  if m_textureID > 0 then
+    glDeleteTextures(1, @m_textureID);
+  if m_depthTextureID > 0 then
+    glDeleteTextures(1, @m_depthTextureID);
+  glDeleteFramebuffers(1, @m_bufferID);
+  {$ifdef DEBUG_TEXTURES}
+  writeln('delete texture ', hexstr(self), ' id = ', m_textureID);
+  {$endif}
   Texture.Free;
 end;
 
@@ -293,7 +301,7 @@ begin
   self.m_options := options;
   enableDepthBuffer := depthBuffer;
   Flipped := true;
-  glGenFramebuffers(1, @buffer);
+  glGenFramebuffers(1, @m_bufferID);
   Resize(width, height);
 end;
 
